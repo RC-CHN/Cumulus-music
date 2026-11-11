@@ -592,6 +592,8 @@ export function createTauriClient(): CoreClient {
     openDownloadDirectory: (epoch, taskId) => invoke('open_download_directory', { epoch, taskId }),
     playlistTags: (epoch) => invoke('playlist_tags', { epoch }),
     playlistEditor: (epoch, id) => invoke('playlist_editor', { epoch, id }),
+    playlistSongRowCommentCount: (epoch, receipt) =>
+      invoke('playlist_song_row_comment_count', { epoch, receipt }),
     previewExternalPlaylist: (inputs) => invoke('preview_external_playlist', { inputs }),
     externalPlaylistImportSidebar: (epoch) => invoke('external_playlist_import_sidebar', { epoch }),
     externalPlaylistImport: (epoch, action) =>
@@ -851,8 +853,13 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_subscribers', { epoch, id, offset }),
     playlistDurationPrepare: (epoch, id, source) =>
       invoke('playlist_duration_prepare', { epoch, id, source }),
-    playlistPage: (id, { localRevision, ...page }) =>
-      invoke('playlist_page', { id, page, localRevision: localRevision ?? null }),
+    playlistPage: (id, { localRevision, ...page }, songMenu) =>
+      invoke('playlist_page', {
+        id,
+        page,
+        localRevision: localRevision ?? null,
+        ...(songMenu ? { songMenu } : {}),
+      }),
     mutatePlaylistLocal: (epoch, id, revision, change) =>
       invoke('mutate_playlist_local', { epoch, id, revision, change }),
     searchSongs: (keyword, page) => invoke('search_songs', { keyword, page }),

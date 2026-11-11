@@ -9,6 +9,7 @@ import type {
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
 import type { SongGroupDownloadPrepare } from './search';
+import type { PlaylistSongCommentScope } from './playlistSongComments';
 
 export type TrackPlayGesture = 'double_click';
 export interface TrackPendingToggle {
@@ -55,6 +56,7 @@ export interface TrackMenuRequest {
     openShare: (anchor: HTMLElement | undefined) => void;
     copyLink: () => string | undefined;
   };
+  playlistSongComment?: PlaylistSongCommentScope;
   searchGroup?: {
     epoch: string;
     download?: import('./search').SearchGroupDownloadSelection;

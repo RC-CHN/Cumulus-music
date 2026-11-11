@@ -367,7 +367,11 @@ export function useMusic(
                   target.id,
                   playlistPage,
                 )
-              : await core.playlistPage(target.id, playlistPage));
+              : await core.playlistPage(
+                  target.id,
+                  playlistPage,
+                  more && previous?.playlistOffline ? undefined : true,
+                ));
       if (current !== request) return;
       const value = accept(data);
       if (!value) {
@@ -392,6 +396,7 @@ export function useMusic(
             ? {
                 ...mergePlaylistPages(prefix, value, [
                   ...value.tracks,
+                  // Native only accepts retained receipts for unobserved ordinals of this fresh source.
                   ...prefix.tracks.slice(value.tracks.length),
                 ]),
                 more: prefix.more,
@@ -431,12 +436,16 @@ export function useMusic(
       let next: TrackPage | undefined;
       do {
         const offset = next?.tracks.length ?? 0;
-        const response = await core.playlistPage(target.id, {
-          offset,
-          limit: 100,
-          revision: next?.revision ?? null,
-          ...(next?.playlistLocal ? { localRevision: next.playlistLocal.revision } : {}),
-        });
+        const response = await core.playlistPage(
+          target.id,
+          {
+            offset,
+            limit: 100,
+            revision: next?.revision ?? null,
+            ...(next?.playlistLocal ? { localRevision: next.playlistLocal.revision } : {}),
+          },
+          true,
+        );
         if (!live() || response.epoch !== epoch) return false;
         const incoming = response.value;
         if (

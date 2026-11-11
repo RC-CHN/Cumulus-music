@@ -29,6 +29,8 @@ pub(crate) fn track(id: String, metadata: &AudioMetadata, missing: bool) -> Trac
         fee: 0,
         missing,
         local: true,
+        playlist_song_comment_menu: None,
+        playlist_song_comment_eligible: false,
     }
 }
 pub(super) fn row(item: &LibraryItem) -> LocalTrackView {

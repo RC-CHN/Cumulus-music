@@ -104,6 +104,14 @@ async fn complete_native_sort_hydrates_only_suffix_and_drives_both_live_actions(
         .value;
     assert_eq!(prepared.page.tracks.len(), 605);
     assert_eq!(prepared.page.tracks[0].id, "1");
+    assert!(
+        prepared
+            .page
+            .tracks
+            .iter()
+            .all(|row| row.playlist_song_comment_menu.is_none()),
+        "duration from a generic read must not open an ordinary menu visit"
+    );
     let ids = |ordinals: &[usize]| {
         ordinals
             .iter()

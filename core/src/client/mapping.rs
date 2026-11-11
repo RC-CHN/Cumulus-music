@@ -92,6 +92,9 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
         fee: value["fee"].as_i64().unwrap_or(0),
         missing: false,
         local: false,
+        playlist_song_comment_menu: None,
+        playlist_song_comment_eligible: value["t"].as_f64() != Some(1.0)
+            && !crate::protocol::wire::serialization::js_truthy(&value["privilege"]["cs"]),
     })
 }
 

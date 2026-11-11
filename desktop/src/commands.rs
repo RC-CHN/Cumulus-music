@@ -331,14 +331,46 @@ pub async fn playlist_duration_prepare(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn playlist_page(
+pub async fn playlist_page<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     id: String,
     page: PageRequest,
     local_revision: Option<String>,
+    song_menu: Option<bool>,
 ) -> Result<AccountData<TrackPage>, ClientError> {
+    if song_menu == Some(true) {
+        if window.label() != "main" {
+            return Err(cumulus_core::Error::InvalidInput(
+                "playlist song menu is main-window only",
+            )
+            .into());
+        }
+        client
+            .playlist_song_menu_page_at(&id, page, local_revision)
+            .await
+            .map_err(Into::into)
+    } else {
+        client
+            .playlist_page_at(&id, page, local_revision)
+            .await
+            .map_err(Into::into)
+    }
+}
+#[tauri::command]
+pub async fn playlist_song_row_comment_count<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<AccountData<Option<u64>>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("playlist song menu is main-window only").into(),
+        );
+    }
     client
-        .playlist_page_at(&id, page, local_revision)
+        .playlist_song_row_comment_count(&epoch, &receipt)
         .await
         .map_err(Into::into)
 }

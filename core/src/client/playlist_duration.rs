@@ -4,13 +4,16 @@ use super::{
     dto::{AccountData, PageRequest, TrackPage, TrackView},
 };
 use crate::{
-    Error, Result, account::SessionToken, playlist::PlaylistLocalStore, protocol::api::identifier,
+    Error, Result,
+    account::SessionToken,
+    playlist::PlaylistLocalStore,
+    protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     cmp::Reverse,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 const LIMIT: usize = 50_000;
@@ -62,11 +65,49 @@ pub struct PlaylistDurationPage {
     pub descending: Vec<usize>,
 }
 
+#[derive(Clone)]
+struct OnlineAuthority {
+    api: Weak<dyn Api>,
+    generation: Option<u64>,
+}
+
+impl OnlineAuthority {
+    fn new(api: &Arc<dyn Api>, generation: Option<u64>) -> Self {
+        Self {
+            api: Arc::downgrade(api),
+            generation,
+        }
+    }
+
+    fn same(&self, other: &Self) -> bool {
+        self.generation == other.generation && Weak::ptr_eq(&self.api, &other.api)
+    }
+}
+
+#[derive(Clone)]
+struct Observed {
+    page: TrackPage,
+    online: Option<OnlineAuthority>,
+}
+
+impl Observed {
+    fn merge(&mut self, suffix: Self) {
+        self.online = self.online.take().filter(|before| {
+            suffix
+                .online
+                .as_ref()
+                .is_some_and(|after| before.same(after))
+        });
+        merge_suffix(&mut self.page, suffix.page);
+    }
+}
+
 pub(super) struct Prepared {
     pub token: SessionToken,
     pub source: PlaylistDurationSource,
     pub generation: Option<u64>,
     pub projection: PlaylistDurationPage,
+    online: Option<OnlineAuthority>,
 }
 
 impl Prepared {
@@ -83,14 +124,19 @@ struct State {
     generation: u64,
     active: Option<Arc<Prepared>>,
     request: Option<(SessionToken, String)>,
-    prefix: Option<(SessionToken, TrackPage)>,
+    prefix: Option<(SessionToken, Observed)>,
 }
 
 #[derive(Clone, Default)]
 pub(super) struct Host(Arc<Mutex<State>>);
 
 impl Host {
-    pub fn observe(&self, token: &SessionToken, page: &TrackPage) {
+    pub fn observe(
+        &self,
+        token: &SessionToken,
+        page: &TrackPage,
+        online: Option<(&Arc<dyn Api>, Option<u64>)>,
+    ) {
         let Some(playlist) = &page.playlist else {
             return;
         };
@@ -101,20 +147,24 @@ impl Host {
         let Ok(mut state) = self.0.lock() else {
             return;
         };
+        let observed = || Observed {
+            page: page.clone(),
+            online: online.map(|(api, generation)| OnlineAuthority::new(api, generation)),
+        };
         if page.offset == 0 {
             Self::forget_state(&mut state, token, id);
             if page.total <= LIMIT && page.playlist_offline.is_none() && !playlist.favorite {
-                state.prefix = Some((token.clone(), page.clone()));
+                state.prefix = Some((token.clone(), observed()));
             }
         } else if page.playlist_offline.is_none()
             && let Some((owner, before)) = state.prefix.as_mut()
             && owner == token
-            && before.playlist.as_ref().is_some_and(|p| p.id == id)
-            && before.tracks.len() == page.offset
-            && before.total == page.total
-            && PlaylistDurationSource::from_page(before).is_ok_and(|before| before == source)
+            && before.page.playlist.as_ref().is_some_and(|p| p.id == id)
+            && before.page.tracks.len() == page.offset
+            && before.page.total == page.total
+            && PlaylistDurationSource::from_page(&before.page).is_ok_and(|before| before == source)
         {
-            merge_suffix(before, page.clone());
+            before.merge(observed());
         }
     }
 
@@ -143,7 +193,7 @@ impl Host {
         if state
             .prefix
             .as_ref()
-            .is_some_and(|(owner, page)| owner != token || same_playlist(page))
+            .is_some_and(|(owner, observed)| owner != token || same_playlist(&observed.page))
         {
             state.prefix = None;
         }
@@ -154,7 +204,7 @@ impl Host {
         token: &SessionToken,
         id: &str,
         source: &PlaylistDurationSource,
-    ) -> Result<(u64, Option<TrackPage>)> {
+    ) -> Result<(u64, Option<Observed>)> {
         let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         state.generation = state
             .generation
@@ -171,15 +221,17 @@ impl Host {
             .filter(|active| {
                 source.cached_at_ms.is_none() && matches(&active.token, &active.projection.page)
             })
-            .map(|active| &active.projection.page)
+            .map(|active| Observed {
+                page: active.projection.page.clone(),
+                online: active.online.clone(),
+            })
             .or_else(|| {
                 state
                     .prefix
                     .as_ref()
-                    .filter(|(owner, page)| matches(owner, page))
-                    .map(|(_, page)| page)
-            })
-            .cloned();
+                    .filter(|(owner, observed)| matches(owner, &observed.page))
+                    .map(|(_, observed)| observed.clone())
+            });
         state.active = None;
         state.request = Some((token.clone(), id.to_owned()));
         Ok((state.generation, before))
@@ -192,7 +244,7 @@ impl Host {
         }
         if state.prefix.as_ref().is_some_and(|(owner, before)| {
             owner == &value.token
-                && before.playlist.as_ref().map(|p| &p.id)
+                && before.page.playlist.as_ref().map(|p| &p.id)
                     == value.projection.page.playlist.as_ref().map(|p| &p.id)
         }) {
             state.prefix = None;
@@ -258,37 +310,69 @@ impl MusicClient {
         } else {
             None
         };
-        let offset = prefix.as_ref().map_or(0, |page| page.tracks.len());
+        // An ordinary live visit may lend its exact row authority to a sort;
+        // a sort call by itself never opens or replaces that visit.
+        let comment_visit = if source.cached_at_ms.is_none() {
+            let api = self.session.native_api(&token)?;
+            self.playlist_song_comments
+                .capture_duration(&token, &id, &source, generation, &api)
+                .map(|visit| (visit, api))
+        } else {
+            None
+        };
+        let offset = prefix.as_ref().map_or(0, |before| before.page.tracks.len());
         let page = PageRequest {
             offset,
             limit: LIMIT - offset,
             revision: Some(source.revision.clone()),
         };
-        let value = match prefix {
-            Some(before) if !before.more && before.tracks.len() == before.total => before,
+        let Observed {
+            page: value,
+            online,
+        } = match prefix {
+            Some(before) if !before.page.more && before.page.tracks.len() == before.page.total => {
+                before
+            }
             before => {
                 let fetched = if source.cached_at_ms.is_some() {
-                    self.offline_playlist_page(&token, &id, &page, source.local_revision.as_deref())
-                        .await?
-                        .ok_or(Error::QueueChanged)?
+                    Observed {
+                        page: self
+                            .offline_playlist_page(
+                                &token,
+                                &id,
+                                &page,
+                                source.local_revision.as_deref(),
+                            )
+                            .await?
+                            .ok_or(Error::QueueChanged)?,
+                        online: None,
+                    }
                 } else {
-                    self.online_playlist_page(
-                        &token,
-                        &id,
-                        &page,
-                        source.local_revision.as_deref(),
-                        Some(LIMIT),
-                    )
-                    .await?
+                    let online = self
+                        .online_playlist_page(
+                            &token,
+                            &id,
+                            &page,
+                            source.local_revision.as_deref(),
+                            Some(LIMIT),
+                        )
+                        .await?;
+                    Observed {
+                        page: online.page,
+                        online: Some(OnlineAuthority::new(
+                            &online.api,
+                            online.membership_generation,
+                        )),
+                    }
                 };
                 if let Some(mut before) = before {
-                    if fetched.offset != offset
-                        || fetched.total != before.total
-                        || PlaylistDurationSource::from_page(&fetched)? != source
+                    if fetched.page.offset != offset
+                        || fetched.page.total != before.page.total
+                        || PlaylistDurationSource::from_page(&fetched.page)? != source
                     {
                         return Err(Error::QueueChanged);
                     }
-                    merge_suffix(&mut before, fetched);
+                    before.merge(fetched);
                     before
                 } else {
                     fetched
@@ -308,20 +392,36 @@ impl MusicClient {
         {
             return Err(Error::QueueChanged);
         }
-        let projection = PlaylistDurationPage {
+        let mut projection = PlaylistDurationPage {
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             ascending: ordered(&value.tracks, PlaylistDurationOrder::Ascending),
             descending: ordered(&value.tracks, PlaylistDurationOrder::Descending),
             page: value,
         };
+        let comment_visit = comment_visit.filter(|(_, api)| {
+            online
+                .as_ref()
+                .is_some_and(|authority| authority.same(&OnlineAuthority::new(api, generation)))
+                && self.session.require_api(&token, api).is_ok()
+        });
         let prepared = Arc::new(Prepared {
             token: token.clone(),
             source,
             generation,
             projection: projection.clone(),
+            online,
         });
         self.session.with_token(&token, |_| {
             self.playlist_duration.publish(sequence, prepared)?;
+            if let Some((visit, api)) = comment_visit {
+                self.playlist_song_comments.observe_duration(
+                    visit,
+                    &token,
+                    &api,
+                    generation,
+                    &mut projection.page,
+                );
+            }
             Ok(AccountData {
                 epoch: epoch.to_owned(),
                 value: projection,

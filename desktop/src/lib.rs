@@ -376,6 +376,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::cancel_qr,
                 commands::account_playlists,
                 commands::playlist_page,
+                commands::playlist_song_row_comment_count,
                 commands::playlist_duration_prepare,
                 commands::playlist_subscribers,
                 commands::playlist_tag_page,

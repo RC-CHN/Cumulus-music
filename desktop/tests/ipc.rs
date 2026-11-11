@@ -52,6 +52,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "reorder_playlist_mixed",
             "move_playlist_mixed",
             "playlist_mixed_reorder_receipt",
+            "playlist_song_row_comment_count",
             "reconcile_playlist_mixed_reorder",
             "player_action",
             "player_vinyl_voice_detail_target",
@@ -222,6 +223,16 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         Err(json!({"code":"invalid_input","message":"输入内容不符合要求","retryable":false})),
     );
     let card_receipt = "0123456789abcdef0123456789abcdef";
+    assert_ipc_response(
+        &window,
+        request(
+            "playlist_song_row_comment_count",
+            json!({"epoch":"1","receipt":card_receipt}),
+        ),
+        Err(
+            json!({"code":"snapshot_changed","message":"列表已更新，请刷新后重试","retryable":true}),
+        ),
+    );
     let selection_receipt = "abcdef0123456789abcdef0123456789";
     let local_id = "b".repeat(64);
     let revision = "a".repeat(64);

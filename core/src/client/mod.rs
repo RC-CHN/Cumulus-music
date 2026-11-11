@@ -61,6 +61,7 @@ mod playlist_duration;
 mod playlist_essential;
 mod playlist_local_membership;
 mod playlist_offline;
+mod playlist_song_comment;
 mod playlist_square;
 mod playlist_tags_browse;
 mod playlists;
@@ -138,6 +139,7 @@ pub struct MusicClient {
     playlist_cover: playlist_cover::CoverHost,
     playlist_offline: playlist_offline::Host,
     playlist_duration: playlist_duration::Host,
+    playlist_song_comments: playlist_song_comment::Host,
     account_avatar: account_avatar::AvatarHost,
     effect_material_backend: Option<Arc<dyn crate::download::transfer::MediaBackend>>,
     login_device_rows: login_devices::DeviceRows,
@@ -319,6 +321,7 @@ impl MusicClient {
             playlist_cover: playlist_cover::CoverHost::default(),
             playlist_offline: Default::default(),
             playlist_duration: Default::default(),
+            playlist_song_comments: Default::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),
             effect_material_backend: None,

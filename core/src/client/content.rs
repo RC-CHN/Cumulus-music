@@ -142,6 +142,8 @@ pub(super) fn missing_playlist_row(id: String, local: bool) -> TrackView {
         fee: 0,
         missing: true,
         local,
+        playlist_song_comment_menu: None,
+        playlist_song_comment_eligible: false,
     }
 }
 

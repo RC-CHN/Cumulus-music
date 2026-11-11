@@ -318,15 +318,21 @@ test('album tab replacement preserves visit identity without adding a back step'
 
 test('playlist tabs replace the visit and a Back refresh keeps only a matching track prefix', async () => {
   let revision = 'r1';
+  const songMenuReads: [number, true | undefined][] = [];
   const music = useMusic(
     backend({
-      playlistPage: async (id, query) =>
-        data({
+      playlistPage: async (id, query, songMenu) => {
+        songMenuReads.push([query.offset, songMenu]);
+        return data({
           ...page,
           revision,
           tracks: Array.from({ length: query.offset ? 2 : 100 }, (_, index) => ({
             ...song,
             id: String(query.offset + index),
+            playlistSongCommentMenu:
+              query.offset && index === 0
+                ? { kind: 'hidden' }
+                : { kind: 'eligible', receipt: String(songMenuReads.length) },
           })),
           total: 102,
           offset: query.offset,
@@ -342,7 +348,8 @@ test('playlist tabs replace the visit and a Back refresh keeps only a matching t
             favorite: false,
             private: false,
           },
-        }),
+        });
+      },
     }),
   );
   await music.bootstrap();
@@ -351,6 +358,10 @@ test('playlist tabs replace the visit and a Back refresh keeps only a matching t
   await music.load(true);
   const result = music.result.value;
   assert.equal(result?.tracks.length, 102);
+  assert.deepEqual(result?.tracks[101]?.playlistSongCommentMenu, {
+    kind: 'eligible',
+    receipt: '2',
+  });
   music.replacePlaylistSection('comments');
   assert.equal(music.historyLength.value, 1);
   assert.equal(music.result.value, result);
@@ -359,12 +370,28 @@ test('playlist tabs replace the visit and a Back refresh keeps only a matching t
   await Promise.resolve();
   assert.deepEqual(music.page.value, { kind: 'playlist', id: '2', section: 'comments' });
   assert.equal(music.result.value?.tracks.at(-1)?.id, '101');
+  assert.deepEqual(music.result.value?.tracks[0]?.playlistSongCommentMenu, {
+    kind: 'eligible',
+    receipt: '3',
+  });
+  assert.deepEqual(music.result.value?.tracks[100]?.playlistSongCommentMenu, { kind: 'hidden' });
+  assert.deepEqual(music.result.value?.tracks[101]?.playlistSongCommentMenu, {
+    kind: 'eligible',
+    receipt: '2',
+  });
+
   music.navigate({ kind: 'library' });
   revision = 'r2';
   music.back();
   await Promise.resolve();
   assert.equal(music.result.value?.tracks.length, 100);
   assert.equal(music.result.value?.revision, 'r2');
+  assert.deepEqual(songMenuReads, [
+    [0, true],
+    [100, true],
+    [0, true],
+    [0, true],
+  ]);
   music.back();
   assert.equal(music.page.value.kind, 'daily');
 });

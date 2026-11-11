@@ -193,6 +193,7 @@ import type {
   QueueMenuAction,
   QueueMenuRequest,
   TrackMenuRequest,
+  TrackMenuSelectionScope,
   TrackPendingToggle,
   TrackPlayGesture,
 } from './services/trackMenu';
@@ -6209,9 +6210,10 @@ watch(
         !!playlistActions.value?.downloadOpen,
     ),
 );
-function showVisibleTrackActions(request: TrackMenuRequest) {
+function showVisibleTrackActions(request: TrackMenuRequest, selection?: TrackMenuSelectionScope) {
   if (cachedPlaylist.value) return;
-  const playlist = result.value?.playlist;
+  const shown = result.value;
+  const playlist = shown?.playlist;
   if (!playlist) {
     const snapshot = result.value;
     const kind = page.value.kind;
@@ -6230,11 +6232,41 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
     return;
   }
   const epoch = account.value.epoch;
+  const route = page.value;
+  const displayed = playlistTrackSearch.value.tracks;
+  const commentMenu = request.track.playlistSongCommentMenu;
+  const playlistSongComment: TrackMenuRequest['playlistSongComment'] =
+    route.kind === 'playlist' &&
+    !route.zonePlaylistReceipt &&
+    playlist.id === route.id &&
+    commentMenu &&
+    displayed.includes(request.track)
+      ? {
+          epoch,
+          menu:
+            selection?.multiple ||
+            (commentMenu.kind === 'eligible' &&
+              (!selection || request.track.local || !!request.track.voiceId))
+              ? { kind: 'hidden' }
+              : commentMenu,
+          live: () =>
+            signedIn.value &&
+            account.value.epoch === epoch &&
+            page.value === route &&
+            result.value === shown &&
+            playlistSongsActive.value &&
+            !cachedPlaylist.value &&
+            !loading.value &&
+            playlistTrackSearch.value.tracks === displayed &&
+            selection?.live() !== false,
+        }
+      : undefined;
   const membership = result.value?.playlistLocal;
   const localRevision = request.track.local ? membership?.rows[request.track.id] : undefined;
   trackActions.value?.show(
     {
       ...request,
+      playlistSongComment,
       mixedLocal: membership?.hasMembers,
       mixedRemoval: mixedRemovalMenu([request.track]),
       ...(membership && localRevision

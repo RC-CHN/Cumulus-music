@@ -239,6 +239,8 @@ fn track(row: &Value) -> Result<Option<Row>> {
         voice_id: None,
         missing: false,
         local: false,
+        playlist_song_comment_menu: None,
+        playlist_song_comment_eligible: false,
     };
     let privilege_id = &row["privilege"]["id"];
     let online_eligible = (privilege_id.is_null()

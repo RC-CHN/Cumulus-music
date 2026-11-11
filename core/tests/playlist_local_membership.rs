@@ -6,6 +6,8 @@ mod offline;
 mod queue;
 #[path = "playlist_local_membership/reorder.rs"]
 mod reorder;
+#[path = "playlist_local_membership/song_comment.rs"]
+mod song_comment;
 
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]

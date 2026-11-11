@@ -271,6 +271,13 @@ pub struct ArtistReference {
     pub name: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlaylistSongCommentMenu {
+    Eligible { receipt: String },
+    Hidden,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackView {
@@ -293,6 +300,12 @@ pub struct TrackView {
     pub fee: i64,
     pub missing: bool,
     pub local: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playlist_song_comment_menu: Option<Box<PlaylistSongCommentMenu>>,
+    /// The raw service row can authorize a count only after it is observed
+    /// in a live, account-bound ordinary playlist page. Never persist it.
+    #[serde(skip)]
+    pub(crate) playlist_song_comment_eligible: bool,
 }
 
 #[derive(Clone, Serialize)]

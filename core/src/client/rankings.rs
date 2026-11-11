@@ -121,6 +121,8 @@ fn project(saved: SavedRanking, cached: bool, choice_hours: Option<f64>) -> Resu
                             fee: 0,
                             missing: true,
                             local: false,
+                            playlist_song_comment_menu: None,
+                            playlist_song_comment_eligible: false,
                         },
                     };
                     Ok(SongSaleView {

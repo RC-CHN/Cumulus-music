@@ -22,6 +22,7 @@ import TrackShareDialog from './TrackShareDialog.vue';
 import SearchGroupDownloadPicker from './SearchGroupDownloadPicker.vue';
 import VoiceSongPurchasedQuality from './VoiceSongPurchasedQuality.vue';
 import type { SearchPurchasedQuality } from '../services/search';
+import { preparePlaylistSongComment } from '../services/playlistSongComments';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView, ordinaryCatalog: boolean];
@@ -37,6 +38,7 @@ const client = useCore(),
   menu = ref<InstanceType<typeof ActionMenu>>();
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
+const playlistSongCommentCount = ref<number | null>(null);
 const queueRequest = shallowRef<QueueMenuRequest>();
 type SearchDownloadFeedback = {
   group: SongGroupDownloadRequest;
@@ -133,7 +135,12 @@ const items = computed<MenuItem[]>(() => {
   }
   const input = request.value;
   const track = input?.track;
-  if (!track || (input?.episode && !input.episode.live())) return [];
+  if (
+    !track ||
+    (input?.episode && !input.episode.live()) ||
+    input.playlistSongComment?.live() === false
+  )
+    return [];
   const mixedRemoval = input.mixedRemoval;
   const removeMixed = {
     key: 'remove_mixed_member',
@@ -233,8 +240,16 @@ const items = computed<MenuItem[]>(() => {
       disabled: !canPlay || nextDisabled,
       hint: nextHint,
     },
-    ...(!track.local && !selection
-      ? [{ key: 'comments', label: '查看评论', icon: 'comment' }]
+    ...(!track.local && !selection && input.playlistSongComment?.menu.kind !== 'hidden'
+      ? [
+          {
+            key: 'comments',
+            label: playlistSongCommentCount.value
+              ? `查看评论(${playlistSongCommentCount.value})`
+              : '查看评论',
+            icon: 'comment',
+          },
+        ]
       : []),
     ...(!selection
       ? [
@@ -270,6 +285,7 @@ const items = computed<MenuItem[]>(() => {
 });
 function clear() {
   sequence++;
+  playlistSongCommentCount.value = null;
   clearTimeout(timer);
   message.value = '';
   failed.value = false;
@@ -310,12 +326,30 @@ watch(
   () =>
     request.value?.episode?.live() ??
     request.value?.searchGroup?.live() ??
-    request.value?.searchSinglePlay?.(),
+    request.value?.searchSinglePlay?.() ??
+    request.value?.playlistSongComment?.live(),
   (live) => {
     if (live === false) close();
   },
 );
 onBeforeUnmount(close);
+async function preparePlaylistMenu(signal: AbortSignal) {
+  const input = request.value;
+  const scope = input?.playlistSongComment;
+  if (!input || !scope) return false;
+  const attempt = sequence;
+  const prepared = await preparePlaylistSongComment(client, scope, signal);
+  if (
+    !prepared ||
+    signal.aborted ||
+    sequence !== attempt ||
+    request.value !== input ||
+    !scope.live()
+  )
+    return false;
+  playlistSongCommentCount.value = prepared.count;
+  return true;
+}
 async function show(input: TrackMenuRequest, source?: PlaylistView) {
   clear();
   historyFocusGuard.value = undefined;
@@ -351,6 +385,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     request.value !== input ||
     (input.episode && !input.episode.live()) ||
     (input.searchGroup && !input.searchGroup.live()) ||
+    input.playlistSongComment?.live() === false ||
     (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
@@ -749,6 +784,7 @@ async function select(key: string) {
     item.separator ||
     (input.episode && !input.episode.live()) ||
     (input.searchGroup && !input.searchGroup.live()) ||
+    input.playlistSongComment?.live() === false ||
     (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
@@ -890,6 +926,9 @@ defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadAct
           : '歌曲操作'
     "
     :items="items"
+    :before-open="
+      request?.playlistSongComment?.menu.kind === 'eligible' ? preparePlaylistMenu : undefined
+    "
     @select="select"
   />
   <ModalTransition

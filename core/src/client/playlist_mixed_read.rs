@@ -9,14 +9,20 @@ use crate::{
     client::playlist_offline::{invalidates_cache, may_fallback},
     client::{dto::*, local::view},
     playlist::{PlaylistApi, PlaylistLocalRow, PlaylistLocalStore},
-    protocol::api::identifier,
+    protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) enum PlaylistPageSlot<'a> {
     Service(&'a Value),
     Local(Box<TrackView>),
+}
+
+pub(in crate::client) struct OnlinePlaylistPage {
+    pub(in crate::client) page: TrackPage,
+    pub(in crate::client) api: Arc<dyn Api>,
+    pub(in crate::client) membership_generation: Option<u64>,
 }
 
 impl MusicClient {
@@ -26,28 +32,85 @@ impl MusicClient {
         page: PageRequest,
         local_revision: Option<String>,
     ) -> Result<AccountData<TrackPage>> {
+        self.playlist_page_at_inner(id, page, local_revision, false)
+            .await
+    }
+
+    /// Observe only the ordinary displayed playlist visit. Background reads
+    /// for batch and local membership must not change its menu receipts.
+    pub async fn playlist_song_menu_page_at(
+        &self,
+        id: &str,
+        page: PageRequest,
+        local_revision: Option<String>,
+    ) -> Result<AccountData<TrackPage>> {
+        self.playlist_page_at_inner(id, page, local_revision, true)
+            .await
+    }
+
+    async fn playlist_page_at_inner(
+        &self,
+        id: &str,
+        page: PageRequest,
+        local_revision: Option<String>,
+        song_menu: bool,
+    ) -> Result<AccountData<TrackPage>> {
         mapping::page(page.offset, page.limit)?;
         let id = identifier(&json!(id))?;
         let token = self.session.token()?;
-        let page = match self
+        let observation = if song_menu {
+            self.playlist_song_comments.begin(&token, &id, &page)
+        } else {
+            None
+        };
+        let (mut page, live) = match self
             .online_playlist_page(&token, &id, &page, local_revision.as_deref(), None)
             .await
         {
-            Ok(page) => page,
+            Ok(online) => (
+                online.page,
+                Some((online.api, online.membership_generation)),
+            ),
             Err(error) if may_fallback(&error) => {
                 match self
                     .offline_playlist_page(&token, &id, &page, local_revision.as_deref())
                     .await
                 {
-                    Ok(Some(page)) => page,
+                    Ok(Some(page)) => {
+                        self.playlist_song_comments.retire(observation);
+                        (page, None)
+                    }
                     Ok(None) => return Err(error),
                     Err(cache_error) => return Err(cache_error),
                 }
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                self.playlist_song_comments.retire(observation);
+                return Err(error);
+            }
         };
+        if observation.is_some()
+            && let Some((api, _)) = &live
+        {
+            self.session.require_api(&token, api)?;
+        }
         self.session.with_token(&token, |_| {
-            self.playlist_duration.observe(&token, &page);
+            // A sorted view uses its own source receipt. Keep its observed
+            // prefix free of menu capabilities from the ordinary paged visit.
+            self.playlist_duration.observe(
+                &token,
+                &page,
+                live.as_ref().map(|(api, generation)| (api, *generation)),
+            );
+            if let Some((api, generation)) = live {
+                self.playlist_song_comments.observe(
+                    observation,
+                    &token,
+                    &api,
+                    generation,
+                    &mut page,
+                );
+            }
             Ok(AccountData {
                 epoch: token.generation.to_string(),
                 value: page,
@@ -62,7 +125,7 @@ impl MusicClient {
         page: &PageRequest,
         local_revision: Option<&str>,
         duration_limit: Option<usize>,
-    ) -> Result<TrackPage> {
+    ) -> Result<OnlinePlaylistPage> {
         let (api, uid, detail) = match self
             .session
             .run_for(token, |api, uid| async {
@@ -102,13 +165,18 @@ impl MusicClient {
             if local_revision.is_some() {
                 return Err(Error::QueueChanged);
             }
-            return self
+            let page = self
                 .session
                 .run_for(token, |current, _| async {
                     self.session.require_api(token, &api)?;
                     playlist_track_page(current, &uid, id, &detail, page, trial_mode, None).await
                 })
-                .await;
+                .await?;
+            return Ok(OnlinePlaylistPage {
+                page,
+                api,
+                membership_generation: None,
+            });
         }
         let result = {
             let revision = playlist_track_revision(id, &detail)?;
@@ -208,7 +276,11 @@ impl MusicClient {
                 generation,
                 detail["updateTime"].as_u64(),
             );
-            result
+            OnlinePlaylistPage {
+                page: result,
+                api,
+                membership_generation: generation,
+            }
         };
         Ok(result)
     }

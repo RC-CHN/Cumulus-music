@@ -71,6 +71,8 @@ mod playlist_editor_fixture;
 mod playlist_essential_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
 mod playlist_layout_fixture;
+#[path = "support/playlist_song_comment_fixture.rs"]
+mod playlist_song_comment_fixture;
 #[path = "support/playlist_square_fixture.rs"]
 mod playlist_square_fixture;
 #[path = "support/queue_collection_fixture.rs"]
@@ -196,7 +198,9 @@ fn song(id: u64) -> Value {
     if id == 2 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() {
         return json!({"id":id,"name":"合成歌曲 2 · A quiet afternoon","ar":[{"id":12,"name":"测试歌手"},{"id":13,"name":"另一位歌手"}],"al":{"id":7,"name":"测试专辑"},"dt":235000,"fee":2});
     }
-    json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
+    let mut row = json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3});
+    playlist_song_comment_fixture::decorate_song(id, &mut row);
+    row
 }
 fn subscribers_proof() -> bool {
     std::env::var_os("CUMULUS_PLAYLIST_SUBSCRIBERS_UI_PROOF").is_some()
@@ -233,13 +237,15 @@ static SEARCH_CARD_ARTIST_SONG_CALLS: std::sync::Mutex<Vec<Value>> =
     std::sync::Mutex::new(Vec::new());
 
 fn playlist(id: u64) -> Value {
-    intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
+    let mut playlist = intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
             json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"subscribedCount":if subscribers_proof() {Some(25)} else {None},"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
             id,
         ),
         id,
-    ))
+    ));
+    playlist_song_comment_fixture::decorate_playlist(id, &mut playlist);
+    playlist
 }
 impl Api for Library {
     fn song_card_download_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
@@ -870,6 +876,10 @@ impl Api for Library {
             if let Some(result) = download_page_fixture::response(path, &args) {
                 return result;
             }
+            if let Some(result) = playlist_song_comment_fixture::response(path, &args, cached).await
+            {
+                return result;
+            }
             if let Some(result) = library_fixture::response(path, &args).await {
                 return result;
             }
@@ -1411,7 +1421,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() || search_group_download_fixture::enabled() {
+        if playlist_song_comment_fixture::enabled() || chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() || search_group_download_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1996,6 +2006,14 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__libraryFixtureAck={report};")).unwrap();
                 return;
             }
+            if playlist_song_comment_fixture::enabled() && stage=="playlist-song-comment-control" {
+                let sequence=value["sequence"].as_u64().unwrap();
+                playlist_song_comment_fixture::control(value["action"].as_str().unwrap());
+                let response=json!({"sequence":sequence,"report":playlist_song_comment_fixture::report()});
+                handle.get_webview_window("main").unwrap()
+                    .eval(format!("window.__playlistSongCommentAck={response};")).unwrap();
+                return;
+            }
             if playlist_layout_fixture::enabled() && stage=="playlist-fixture-release" {
                 playlist_layout_fixture::release_failure();
                 return;
@@ -2120,6 +2138,7 @@ fn main() {
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
+            if playlist_song_comment_fixture::enabled() { value["playlistSongCommentFixture"] = playlist_song_comment_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if download_liked_fixture::enabled() { value["syntheticDownloadLiked"] = download_liked_fixture::report(&proof_store); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
