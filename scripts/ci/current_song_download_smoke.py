@@ -27,6 +27,27 @@ def kinds(rows):
 def verify_directory_setup(root, output, labels, stages, complete):
     saved_root = str(root / 'media')
     epoch = stages['settings']['current']['epoch']
+    naming, organization, quality = (stages[f'layout_{name}']['layoutAudit'] for name in (
+        'naming', 'organization', 'quality',
+    ))
+    name_revision = naming['native']['revision']
+    revision = organization['native']['revision']
+    assert all(isinstance(value, str) and re.fullmatch('[0-9a-f]{32}', value)
+               for value in (name_revision, revision)) and name_revision != revision
+    assert naming['native'] == {'pathType': 0, 'fileType': 2, 'revision': name_revision}
+    assert organization['native'] == {'pathType': 1, 'fileType': 2, 'revision': revision}
+    assert naming['checked'] == [[0], [2]] and organization['checked'] == quality['checked'] == [[1], [2]]
+    assert all(not stage['chooserCount'] and stage['path'] == '未设置'
+               for stage in (naming, organization, quality))
+    assert not naming['dialog'] and not organization['dialog'] and quality['dialog']
+    assert quality['native'] == organization['native']
+    assert naming['calls'] == [{'epoch': epoch, 'change': {
+        'field': 'file_type', 'value': 2, 'expectedRevision': None,
+    }, 'result': naming['native']}]
+    assert organization['calls'] == naming['calls'] + [{'epoch': epoch, 'change': {
+        'field': 'path_type', 'value': 1, 'expectedRevision': name_revision,
+    }, 'result': organization['native']}]
+    assert complete['layoutCalls'] == organization['calls'] == quality['calls']
     audits = {label: stages[label]['directoryAudit'] for label in (
         'directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled',
     )}
@@ -38,7 +59,7 @@ def verify_directory_setup(root, output, labels, stages, complete):
     receipt = confirmation['previewCalls'][0]['result']['receipt']
     assert isinstance(receipt, str) and re.fullmatch(r'[0-9a-f]{32}', receipt)
     first_preview = {'epoch': epoch, 'root': saved_root, 'result': {
-        'epoch': epoch, 'target': saved_root, 'revision': None, 'decision': 'ready',
+        'epoch': epoch, 'target': saved_root, 'revision': revision, 'decision': 'ready',
         'moveExisting': False, 'receipt': receipt,
     }}
     assert confirmation['nativeDirectory'] is None and confirmation['path'] == '未设置'
@@ -50,11 +71,12 @@ def verify_directory_setup(root, output, labels, stages, complete):
         'action': '继续更改', 'ownsFocus': True,
     }
     change = {'epoch': epoch, 'command': {
-        'kind': 'change_directory', 'root': saved_root, 'revision': None, 'receipt': receipt,
+        'kind': 'change_directory', 'root': saved_root, 'revision': revision, 'receipt': receipt,
     }, 'result': {'epoch': epoch, 'accepted': [], 'failed': [], 'operationId': None}}
     saved = audits['directory_saved']
     native = saved['nativeDirectory']
     assert native['root'] == saved_root and isinstance(native['revision'], str) and native['revision']
+    assert (native['path_type'], native['file_type']) == (1, 2) and native['revision'] != revision
     assert saved['path'] == saved_root and saved['focus'] and saved['confirmation'] is None
     assert saved['chooserCalls'] == [epoch] and saved['pickerResults'] == [saved_root]
     assert saved['previewCalls'] == [first_preview] and saved['changeCalls'] == [change]
@@ -99,7 +121,8 @@ def verify(root, mode, fixture, directory_setup=False):
         'directory': ('directory', 'settings'),
     }[mode]
     if directory_setup:
-        tail += ('directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled')
+        tail += ('layout_naming', 'layout_organization', 'layout_quality',
+                 'directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled')
     labels = (*BASE, *tail)
     stages = {}
     assert sorted(path.stem for path in output.glob('ux_*.json')) == [
@@ -188,6 +211,7 @@ def verify(root, mode, fixture, directory_setup=False):
         if directory_setup:
             verify_directory_setup(root, output, labels, stages, complete)
         else:
+            assert not complete['layoutCalls']
             assert complete['settingsDirectoryPath'] == '未设置' and complete['nativeDirectory'] is None
             assert complete['directoryChooserCalls'] == [stages['settings']['current']['epoch']]
             assert complete['directoryPickerResults'] == [None]
@@ -219,7 +243,8 @@ def verify(root, mode, fixture, directory_setup=False):
     return {'ok': True, 'actualLinuxWebView': True, 'mode': mode, 'stageCount': len(labels),
             'screenshots': len(labels), 'guardedPlaylistWrites': int(mode == 'playlist'),
             'nativeTransfers': int(mode != 'directory'), 'publishedSha256': digest,
-            'directorySetup': directory_setup, 'nativeDirectoryWrites': int(directory_setup)}
+            'directorySetup': directory_setup, 'nativeDirectoryWrites': int(directory_setup),
+            'nativeLayoutWrites': len(complete['layoutCalls'])}
 
 
 def main():

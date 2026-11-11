@@ -18,6 +18,7 @@
   const directoryConfirmation = () => modal('.settings-confirm');
   const settingsDirectoryPath = () =>
     one('[data-download-directory-path]', downloadSettings() ?? null)?.textContent.trim() ?? null;
+  const radio = (field, value) => one(`fieldset[data-download-layout-field="${field}"] input[value="${value}"]`, downloadSettings());
   const notice = () => one('.player-download-notice', bar());
   const byLabel = (label, root) => one(`[aria-label="${label}"]`, root);
   const byText = (text, root) => all('button', root).find((node) => node.textContent.trim() === text);
@@ -45,6 +46,7 @@
   let epoch, checkpoint = 0, last, incumbent;
   const actions = [], legacyWrites = [];
   const directoryChooserCalls = [], directoryPickerResults = [], directoryPreviewCalls = [], directoryChangeCalls = [];
+  const layoutCalls = [];
   let resolveNativeChooser, directoryChooserCancelled = false, directoryRepickCancelled = false;
   const preferences = { quality: 'standard', tags: false, cover: false, lyrics: false, container: 'audio' };
   const expectedTiers = ['hires', 'lossless', 'exhigh', 'standard'];
@@ -93,6 +95,13 @@
     const directoryStages = ['directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled'];
     const directoryEvidence = directoryStages.includes(label)
       ? { directoryAudit: await directoryAudit() } : {};
+    const layoutEvidence = label.startsWith('layout_') ? { layoutAudit: {
+      native: await invoke('download_layout', { epoch }), calls: structuredClone(layoutCalls),
+      path: settingsDirectoryPath(), chooserCount: directoryChooserCalls.length,
+      dialog: !!one('dialog[open]:not(.modal-leave-active)'),
+      checked: ['path_type', 'file_type'].map((field) =>
+        all(`fieldset[data-download-layout-field="${field}"] input:checked`, downloadSettings()).map((node) => Number(node.value))),
+    } } : {};
     const [player, queue] = await Promise.all([nativePlayer(), nativeQueue()]);
     const current = { epoch: player.epoch, playId: player.playId, entryId: player.entryId,
       trackId: player.track?.id, state: player.state, position: player.position, kind: player.resourceKind,
@@ -100,7 +109,7 @@
       queue: queue.tracks.map((row) => [row.entryId, row.track.id]) };
     if (incumbent) assert(JSON.stringify(current) === JSON.stringify(incumbent), 'purchase flow preserves paused player and queue');
     const id = `ux_${String(++checkpoint).padStart(2, '0')}_${label}`;
-    await emit(id, { mode, current, visible: document.visibilityState === 'visible', ...paint, ...directoryEvidence,
+    await emit(id, { mode, current, visible: document.visibilityState === 'visible', ...paint, ...directoryEvidence, ...layoutEvidence,
       dom: { quality: !!quality(), ordinary: !!download(), picker: !!picker(),
         status: badge()?.dataset.downloadState, focus: document.activeElement === badge(),
         settings: label === 'settings' && renderedSettings(),
@@ -198,6 +207,15 @@
         record.result = result;
         return result;
       };
+      const change = client.changeDownloadLayout;
+      assert(typeof change === 'function', 'typed local layout mutation is installed');
+      client.changeDownloadLayout = async (owner, changeInput) => {
+        const record = { epoch: owner, change: structuredClone(changeInput) };
+        layoutCalls.push(record);
+        const result = await change.call(client, owner, changeInput);
+        record.result = result;
+        return result;
+      };
     }
     client.playerCurrentSongDownload = async (owner, target, action) => {
       const current = { kind: action.kind, epoch: owner, ...target,
@@ -233,6 +251,30 @@
       legacyWrites.push(command?.kind);
       return oldDownload.call(client, owner, command);
     };
+  }
+
+  async function applyLayout() {
+    await wait(() => enabled(radio('file_type', 0)) && radio('file_type', 0).checked &&
+      radio('path_type', 0)?.checked, 'first account reads official untouched defaults');
+    await click(() => radio('file_type', 0), 'reselect existing naming');
+    assert(!layoutCalls.length, 'reselecting current naming does not call native mutation');
+    await click(() => radio('file_type', 2), 'change only naming in Settings');
+    await wait(() => layoutCalls[0]?.result && enabled(radio('file_type', 2)) &&
+      radio('file_type', 2).checked && radio('path_type', 0)?.checked &&
+      document.activeElement === radio('file_type', 2), 'naming persists and keeps focus with organization intact');
+    await capture('layout_naming');
+    await click(() => radio('path_type', 1), 'change only organization in Settings');
+    await wait(() => layoutCalls[1]?.result && enabled(radio('path_type', 1)) &&
+      radio('path_type', 1).checked && radio('file_type', 2)?.checked &&
+      document.activeElement === radio('path_type', 1), 'organization persists and keeps focus with naming intact');
+    await capture('layout_organization');
+    await click(() => byText('音质与下载选项', downloadSettings()), 'open independent quality settings');
+    await wait(() => download() && one('[aria-label="下载音质"]', download()), 'real download preferences dialog');
+    assert(!one('[aria-label="下载目录"],[aria-label="文件命名"],[aria-label="文件夹组织"]', download()),
+      'quality dialog does not duplicate directory and layout controls');
+    await capture('layout_quality');
+    await click(() => byLabel('关闭下载对话框', download()), 'cancel independent quality settings');
+    await wait(() => !download() && !one('dialog.modal-leave-active'), 'layout still displayed after quality Cancel');
   }
 
   async function applyDirectorySetup(edit) {
@@ -354,6 +396,7 @@
         renderedSettings() && !download(),
       'settled and visible download settings with heading focus');
       await capture('settings');
+      if (directorySetup) await applyLayout();
       const edit = byText('更改目录', downloadSettings());
       assert(settingsDirectoryPath() === '未设置', 'current empty directory is shown inline');
       await click(() => edit, 'open system directory picker directly from Settings');
@@ -387,7 +430,7 @@
     await emit('complete', { ok: true, mode, directorySetup, stageCount: checkpoint, realAccountWrites: 0,
       realMusicRequests: 0, actions, legacyWrites, tasks: complete.tasks.map(task),
       directoryChooserCalls, directoryPickerResults, directoryPreviewCalls, directoryChangeCalls,
-      directoryChooserCancelled, directoryRepickCancelled, nativeDirectory: complete.directory,
+      directoryChooserCancelled, directoryRepickCancelled, nativeDirectory: complete.directory, layoutCalls,
       settingsDirectoryPath: settingsDirectoryPath() });
   } catch (error) {
     await emit('failed', { ok: false, mode, stageCount: checkpoint, last, error: String(error),

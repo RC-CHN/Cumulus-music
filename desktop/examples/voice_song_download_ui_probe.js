@@ -119,8 +119,8 @@
     edit(q('input[aria-label="下载目录"]', options()), output);
     edit(q('select[aria-label="下载音质"]', options()), 'standard');
     edit(q('select[aria-label="保存格式"]', options()), 'audio');
-    edit(q('select[aria-label="文件夹组织"]', options()), '0');
-    edit(q('select[aria-label="文件命名"]', options()), '1');
+    assert(!q('select[aria-label="文件夹组织"],select[aria-label="文件命名"]', options()),
+      'the download prompt leaves account layout to Settings');
     for (const control of all('.download-checkboxes input', options())) {
       if (control.checked) control.click();
     }
@@ -184,7 +184,7 @@
       'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadPickerStatus',
       'playerVoiceSongDownloadCreatePlaylist', 'playerVoiceSongDownloadCreationStatus',
       'playerVoiceSongDownloadAddCreatedPlaylist', 'playerVoiceSongDownloadStartFromPlaylist',
-      'downloadCommand', 'playlistCollectPage', ...(playCompleted ? ['playSelection'] : [])];
+      'downloadCommand', 'downloadLayout', 'playlistCollectPage', ...(playCompleted ? ['playSelection'] : [])];
     const originals = methods.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'real typed adapters installed');
     methods.forEach((name, index) => {

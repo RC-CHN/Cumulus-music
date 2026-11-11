@@ -181,7 +181,7 @@ def verify(case, root, stages, complete, play_completed):
     assert not actions(last, 'playerVoiceSongDownloadCreationStatus', 'playerVoiceSongDownloadAddCreatedPlaylist')
     if case != 'recover':
         assert not actions(last, 'playerVoiceSongDownloadPickerStatus')
-    configure = {'kind': 'configure', 'root': str(root / 'run/download-output'), 'path_type': 0, 'file_type': 1}
+    configure = {'kind': 'configure_for_download', 'root': str(root / 'run/download-output'), 'revision': None}
     options = {'quality': 'standard', 'tags': False, 'cover': False, 'lyrics': False, 'container': 'audio'}
     if case in ('liked', 'existing_rejected'):
         assert stages['options']['dom']['options'] and stages['options']['dom']['title'] == '下载歌曲'
@@ -198,7 +198,10 @@ def verify(case, root, stages, complete, play_completed):
         assert record['song_id'] == '1710' and record['origin']['kind'] == 'song'
         assert record['status'] == 'complete' and record['authorization_count'] == 1
         assert {key for (kind, key) in records if kind == 'download_tasks_v1'} == {task['id']}
+        assert action(last, 'downloadLayout', [epoch]) == {'pathType': 0, 'fileType': 0, 'revision': None}
         assert action(last, 'downloadCommand', [epoch, configure])['failed'] == []
+        commands = [row['name'] for row in last['commands']]
+        assert commands.index('downloadLayout') < commands.index('downloadCommand')
         if case == 'liked':
             accepted = action(last, 'playerVoiceSongDownloadStart', [target, options])
             assert not actions(last, 'playerVoiceSongDownloadStartFromPlaylist')
