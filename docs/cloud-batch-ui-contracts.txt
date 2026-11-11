@@ -83,3 +83,6 @@ Rust与接口映射
   两次收藏、两份实际发布的合成 FLAC，没有真实服务请求或账号写入。
   回执在 .build/ui-proof/ci-43102930045-local-files-cloud/replay-hosted-flags.dbYgEF/proof/report.json。
   该修复只改探针和独立断言，未改变产品分页行为；托管复验另计。
+- 同次运行的 Windows library-local 作业 130804909487 也在第 22 态后的
+  同一断言失败：搜索词仍为「合成」，结果是误切到第 3 页的 1005、1004、1003。
+  两平台使用同一 JS 探针和 Python 核对脚本；本机 Linux 通过不代表 Windows 复验。
