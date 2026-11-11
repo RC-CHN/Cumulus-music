@@ -26,6 +26,9 @@ def verify_triad(stages, done, fresh_actions=False):
     assert done['ok'] and done['stageCount'] == len(stages) and tuple(stages) == expected_stages, done
     assert done['realMusicRequests'] == done['realAccountWrites'] == 0, done
     assert done['physicalAudioVerified'] is False and done['voiceDetailCalls'] == [], done
+    startup = done['startup']
+    assert all(startup[key] is True for key in ('shellReady', 'activeSearchChart', 'classicHome')), startup
+    assert startup['sceneTitle'] and startup['decoderVoice'] == '601', startup
     baseline = stages[TRIAD_STAGES[0]]['playback']
     assert baseline['state'] == 'paused' and baseline['voice'] == '601' and baseline['position'] > .2, baseline
     assert baseline['playId'] and baseline['entryId'] and not baseline['seeking'] and not baseline.get('error'), baseline

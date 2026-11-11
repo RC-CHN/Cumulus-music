@@ -6,6 +6,35 @@
   const visible = (node) => !!node?.getClientRects().length && !node.closest('[inert]');
   const button = (label, root = document) =>
     [...(root?.querySelectorAll('button') ?? [])].find((node) => node.getAttribute('aria-label') === label);
+  const search = () => one('input[aria-label="搜索音乐"]');
+  const searchPanel = () => one('#search-discovery-panel:not(.menu-leave-active):not([inert])');
+  const classicHome = () => {
+    const root = one('.podcast-discovery:not(.page-leave-active)');
+    return visible(one('.podcast-top[data-layout="classic"]', root)) && root;
+  };
+  const sceneCard = () => {
+    const root = classicHome();
+    return root ? one('[data-podcast-scene-fm]', root) : undefined;
+  };
+  function navigationReady() {
+    const settings = button('打开设置');
+    return visible(settings) && !settings.disabled;
+  }
+  function startupState() {
+    const card = sceneCard();
+    const cover = card?.querySelector('.scene-fm-cover');
+    return {
+      navigationReady: navigationReady(),
+      searchExpanded: search()?.getAttribute('aria-expanded') ?? null,
+      activeSearchPanel: visible(searchPanel()),
+      classicHome: !!classicHome(),
+      sceneCard: visible(card),
+      sceneTitle: card?.querySelector('[data-scene-fm-title]')?.textContent.trim() ?? null,
+      sceneError: card?.querySelector('[role="alert"]')?.textContent.trim().slice(0, 200) ?? null,
+      sceneTransport: cover?.getAttribute('aria-label') ?? null,
+      sceneTransportDisabled: cover?.disabled ?? null,
+    };
+  }
   const assert = (value, reason) => { if (!value) throw Error(reason); };
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
   const emit = (stage, data = {}) => invoke('plugin:event|emit', {
@@ -18,6 +47,7 @@
   const reads = { detail: [], recommendations: [], songs: [] };
   const actionReceipts = [];
   const actions = { targets: [], changes: [], stale: [] };
+  const startup = {};
   let epoch, baseline, initialCoverBox, nonce = 0, count = 0, last = 'startup';
   let restore = () => {};
   async function wait(test, label) {
@@ -179,8 +209,10 @@
       const account = await invoke('account_snapshot');
       if (account.status !== 'authenticated') return false;
       epoch = account.epoch;
-      return visible(one('input[aria-label="搜索音乐"]'));
-    }, 'authenticated sealed shell');
+      // Native account restoration can finish before useMusic permits routes.
+      return visible(search()) && navigationReady();
+    }, 'authenticated sealed shell can navigate');
+    startup.shellReady = true;
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const methods = [
@@ -241,13 +273,31 @@
         core.changeFreshVinylPodcastSubscription = originalChange;
       };
     }
-    await click(() => one('input[aria-label="搜索音乐"]'), 'open discovery');
-    await click(() => button('播客榜：更多'), 'open classic podcast page');
-    await click(() => button('播放随心听FM', one('[data-podcast-scene-fm]')), 'play sealed Scene FM program');
+    await click(search, 'open discovery');
+    await click(() => {
+      const panel = searchPanel();
+      if (!navigationReady() || search()?.getAttribute('aria-expanded') !== 'true' || !visible(panel)) return;
+      const more = button('播客榜：更多', panel);
+      if (visible(more) && !more.disabled) startup.activeSearchChart = true;
+      return more;
+    }, 'active podcast chart More');
+    await wait(classicHome, 'More opens the classic podcast home');
+    startup.classicHome = true;
+    const title = await wait(() => {
+      const card = sceneCard();
+      const episode = card?.querySelector('[data-scene-fm-title]');
+      return visible(card) && visible(episode) && episode.textContent.trim();
+    }, 'classic Scene FM episode is rendered');
+    startup.sceneTitle = title;
+    await click(() => {
+      const card = sceneCard();
+      return card ? button('播放随心听FM', card) : undefined;
+    }, 'play sealed Scene FM program');
     await wait(async () => {
       const current = await playback();
       return current.state === 'playing' && current.voice === '601' && current.position > .2;
     }, 'real decoder advances before opening panel');
+    startup.decoderVoice = '601';
     await click(() => button('暂停'), 'park the decoder');
     let lastPosition;
     baseline = await wait(async () => {
@@ -316,9 +366,10 @@
       await capture('mismatch_read_only');
     }
     await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, realAccountWrites: 0,
-      physicalAudioVerified: false, ...(signedActions ? { actions } : {}) });
+      physicalAudioVerified: false, startup, ...(signedActions ? { actions } : {}) });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error), reads, dom: dom(), stageCount: count,
+      startup, startupState: startupState(),
       ...(signedActions ? { actions } : {}) });
   } finally {
     restore();
