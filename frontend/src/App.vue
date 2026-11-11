@@ -253,6 +253,7 @@ import DownloadBatchPage from './components/download/DownloadBatchPage.vue';
 import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
+import CurrentSongDownloadFlow from './components/CurrentSongDownloadFlow.vue';
 import VoiceSongDownloadPicker from './components/VoiceSongDownloadPicker.vue';
 import VoiceSongGroupDownloadPicker from './components/VoiceSongGroupDownloadPicker.vue';
 import VoiceSongPurchasedQuality from './components/VoiceSongPurchasedQuality.vue';
@@ -331,7 +332,20 @@ import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
-import type { DownloadDialogTarget, DownloadTab, DownloadTask } from './services/downloads';
+import {
+  defaultDownloadOptions,
+  type DownloadDialogTarget,
+  type DownloadTab,
+  type DownloadTask,
+} from './services/downloads';
+import {
+  currentSongDownloadDecisionNotice,
+  currentSongDownloadScope,
+  matchesCurrentSongDownload,
+  type CurrentSongDownloadOwner,
+  type CurrentSongDownloadPresentation,
+  type CurrentSongDownloadScope,
+} from './services/currentSongDownload';
 import { downloadMenuCommentResource } from './services/downloadMenu';
 import type {
   VoiceSongAction,
@@ -4135,6 +4149,87 @@ function backFromPodcastDetail() {
   else podcasts.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
+const currentSongDownload = shallowRef<CurrentSongDownloadPresentation>();
+const preparingCurrentSongDownload = shallowRef<CurrentSongDownloadScope>();
+const currentSongDownloadRefresh = ref(0);
+const currentSongDownloadNotice = shallowRef<{
+  scope: CurrentSongDownloadScope;
+  message: string;
+  action?: 'settings' | 'manage';
+}>();
+let currentSongDownloadNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+const currentSongOrdinaryFocus = shallowRef<{ live: () => boolean; opener: HTMLElement }>();
+function clearCurrentSongDownloadNotice() {
+  clearTimeout(currentSongDownloadNoticeTimer);
+  currentSongDownloadNotice.value = undefined;
+}
+onUnmounted(clearCurrentSongDownloadNotice);
+watch(
+  downloadDialog,
+  (target) => {
+    if (target)
+      currentSongOrdinaryFocus.value =
+        target.kind === 'start' && target.live && target.opener
+          ? { live: target.live, opener: target.opener }
+          : undefined;
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => {
+    const dialog = downloadDialog.value;
+    return dialog?.kind === 'start' && dialog.live?.() === false;
+  },
+  (stale) => {
+    if (stale) downloadDialog.value = undefined;
+  },
+);
+watch(
+  () => currentSongDownload.value?.scope.live(),
+  (live) => {
+    if (live === false) currentSongDownload.value = undefined;
+  },
+);
+watch(
+  () => preparingCurrentSongDownload.value?.live(),
+  (live) => {
+    if (live === false) preparingCurrentSongDownload.value = undefined;
+  },
+);
+watch(
+  () => currentSongDownloadNotice.value?.scope.live(),
+  (live) => {
+    if (live === false) clearCurrentSongDownloadNotice();
+  },
+);
+function reportCurrentSongDownload(
+  scope: CurrentSongDownloadScope,
+  message: string,
+  action?: 'settings' | 'manage',
+) {
+  if (!scope.live()) return;
+  clearCurrentSongDownloadNotice();
+  currentSongDownloadNotice.value = { scope, message, action };
+  currentSongDownloadNoticeTimer = setTimeout(clearCurrentSongDownloadNotice, 7000);
+}
+function currentSongDownloadNoticeAction() {
+  const notice = currentSongDownloadNotice.value;
+  if (!notice?.scope.live() || !notice.action) return;
+  clearCurrentSongDownloadNotice();
+  if (notice.action === 'settings')
+    openSettingsSection(notice.scope.owner.epoch, 'settings-download');
+  else music.navigate({ kind: 'downloads', initialTab: 'active' });
+}
+function closeCurrentSongDownload(target: CurrentSongDownloadPresentation) {
+  if (currentSongDownload.value === target) currentSongDownload.value = undefined;
+}
+function currentSongDownloadOptions(quality: typeof defaultDownloadOptions.quality) {
+  const view = downloads.view.value;
+  return {
+    ...(view?.epoch === account.value.epoch ? view.options : defaultDownloadOptions),
+    quality,
+  };
+}
 // The row plan is acquired before the modal mounts; releasing it here also
 // handles navigation that invalidates the dialog before its first render.
 watch(
@@ -4215,11 +4310,14 @@ watch(music.page, (next) => {
   else settingsFocus = undefined;
   if (quickLoginGuide.value?.route !== next) quickLoginGuide.value = undefined;
 });
-function openCurrentDownload(target: CurrentPlaybackDownload) {
+async function openCurrentDownload(target: CurrentPlaybackDownload, opener: HTMLElement) {
   const current = currentPlaybackDownload(player.view.value);
   if (
     !signedIn.value ||
     downloadDialog.value ||
+    currentSongDownload.value ||
+    modalDepth.value ||
+    !opener.isConnected ||
     target.epoch !== account.value.epoch ||
     current?.epoch !== target.epoch ||
     current.playId !== target.playId ||
@@ -4245,7 +4343,67 @@ function openCurrentDownload(target: CurrentPlaybackDownload) {
     return;
   }
   const song = currentCatalogTrack(player.view.value);
-  if (song) downloadDialog.value = { kind: 'start', tracks: [song.track] };
+  const entryId = player.view.value?.entryId;
+  if (!song || !entryId || preparingCurrentSongDownload.value) return;
+  clearCurrentSongDownloadNotice();
+  const owner: CurrentSongDownloadOwner = {
+    epoch: current.epoch,
+    target: { playId: current.playId, entryId },
+    trackId: current.id,
+  };
+  const live = () =>
+    signedIn.value &&
+    account.value.epoch === owner.epoch &&
+    matchesCurrentSongDownload(owner, player.view.value);
+  const scope = currentSongDownloadScope(core, owner, live);
+  preparingCurrentSongDownload.value = scope;
+  const canPresent = () =>
+    scope.live() &&
+    preparingCurrentSongDownload.value === scope &&
+    opener.isConnected &&
+    !downloadDialog.value &&
+    !currentSongDownload.value &&
+    !modalDepth.value;
+  try {
+    const plan = await scope.call({ kind: 'prepare' });
+    if (plan?.kind !== 'plan') return;
+    if (!canPresent()) {
+      if (plan.offer) scope.cancel(plan.offer);
+      return;
+    }
+    if (plan.decision === 'ordinary') {
+      downloadDialog.value = { kind: 'start', tracks: [song.track], live, opener };
+    } else if (
+      plan.decision === 'purchased_quality_required' &&
+      plan.offer &&
+      plan.purchasedQualities?.length
+    ) {
+      currentSongDownload.value = {
+        scope,
+        offer: plan.offer,
+        choices: plan.purchasedQualities,
+        opener,
+      };
+    } else {
+      if (plan.offer) scope.cancel(plan.offer);
+      const decision = plan.decision;
+      if (['complete', 'existing_task', 'waiting', 'working'].includes(decision))
+        currentSongDownloadRefresh.value++;
+      reportCurrentSongDownload(
+        scope,
+        currentSongDownloadDecisionNotice(decision),
+        decision === 'existing_task' ? 'manage' : undefined,
+      );
+    }
+  } catch (error) {
+    if (!canPresent()) return;
+    const issue = failure(error);
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+    else reportCurrentSongDownload(scope, issue.message);
+  } finally {
+    if (preparingCurrentSongDownload.value === scope)
+      preparingCurrentSongDownload.value = undefined;
+  }
 }
 
 function downloadReturnFocus() {
@@ -6412,12 +6570,14 @@ watch(
     page.value.kind,
     page.value.kind === 'downloads' ? page.value.downloadVisit : undefined,
     !!downloadDialog.value,
+    !!currentSongDownload.value,
     !!playlistActions.value?.downloadOpen,
   ],
   () =>
     downloads.show(
       page.value.kind === 'downloads' ||
         !!downloadDialog.value ||
+        !!currentSongDownload.value ||
         !!playlistActions.value?.downloadOpen,
     ),
 );
@@ -8576,6 +8736,9 @@ onUnmounted(() => {
       :like-busy="playingLikeBusy"
       :downloads-allowed="signedIn"
       :downloads-changing="downloads.busy.value"
+      :current-song-download-refresh="currentSongDownloadRefresh"
+      :current-song-download-notice="currentSongDownloadNotice"
+      @download-notice-action="currentSongDownloadNoticeAction"
       :together-active="together.view.value?.attached ?? false"
       @like="likePlaying"
       @retry="player.connect(account)"
@@ -8749,7 +8912,21 @@ onUnmounted(() => {
       :account-epoch="account.epoch"
       :authenticated="signedIn"
     />
-    <ModalTransition :fallback-focus="downloadReturnFocus">
+    <CurrentSongDownloadFlow
+      :target="currentSongDownload"
+      :options="currentSongDownloadOptions"
+      @close="closeCurrentSongDownload"
+      @notice="
+        (target, message, action) => reportCurrentSongDownload(target.scope, message, action)
+      "
+      @refresh="currentSongDownloadRefresh++"
+      @expired="music.bootstrap(false)"
+    />
+    <ModalTransition
+      :fallback-focus="downloadReturnFocus"
+      :return-focus="() => currentSongOrdinaryFocus?.opener ?? null"
+      :restore-focus="currentSongOrdinaryFocus?.live() ?? true"
+    >
       <DownloadDialog
         v-if="downloadDialog"
         :model="downloads"

@@ -651,6 +651,10 @@ export function createTauriClient(): CoreClient {
     commitPreparedSelection: (epoch, ticket, selection) =>
       invoke('commit_prepared_selection', { epoch, ticket, selection }),
     playerAction: (epoch, action) => invoke('player_action', { epoch, action }),
+    playerCurrentSongDownload: (epoch, target, command) =>
+      invoke('player_current_song_download', { epoch, target, command }),
+    openCurrentSongPurchasedQualityGuide: (epoch, target, offer) =>
+      invoke('open_current_song_purchased_quality_guide', { epoch, target, offer }),
     playerQualityDetails: (epoch, playId) => invoke('player_quality_details', { epoch, playId }),
     playerQualityTrial: (epoch, command) => invoke('player_quality_trial', { epoch, command }),
     playerIntelligence: (epoch, command) => invoke('player_intelligence', { epoch, command }),

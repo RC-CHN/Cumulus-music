@@ -155,6 +155,9 @@ const stale = computed(
           ? !live.value.needsTransferRestart
           : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
+const staleCurrentSong = computed(
+  () => props.target.kind === 'start' && props.target.live?.() === false,
+);
 const staleVoice = computed(
   () =>
     props.target.kind === 'voice' &&
@@ -165,6 +168,7 @@ const blocked = computed(
     busy.value ||
     choosing.value ||
     staleVoice.value ||
+    staleCurrentSong.value ||
     (props.target.kind === 'voice' &&
       (voiceSubmitted.value || loadingVoice.value || !voicePlan.value?.receipt)) ||
     (props.target.kind === 'voice_song' && (!props.target.live() || props.target.busy())) ||
@@ -225,7 +229,7 @@ onUnmounted(() => {
   if (clearPlan.value) void props.model.discardClear(clearPlan.value);
   if (!originalVoiceTarget?.historyRow) {
     if (voicePlan.value) void props.model.discardVoice(voicePlan.value);
-    focus?.focus();
+    if (props.target.kind !== 'start' || !props.target.opener) focus?.focus();
   }
 });
 async function focusForm() {
@@ -265,7 +269,7 @@ async function perform(command: DownloadCommand) {
   if (blocked.value) return;
   if (command.kind === 'confirm_voice') voiceSubmitted.value = true;
   const result = await props.model.command(command);
-  if (!dialogOpen || staleVoice.value) return;
+  if (!dialogOpen || staleVoice.value || staleCurrentSong.value) return;
   if (command.kind === 'confirm_voice' && !result && !error.value)
     localError.value = '无法确认是否已受理，请先到下载管理核对。';
   if (command.kind === 'start' && result?.skipped?.length) {
@@ -349,7 +353,14 @@ async function save() {
       path_type: pathType.value,
       file_type: fileType.value,
     });
-    if (!dialogOpen || props.target !== target || !configured || configured.failed.length) return;
+    if (
+      !dialogOpen ||
+      props.target !== target ||
+      staleCurrentSong.value ||
+      !configured ||
+      configured.failed.length
+    )
+      return;
   }
   if (props.target.kind === 'voice_song') {
     if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');

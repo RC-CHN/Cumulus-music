@@ -297,7 +297,7 @@ export type DownloadDialogTarget =
       live?: () => boolean;
     }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
-  | { kind: 'start'; tracks: TrackView[] }
+  | { kind: 'start'; tracks: TrackView[]; live?: () => boolean; opener?: HTMLElement }
   | {
       kind: 'voice_song';
       title: string;

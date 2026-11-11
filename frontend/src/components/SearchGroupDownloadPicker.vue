@@ -4,10 +4,10 @@ import { failure, type PlaylistView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { playlistLength } from '../services/playlists';
 import type {
-  SearchGroupDownloadCommand,
   SearchGroupDownloadPlaylistResult,
   SearchGroupDownloadSort,
 } from '../services/search';
+import type { DownloadPickerCommand, DownloadPickerRequest } from '../services/currentSongDownload';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
@@ -17,6 +17,8 @@ const props = defineProps<{
   receipt: string;
   live: () => boolean;
   cancelUnsubmittedOnUnmount?: boolean;
+  request?: DownloadPickerRequest;
+  parentOwnsCancellation?: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -26,6 +28,8 @@ const emit = defineEmits<{
   liked: [epoch: string, ids: string[]];
 }>();
 const core = useCore();
+const request: DownloadPickerRequest = (command) =>
+  props.request ? props.request(command) : core.searchGroupDownload(props.epoch, command);
 const dialog = ref<HTMLDialogElement>();
 const title = useId();
 const nameCount = useId();
@@ -78,13 +82,13 @@ async function read() {
   busy.value = true;
   error.value = '';
   try {
-    const response = await core.searchGroupDownload(props.epoch, {
+    const response = await request({
       kind: 'destinations',
       receipt: props.receipt,
       sort: sort.value,
       page,
     });
-    if (!live() || response.kind !== 'destinations' || response.page.epoch !== props.epoch) return;
+    if (!live() || response?.kind !== 'destinations' || response.page.epoch !== props.epoch) return;
     likedReceipt.value = response.systemLikedReceipt;
     canCreate.value = response.canCreate;
     const seen = new Set(rows.value.map((row) => row.id));
@@ -134,11 +138,9 @@ function sortKeys(event: KeyboardEvent) {
   );
 }
 function cancelUnsubmitted() {
-  if (cancelled || pending.value) return;
+  if (cancelled || pending.value || props.parentOwnsCancellation) return;
   cancelled = true;
-  void core
-    .searchGroupDownload(props.epoch, { kind: 'cancel', receipt: props.receipt })
-    .catch(() => {});
+  void request({ kind: 'cancel', receipt: props.receipt }).catch(() => {});
 }
 function close() {
   if (busy.value) return;
@@ -175,19 +177,20 @@ async function afterPlaylist(result: SearchGroupDownloadPlaylistResult) {
   }
   if (result.likedIds.length) emit('liked', result.epoch, result.likedIds);
   try {
-    const reply = await core.searchGroupDownload(props.epoch, {
+    const reply = await request({
       kind: 'start_from_playlist',
       receipt: props.receipt,
       continuation: result.continuation,
     });
     if (!live()) return;
     if (
-      reply.kind === 'accepted' &&
-      reply.result.epoch === props.epoch &&
-      reply.result.operationId === props.receipt
+      ((reply?.kind === 'accepted' && reply.result.operationId === props.receipt) ||
+        (reply?.kind === 'scoped_accepted' && reply.receipt === props.receipt)) &&
+      reply.result.epoch === props.epoch
     )
       emit('accepted', reply.result.accepted.length, result.addFailed);
-    else if (reply.kind === 'directory_required') emit('directory');
+    else if (reply?.kind === 'directory_required') emit('directory');
+    else if (props.request) emit('unknown');
   } catch {
     if (live()) emit('unknown');
   }
@@ -203,7 +206,7 @@ async function submitCreation(action: 'create' | 'readback' | 'add') {
   )
     return;
   const receipt = props.receipt;
-  const command: SearchGroupDownloadCommand =
+  const command: DownloadPickerCommand =
     action === 'create'
       ? {
           kind: 'create_playlist',
@@ -219,10 +222,10 @@ async function submitCreation(action: 'create' | 'readback' | 'add') {
   creation.value = 'checking';
   error.value = '';
   try {
-    const reply = await core.searchGroupDownload(props.epoch, command);
+    const reply = await request(command);
     if (
       !live() ||
-      reply.kind !== 'creation' ||
+      reply?.kind !== 'creation' ||
       reply.result.epoch !== props.epoch ||
       reply.result.receipt !== receipt
     )
@@ -287,8 +290,7 @@ async function submit(choice?: Choice) {
   busy.value = true;
   error.value = '';
   try {
-    const response = await core.searchGroupDownload(
-      props.epoch,
+    const response = await request(
       !choice
         ? { kind: 'reconcile', receipt: props.receipt }
         : choice.kind === 'regular'
@@ -299,7 +301,7 @@ async function submit(choice?: Choice) {
               destinationReceipt: choice.receipt,
             },
     );
-    if (response.kind === 'playlist') await afterPlaylist(response.result);
+    if (response?.kind === 'playlist') await afterPlaylist(response.result);
   } catch (issue) {
     if (live()) error.value = failure(issue).message;
   } finally {

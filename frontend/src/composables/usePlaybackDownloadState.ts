@@ -6,6 +6,7 @@ import type { CurrentPlaybackDownload } from '../services/player';
 export function usePlaybackDownloadState(
   target: Readonly<Ref<CurrentPlaybackDownload | undefined>>,
   changing: () => boolean,
+  refresh: () => number = () => 0,
 ) {
   const core = useCore();
   const key = computed(() => {
@@ -15,11 +16,12 @@ export function usePlaybackDownloadState(
   const result = shallowRef<{ key: string; state: SongDownloadState | 'unknown' }>();
   const attempt = ref(0);
   watch(
-    [key, changing, attempt],
-    ([identity, busy], _previous, onCleanup) => {
+    [key, changing, attempt, refresh],
+    ([identity, busy, _, version], previous, onCleanup) => {
       // A download command can create or remove a task. Do not reveal a
       // pre-command "none" while the follow-up SQLite read is in flight.
-      if (busy || result.value?.key !== identity) result.value = undefined;
+      if (busy || result.value?.key !== identity || version !== previous[3])
+        result.value = undefined;
       if (!identity || busy) return;
       const current = target.value;
       if (!current) return;

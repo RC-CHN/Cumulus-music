@@ -1,3 +1,4 @@
+import type { CurrentSongDownloadClient } from './currentSongDownload.ts';
 import type { TrackView, CoreFailure, AccountData, LikeResult } from './contracts';
 import type { CloudQuery } from './cloud';
 import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
@@ -1060,7 +1061,8 @@ export interface PlayerClient
   extends VinylSimilarClient,
     VoiceDetailClient,
     VoiceRecommendationsClient,
-    VoiceSongsClient {
+    VoiceSongsClient,
+    CurrentSongDownloadClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
   playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;

@@ -65,6 +65,8 @@ const props = withDefaults(
     likedPlaylistId?: string | null;
     downloadsAllowed?: boolean;
     downloadsChanging?: boolean;
+    currentSongDownloadRefresh?: number;
+    currentSongDownloadNotice?: { message: string; action?: 'settings' | 'manage' };
     commentCount?: number;
     vinylComments?: boolean;
     vinylCommentsOpen?: boolean;
@@ -99,7 +101,8 @@ const emit = defineEmits<{
   like: [track: TrackView];
   retry: [];
   comments: [track: TrackView];
-  download: [target: CurrentPlaybackDownload];
+  download: [target: CurrentPlaybackDownload, opener: HTMLElement];
+  downloadNoticeAction: [];
   member: [];
   login: [];
   expired: [];
@@ -257,6 +260,7 @@ const currentDownload = computed<CurrentPlaybackDownload | undefined>((previous)
 const { state: downloadState, retry: retryDownloadState } = usePlaybackDownloadState(
   currentDownload,
   () => !!props.downloadsChanging,
+  () => props.currentSongDownloadRefresh ?? 0,
 );
 const downloadResourceLabel = computed(() =>
   currentDownload.value?.kind === 'voice' ? '声音' : '歌曲',
@@ -282,13 +286,14 @@ const downloadLabel = computed(
       failed: `当前${downloadResourceLabel.value}下载失败`,
     })[downloadState.value ?? 'reading'],
 );
-function downloadCurrent() {
+function downloadCurrent(event: MouseEvent) {
   const selection = currentDownload.value;
   if (!selection || props.downloadsChanging) return;
   const state = downloadState.value;
   if (!state || state === 'working') return;
   if (state === 'unknown') retryDownloadState();
-  else if (state === 'none') emit('download', selection);
+  else if (state === 'none' && event.currentTarget instanceof HTMLElement)
+    emit('download', selection, event.currentTarget);
   else {
     clearDownloadNotice();
     downloadNotice.value =
@@ -1023,8 +1028,20 @@ watch(
     />
     <div class="player-feedback-stack">
       <Transition name="playback-feedback">
-        <div v-if="downloadNotice" class="playback-message player-download-notice" role="status">
-          <span>{{ downloadNotice }}</span>
+        <div
+          v-if="currentSongDownloadNotice || downloadNotice"
+          class="playback-message player-download-notice"
+          role="status"
+        >
+          <span>{{ currentSongDownloadNotice?.message || downloadNotice }}</span>
+          <button
+            v-if="currentSongDownloadNotice?.action"
+            type="button"
+            class="text-button"
+            @click="emit('downloadNoticeAction')"
+          >
+            {{ currentSongDownloadNotice.action === 'settings' ? '设置目录' : '下载管理' }}
+          </button>
         </div>
       </Transition>
       <div v-if="message" class="playback-message" role="status">
