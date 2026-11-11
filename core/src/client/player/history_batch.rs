@@ -1,6 +1,8 @@
 //! M3085 history queue gestures share the guarded ordinary queue commit.
 mod play_all;
 mod shuffle;
+#[cfg(test)]
+mod tests;
 use super::{MusicClient, PlayerResourceKind, PlayerView, identity, mapping, project};
 use crate::{
     Error, Result,
@@ -34,6 +36,7 @@ impl MusicClient {
         prepared.check(self, &before)?;
         let kind = selection.kind;
         let full_list = matches!(selection.rows, SelectionRows::All);
+        let row_next = matches!(selection.rows, SelectionRows::RowNext { .. });
         let play_all = full_list && play;
         if !play_all && (before.fm || queue.intelligence.is_some()) {
             return Err(Error::State("history batch requires an ordinary queue"));
@@ -43,6 +46,16 @@ impl MusicClient {
             PlaybackStatus::Preparing | PlaybackStatus::Loading
         ) {
             return Err(Error::MutationBusy);
+        }
+        if row_next
+            && (queue.items.iter().any(|entry| !entry.visible_in_queue())
+                || queue.mode == PlaybackMode::Random
+                    && !queue.items.is_empty()
+                    && queue.current.is_none())
+        {
+            // M1384's Random queue-only branch needs a current entry. Never
+            // turn this nonempty queue into a start or silently replace it.
+            return Err(Error::State("history row next requires an ordinary queue"));
         }
         let (replacement_mode, fm_backup_queue) = if play_all && before.fm {
             let store = self.session.persistent_store()?;
@@ -54,7 +67,7 @@ impl MusicClient {
             (before.intelligence_last_mode.unwrap_or(queue.mode), None)
         };
         let revision = selection.revision.to_owned();
-        let (resources, source) = self
+        let (resources, index, source) = self
             .history_selection_for_queue(token, selection, prepared.observed, play)
             .await?;
         let pending = self.pending_preparation_guard(prepared, controller.clone());
@@ -68,9 +81,11 @@ impl MusicClient {
         // Header Play All suppresses the default list-head playId, but its
         // real first voice resource can still supply a same-episode bookmark.
         let shuffle_anchor = if kind == HistoryKind::Voice
-            && (play_all || was_empty && !play && !full_list && queue.mode == PlaybackMode::Random)
+            && (play_all
+                || was_empty
+                    && (row_next || !play && !full_list && queue.mode == PlaybackMode::Random))
         {
-            match resources.first() {
+            match resources.get(if row_next { index } else { 0 }) {
                 Some(first) => {
                     self.history_shuffle_anchor(token, first, &pending, &room)
                         .await?
@@ -92,21 +107,26 @@ impl MusicClient {
                 &mut rand::rng(),
             )?
         } else {
-            plan(
-                queue,
-                resources,
-                source,
-                start,
-                full_list && was_empty,
-                anchor,
-                &mut rand::rng(),
-            )?
+            let anchor = if row_next {
+                BatchAnchor::RowNext {
+                    index,
+                    require_admitted: kind == HistoryKind::Song,
+                }
+            } else if full_list && was_empty {
+                BatchAnchor::ListHead
+            } else if let Some(anchor) = anchor {
+                BatchAnchor::VoiceBookmark(anchor)
+            } else {
+                BatchAnchor::Automatic
+            };
+            plan(queue, resources, source, start, anchor, &mut rand::rng())?
         };
         let update = HistoryQueueUpdate {
             expected: before.fence(),
             queue,
             start,
             play_all,
+            row_next,
             fm_backup_queue,
             was_empty,
             kind,
@@ -163,18 +183,30 @@ fn history_key(row: &Value) -> Option<(PlayerResourceKind, &str)> {
     identity::collection_key(row, identity::kind(row) == PlayerResourceKind::Downloaded)
 }
 
-fn retain_admitted(resources: &mut Vec<Value>) {
-    resources.retain(|row| {
-        let Some((kind, _)) = history_key(row) else {
-            return false;
-        };
+fn admitted(row: &Value) -> bool {
+    history_key(row).is_some_and(|(kind, _)| {
         row["missing"] != true
             && (kind != PlayerResourceKind::Catalog || mapping::online_play_all_eligible(row))
-    });
+    })
+}
+
+fn retain_admitted(resources: &mut Vec<Value>) {
+    resources.retain(admitted);
     let mut seen = HashSet::new();
     resources.retain(|row| {
         history_key(row).is_some_and(|(kind, id)| seen.insert((kind, id.to_owned())))
     });
+}
+
+#[derive(Clone, Copy)]
+enum BatchAnchor<'a> {
+    Automatic,
+    ListHead,
+    VoiceBookmark(&'a ShuffleAnchor),
+    RowNext {
+        index: usize,
+        require_admitted: bool,
+    },
 }
 
 fn plan(
@@ -182,8 +214,7 @@ fn plan(
     mut resources: Vec<Value>,
     source: Value,
     start: bool,
-    start_at_list_head: bool,
-    shuffle_anchor: Option<&ShuffleAnchor>,
+    anchor: BatchAnchor<'_>,
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
     use super::queue_playlist::{QUEUE_LIMIT, insert_collection_by_key};
@@ -191,6 +222,26 @@ fn plan(
         .first()
         .and_then(history_key)
         .map(|(kind, id)| (kind, id.to_owned()));
+    let explicit = if let BatchAnchor::RowNext {
+        index,
+        require_admitted,
+    } = anchor
+    {
+        // M3085 prechecks the clicked song (not the first selected row).
+        // The native projection has already applied any eligible same
+        // recording, so use the admitted identity from this exact slot.
+        let row = resources
+            .get(index)
+            .filter(|row| admitted(row))
+            .and_then(history_key)
+            .map(|(kind, id)| (kind, id.to_owned()));
+        if row.is_none() && (require_admitted || start) {
+            return Err(Error::State("clicked history resource cannot be played"));
+        }
+        row
+    } else {
+        None
+    };
     retain_admitted(&mut resources);
     let incumbent = queue.selected();
     let incumbent_key = incumbent
@@ -212,7 +263,7 @@ fn plan(
     let first = selected
         .first()
         .ok_or(Error::State("history selection has no playable resources"))?;
-    if start_at_list_head && list_head.as_ref() != Some(first) {
+    if matches!(anchor, BatchAnchor::ListHead) && list_head.as_ref() != Some(first) {
         return Err(Error::State("the first history resource is unavailable"));
     }
     if !keeps_incumbent && let (Some(current), Some(key)) = (&incumbent, incumbent_key) {
@@ -245,25 +296,44 @@ fn plan(
     let entry_id =
         |key: &(PlayerResourceKind, String)| entries.get(&(key.0, key.1.as_str())).copied();
     let first = entry_id(first).ok_or(Error::QueueChanged)?;
+    let explicit_start = || {
+        explicit
+            .as_ref()
+            .and_then(entry_id)
+            .map(str::to_owned)
+            .ok_or(Error::State(
+                "clicked history resource is outside the queue limit",
+            ))
+    };
     let start_id = if next.mode == PlaybackMode::Random {
         let in_batch = selected.iter().filter_map(entry_id).collect();
-        let start_id = start.then(|| {
-            if let Some(anchor) = shuffle_anchor {
-                next.items
-                    .iter()
-                    .find(|row| anchor.matches(&row.resource))
-                    .map(|row| row.entry_id.clone())
-            } else if start_at_list_head {
-                Some(first.to_owned())
-            } else {
-                selected.choose(rng).and_then(entry_id).map(str::to_owned)
-            }
-            .ok_or(Error::QueueChanged)
+        let start_id = start.then(|| match anchor {
+            BatchAnchor::VoiceBookmark(anchor) => next
+                .items
+                .iter()
+                .find(|row| anchor.matches(&row.resource))
+                .map(|row| row.entry_id.clone())
+                .ok_or(Error::QueueChanged),
+            BatchAnchor::ListHead => Ok(first.to_owned()),
+            BatchAnchor::RowNext { .. } => explicit_start(),
+            BatchAnchor::Automatic => selected
+                .choose(rng)
+                .and_then(entry_id)
+                .map(str::to_owned)
+                .ok_or(Error::QueueChanged),
         });
         next.order = super::local_batch::random_order(&next, &in_batch, first, !start, rng);
         start_id.transpose()?
     } else {
-        start.then(|| first.to_owned())
+        start
+            .then(|| {
+                if matches!(anchor, BatchAnchor::RowNext { .. }) {
+                    explicit_start()
+                } else {
+                    Ok(first.to_owned())
+                }
+            })
+            .transpose()?
     };
     if let Some(id) = start_id {
         next.current = Some(id);

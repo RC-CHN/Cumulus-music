@@ -167,6 +167,8 @@ import type {
   HistoryRadioKind,
   HistoryRadioMenuAction,
   HistoryResource,
+  HistoryRowNextOutcome,
+  HistoryRowNextTarget,
   HistorySelectionScope,
 } from './services/history';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
@@ -711,6 +713,51 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     index,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
+}
+const historyRowNextReady = computed(() => {
+  const view = player.view.value;
+  return (
+    player.ready.value &&
+    !player.busy.value &&
+    !player.queueBusy.value &&
+    !!view &&
+    !view.fm &&
+    !view.intelligence &&
+    !together.view.value?.attached
+  );
+});
+async function nextHistoryRow(
+  target: HistoryRowNextTarget,
+  live: () => boolean,
+): Promise<HistoryRowNextOutcome | undefined> {
+  const route = music.page.value;
+  const owner = target.epoch;
+  const before = player.view.value;
+  const current = () =>
+    live() &&
+    route === target.routeIdentity &&
+    route.kind === 'history' &&
+    route.scope === target.kind &&
+    !route.batch &&
+    music.page.value === route &&
+    music.account.value.epoch === owner &&
+    recent.page.value?.kind === target.kind &&
+    recent.page.value.revision === target.revision;
+  if (!before || !historyRowNextReady.value || !current()) return;
+  const next = await player.prepareSelectionForPage(async (epoch) => {
+    if (!current() || epoch !== owner || recent.loading.value || recent.busy.value)
+      throw { code: 'stale', message: '播放记录已更新', retryable: false };
+    return {
+      kind: 'history_row_next',
+      history_kind: target.kind,
+      revision: target.revision,
+      clicked_id: target.clickedId,
+      selected_ids: target.selectedIds,
+      quality: before.qualityPreferences.quality,
+    };
+  });
+  if (!next || !current() || next.queueRevision === before.queueRevision) return;
+  return before.queueLen === 0 && next.playId ? 'playing' : 'queued';
 }
 async function selectHistoryBatch(
   kind: HistoryQueueKind,
@@ -6537,6 +6584,9 @@ onUnmounted(() => {
                 :downloading-songs="trackActions?.songGroupDownloadActive"
                 :collect-feedback="historyCollectFeedback"
                 :playable="player.ready.value && !player.busy.value"
+                :row-next-ready="historyRowNextReady"
+                :row-next-selection="nextHistoryRow"
+                :route-identity="page"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"

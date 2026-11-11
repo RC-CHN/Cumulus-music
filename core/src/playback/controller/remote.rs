@@ -240,6 +240,16 @@ impl Actor {
         {
             return Err(Error::MutationBusy);
         }
+        if update.row_next
+            && (update.play_all
+                || update.start != update.was_empty
+                || !matches!(
+                    update.kind,
+                    crate::history::HistoryKind::Song | crate::history::HistoryKind::Voice
+                ))
+        {
+            return Err(Error::InvalidInput("invalid history row next update"));
+        }
         if self.queue.is_empty() != update.was_empty
             || (!update.start && (update.was_empty || update.play_all))
             || (update.start && update.queue.selected().is_none())
@@ -296,6 +306,7 @@ impl Actor {
                 if !update.start
                     || update.kind != crate::history::HistoryKind::Voice
                     || (!update.play_all
+                        && !update.row_next
                         && update.queue.mode != crate::playback::PlaybackMode::Random)
                     || !update
                         .queue

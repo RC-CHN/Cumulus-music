@@ -175,6 +175,9 @@ pub struct HistoryQueueUpdate {
     pub(crate) queue: QueueSnapshot,
     pub(crate) start: bool,
     pub(crate) play_all: bool,
+    /// Row Next may carry the explicitly clicked voice's resume checkpoint
+    /// even when the empty ordinary queue is not in Random mode.
+    pub(crate) row_next: bool,
     /// Exact account-local ordinary backup observed when replacing an FM queue.
     pub(crate) fm_backup_queue: Option<Value>,
     pub(crate) was_empty: bool,

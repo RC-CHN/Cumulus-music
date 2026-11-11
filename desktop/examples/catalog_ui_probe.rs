@@ -158,6 +158,9 @@ fn main() {
     let history_radio_menu =
         std::env::var("CUMULUS_HISTORY_RADIO_MENU_PROOF").as_deref() == Ok("1");
     let history_header = std::env::var("CUMULUS_HISTORY_HEADER_PROOF").as_deref() == Ok("1");
+    let history_row_next = std::env::var("CUMULUS_HISTORY_ROW_NEXT_PROOF").as_deref() == Ok("1");
+    assert!(!(history_header && history_row_next));
+    let history_queue_actions = history_header || history_row_next;
     let history_download = std::env::var("CUMULUS_HISTORY_DOWNLOAD_PROOF").as_deref() == Ok("1");
     let history_song_collect =
         std::env::var("CUMULUS_HISTORY_SONG_COLLECT_PROOF").as_deref() == Ok("1");
@@ -167,14 +170,14 @@ fn main() {
     assert!(!history_collection || history_chapters);
     assert!(!history_radio_menu || history_collection);
     assert!(
-        !history_header
+        !history_queue_actions
             || (histories && !is_live && !history_chapters && !interactive && !collections)
     );
     assert!(
         !history_download
             || (histories
                 && !history_chapters
-                && !history_header
+                && !history_queue_actions
                 && !is_live
                 && !interactive
                 && !collections)
@@ -183,7 +186,7 @@ fn main() {
         !history_song_collect
             || (histories
                 && !history_chapters
-                && !history_header
+                && !history_queue_actions
                 && !history_download
                 && !is_live
                 && !interactive
@@ -193,7 +196,7 @@ fn main() {
         !history_song_download
             || (histories
                 && !history_chapters
-                && !history_header
+                && !history_queue_actions
                 && !history_download
                 && !history_song_collect
                 && !is_live
@@ -201,7 +204,7 @@ fn main() {
                 && !collections)
     );
     let history_capture = history_chapters
-        || history_header
+        || history_queue_actions
         || history_download
         || history_song_collect
         || history_song_download;
@@ -449,7 +452,7 @@ fn main() {
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                     value["relayCalls"]=serde_json::json!(*publication_fixture.relay_calls.lock().unwrap());
                 }
-                let paused_history = (history_collection || history_header) && value["checkPausedPlayback"]==true;
+                let paused_history = (history_collection || history_queue_actions) && value["checkPausedPlayback"]==true;
                 if ((is_live || relays || interactive || history_capture) && value["playing"]==true) || paused_history {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some()
@@ -504,7 +507,7 @@ fn main() {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             if history_capture {
-                assert!(!(history_header || history_download || history_song_collect || history_song_download) || script.is_some(), "history header/download/collect proof requires an external script");
+                assert!(!(history_queue_actions || history_download || history_song_collect || history_song_download) || script.is_some(), "history queue/download/collect proof requires an external script");
                 if history_download || history_song_download {
                     let directory=PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").unwrap()).join("media");
                     view.eval(format!("window.__historyProofDownloadRoot={};",serde_json::to_string(&directory).unwrap())).unwrap();

@@ -345,6 +345,33 @@
         "No same-name or MV fallback, no privilege-only replacement without matching song metadata",
         "Native file, download and service media authorization still apply; room stays isolated"
       ]
+    },
+    {
+      "feature": "Play next from a recent song or voice row context menu",
+      "official": [
+        "M405:225–247; M19:72–84; M106:211–224,291–299; M195:399–410; M556:116–142",
+        "M3102:865–1014; VoiceTitleCell.tsx:371–451; M3085:243–311,431–481,564–584; M1384:5241–5375"
+      ],
+      "rust": [
+        "core/src/client/history/selection/row_next.rs native membership and gesture order",
+        "core/src/client/history/selection/alternatives.rs declared recording replacement",
+        "core/src/client/player/history_batch.rs queue placement and clicked start",
+        "core/src/playback/controller/remote.rs fenced native queue installation"
+      ],
+      "ui": [
+        "frontend/src/components/HistoryPage.vue song and voice row context menu",
+        "frontend/src/services/historyBrowseSelection.ts separate browse selection",
+        "frontend/src/App.vue account, route, revision and prepared-selection bridge"
+      ],
+      "tests": [
+        "core/tests/client_history/row_next.rs ordinary and Random insertion, clicked voice start, denial and stale receipts",
+        "scripts/ci/history_row_next_smoke.py and desktop/examples/history_row_next_ui_probe.js"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase297-history-row-next/audit.json: 6 WebKitGTK states and PNGs, exact paused native clock, a true Random next episode, and clicked song/voice playback from empty queues; Windows pending",
+      "boundaries": [
+        "The other song and voice menu actions have separate contracts and are not added here",
+        "No modifier right-click outside the selected group, FM, intelligence or room-specific insertion parity in this path"
+      ]
     }
   ],
   "alternativeClientSources": [],

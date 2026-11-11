@@ -1,6 +1,8 @@
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_history/row_next.rs"]
+mod row_next;
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},

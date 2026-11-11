@@ -1272,6 +1272,7 @@ jobs:
           python scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-notes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
           python scripts/ci/history_header_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-header-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/history_row_next_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-row-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/history_download_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-download-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/history_song_collect_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-song-collect-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/history_song_download_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-song-download-windows --runtime .build/package-stage/windows-x64/native
@@ -2359,6 +2360,11 @@ jobs:
             xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
             /usr/bin/python3 scripts/ci/history_header_smoke.py --binary .build/target/debug/examples/catalog_ui_probe \
             --frontend-dist frontend/dist --root .build/ci-history-header-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
+            LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
+            /usr/bin/python3 scripts/ci/history_row_next_smoke.py --binary .build/target/debug/examples/catalog_ui_probe \
+            --frontend-dist frontend/dist --root .build/ci-history-row-next-linux --screenshots
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
             LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
             xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \

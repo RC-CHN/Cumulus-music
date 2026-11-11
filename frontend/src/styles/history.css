@@ -166,23 +166,31 @@
   gap: 10px;
   margin-inline-start: auto;
 }
+.history-row-more {
+  margin-inline-start: auto;
+}
 @media (hover: hover) {
-  .history-radio-row-controls {
+  .history-radio-row-controls,
+  .history-row-more {
     opacity: 0;
     transition: opacity 120ms ease;
   }
   .history-row:is(:hover, :focus-within, .is-selected) .history-radio-row-controls,
+  .history-row:is(:hover, :focus-within, .is-selected) .history-row-more,
+  .history-row-more[aria-expanded='true'],
   .history-row:has(.history-radio-more[aria-expanded='true']) .history-radio-row-controls {
     opacity: 1;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .history-radio-row-controls {
+  .history-radio-row-controls,
+  .history-row-more {
     transition: none;
   }
 }
 .history-radio-collect,
-.history-radio-more {
+.history-radio-more,
+.history-row-more {
   flex: 0 0 28px;
   width: 28px;
   height: 28px;

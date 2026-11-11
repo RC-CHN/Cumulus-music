@@ -11,6 +11,11 @@ import {
   type HistoryKind,
   type HistoryPage,
 } from '../src/services/history.ts';
+import {
+  historyBrowseMenuIds,
+  selectHistoryBrowseRow,
+  type HistoryBrowseSelection,
+} from '../src/services/historyBrowseSelection.ts';
 const account = {
   epoch: '1',
   status: 'authenticated' as const,
@@ -310,4 +315,34 @@ test('history batch keeps visible selection order and leaves admission to core',
     'voice-old',
   ]);
   assert.deepEqual(selectedHistoryBatch('playlist', rows, selected), []);
+});
+
+test('history browse Next preserves toggle order and uses the row that opened the menu', () => {
+  const rows = ['recent', 'middle', 'old', 'unselected'];
+  let selection: HistoryBrowseSelection = { anchor: null, ids: [] };
+  selection = selectHistoryBrowseRow(selection, rows, 'old', 'single');
+  selection = selectHistoryBrowseRow(selection, rows, 'recent', 'toggle');
+  selection = selectHistoryBrowseRow(selection, rows, 'middle', 'toggle');
+  assert.deepEqual(historyBrowseMenuIds(selection, 'recent'), ['old', 'recent', 'middle']);
+  assert.deepEqual(historyBrowseMenuIds(selection, 'unselected'), []);
+
+  selection = selectHistoryBrowseRow(selection, rows, 'recent', 'toggle');
+  selection = selectHistoryBrowseRow(selection, rows, 'recent', 'toggle');
+  assert.deepEqual(historyBrowseMenuIds(selection, 'middle'), ['old', 'middle', 'recent']);
+
+  selection = selectHistoryBrowseRow(selection, rows, 'unselected', 'single');
+  assert.deepEqual(historyBrowseMenuIds(selection, 'unselected'), []);
+});
+
+test('history browse range uses visible order and can subtract without reordering survivors', () => {
+  const rows = ['first', 'second', 'third', 'fourth'];
+  let selection: HistoryBrowseSelection = { anchor: null, ids: [] };
+  assert.deepEqual(selectHistoryBrowseRow(selection, rows, 'third', 'range').ids, []);
+  selection = selectHistoryBrowseRow(selection, rows, 'fourth', 'single');
+  selection = selectHistoryBrowseRow(selection, rows, 'first', 'range');
+  assert.deepEqual(historyBrowseMenuIds(selection, 'third'), rows);
+  selection = selectHistoryBrowseRow(selection, rows, 'third', 'subtract-range');
+  assert.deepEqual(historyBrowseMenuIds(selection, 'first'), ['first', 'second']);
+  assert.deepEqual(historyBrowseMenuIds(selection, 'fourth'), []);
+  assert.equal(selectHistoryBrowseRow(selection, rows, 'filtered-out', 'toggle'), selection);
 });

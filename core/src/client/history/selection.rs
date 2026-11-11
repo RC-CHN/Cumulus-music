@@ -1,4 +1,5 @@
 mod alternatives;
+mod row_next;
 
 use super::super::MusicClient;
 use crate::{
@@ -27,6 +28,10 @@ pub(in crate::client) struct Selection<'a> {
 pub(in crate::client) enum SelectionRows<'a> {
     Ids(&'a [String]),
     All,
+    RowNext {
+        clicked: &'a str,
+        selected: &'a [String],
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -35,6 +40,7 @@ enum SelectionMode {
     BatchAdd,
     BatchPlay,
     PlayAll,
+    RowNext,
 }
 
 impl MusicClient {
@@ -56,7 +62,7 @@ impl MusicClient {
         selection: Selection<'_>,
         attempt: u64,
         play: bool,
-    ) -> Result<(Vec<Value>, Value)> {
+    ) -> Result<(Vec<Value>, usize, Value)> {
         if !matches!(selection.kind, HistoryKind::Song | HistoryKind::Voice) {
             return Err(Error::InvalidInput(
                 "history batch requires songs or episodes",
@@ -65,12 +71,16 @@ impl MusicClient {
         let mode = match (play, &selection.rows) {
             (true, SelectionRows::All) => SelectionMode::PlayAll,
             (true, SelectionRows::Ids(_)) => SelectionMode::BatchPlay,
+            (false, SelectionRows::RowNext { .. }) => SelectionMode::RowNext,
+            (true, SelectionRows::RowNext { .. }) => {
+                return Err(Error::InvalidInput(
+                    "history row next cannot replace playback",
+                ));
+            }
             (false, _) => SelectionMode::BatchAdd,
         };
-        let (resources, _, source) = self
-            .history_selection_inner(token, selection, attempt, mode)
-            .await?;
-        Ok((resources, source))
+        self.history_selection_inner(token, selection, attempt, mode)
+            .await
     }
 
     async fn history_selection_inner(
@@ -100,7 +110,7 @@ impl MusicClient {
         if snapshot.revision != revision {
             return Err(Error::QueueChanged);
         }
-        let chosen = match rows {
+        let (chosen, index) = match rows {
             SelectionRows::All => {
                 if !matches!(mode, SelectionMode::BatchAdd | SelectionMode::PlayAll)
                     || index != 0
@@ -111,7 +121,7 @@ impl MusicClient {
                 if snapshot.entries.is_empty() {
                     return Err(Error::State("history selection has no playable resources"));
                 }
-                snapshot.entries
+                (snapshot.entries, index)
             }
             SelectionRows::Ids(ids) => {
                 if ids.is_empty() || ids.len() > 50_300 || index >= ids.len() {
@@ -136,7 +146,13 @@ impl MusicClient {
                     previous = Some(position);
                     chosen.push(snapshot.entries[position].clone());
                 }
-                chosen
+                (chosen, index)
+            }
+            SelectionRows::RowNext { clicked, selected } => {
+                if mode != SelectionMode::RowNext || index != 0 {
+                    return Err(Error::InvalidInput("invalid history row next action"));
+                }
+                row_next::project(snapshot, clicked, selected)?
             }
         };
         let (resources, index, source) = match kind {
@@ -304,7 +320,8 @@ impl MusicClient {
                 match resource {
                     Ok(resource) => resources.push(resource),
                     Err(error)
-                        if mode == SelectionMode::PlayAll && unavailable_local_row(&error) =>
+                        if matches!(mode, SelectionMode::PlayAll | SelectionMode::RowNext)
+                            && unavailable_local_row(&error) =>
                     {
                         resources.push(json!({"missing":true}));
                     }
@@ -366,7 +383,7 @@ impl MusicClient {
                 .map(|p| Ok((identifier(&p["id"])?, p)))
                 .collect::<Result<BTreeMap<_, _>>>()?;
             for ((slot, id), song) in chunk.iter().zip(songs.songs) {
-                let alternate = (mode == SelectionMode::PlayAll)
+                let alternate = matches!(mode, SelectionMode::PlayAll | SelectionMode::RowNext)
                     .then(|| alternatives::declared(id, song.as_ref(), privileges.get(id)))
                     .flatten();
                 let song = song

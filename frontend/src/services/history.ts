@@ -7,6 +7,15 @@ export type HistoryQueueAction =
   | { kind: 'add-all' }
   | { kind: 'play-all' }
   | { kind: 'play' | 'add'; ids: string[] };
+export interface HistoryRowNextTarget {
+  kind: HistoryQueueKind;
+  revision: string;
+  clickedId: string;
+  selectedIds: string[];
+  epoch: string;
+  routeIdentity: object;
+}
+export type HistoryRowNextOutcome = 'queued' | 'playing';
 export interface HistorySelectionScope {
   revision: string;
   ids: string[];

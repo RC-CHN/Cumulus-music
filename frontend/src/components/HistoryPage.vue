@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BoundedPanelTransition from './BoundedPanelTransition.vue';
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import ActionMenu from './ActionMenu.vue';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -30,14 +30,23 @@ import {
   type HistoryRadioKind,
   type HistoryRadioMenuAction,
   type HistoryResource,
+  type HistoryRowNextOutcome,
+  type HistoryRowNextTarget,
   type HistorySelectionScope,
 } from '../services/history';
+import {
+  historyBrowseMenuIds,
+  selectHistoryBrowseRow,
+  type HistoryBrowseSelection,
+} from '../services/historyBrowseSelection';
 import { normalizeKeyword } from '../services/keyword';
 import type { MenuItem } from '../services/menu';
 const props = defineProps<{
   model: HistoryModel;
   account: AccountView;
   playable: boolean;
+  rowNextReady: boolean;
+  routeIdentity: object;
   batchMode: boolean;
   collecting?: boolean;
   downloadingSongs?: boolean;
@@ -53,6 +62,10 @@ const props = defineProps<{
     id: string,
     action: HistoryRadioMenuAction,
   ) => Promise<void>;
+  rowNextSelection: (
+    target: HistoryRowNextTarget,
+    live: () => boolean,
+  ) => Promise<HistoryRowNextOutcome | undefined>;
   currentId?: string;
   currentVoiceId?: string;
 }>();
@@ -89,6 +102,10 @@ const allSelected = computed(
 );
 const listKind = computed(() => kind.value === 'song' || kind.value === 'voice');
 const selectRows = computed(() => !listKind.value || props.batchMode);
+const browseRows = computed(() => listKind.value && !props.batchMode);
+const browseIds = computed(() => (browseRows.value ? entries.value.map((entry) => entry.id) : []));
+const browseSelection = shallowRef<HistoryBrowseSelection>({ anchor: null, ids: [] });
+const browseSelected = computed(() => new Set(browseSelection.value.ids));
 const headerItems = computed<MenuItem[]>(() => [
   { key: 'add-all', label: '添加全部至播放列表', icon: 'plus', disabled: !props.playable },
   { key: 'batch', label: '批量操作', icon: 'list' },
@@ -165,6 +182,144 @@ const shown = computed(() =>
   })),
 );
 const historyPage = ref<HTMLElement>();
+type BrowseMenuTarget = HistoryRowNextTarget & {
+  keyword: string;
+  anchor: HTMLElement;
+};
+const rowMenu = ref<InstanceType<typeof ActionMenu>>();
+const rowTarget = shallowRef<BrowseMenuTarget>();
+const rowNextNotice = ref('');
+const rowNextError = ref('');
+const rowNextReady = computed(() => props.rowNextReady && !loading.value && !busy.value);
+function rowTargetLive(target: BrowseMenuTarget) {
+  return (
+    rowTarget.value === target &&
+    browseRows.value &&
+    kind.value === target.kind &&
+    page.value?.kind === target.kind &&
+    page.value.revision === target.revision &&
+    props.account.epoch === target.epoch &&
+    props.routeIdentity === target.routeIdentity &&
+    keyword.value === target.keyword &&
+    target.anchor.isConnected &&
+    !target.anchor.closest('[inert]') &&
+    shown.value.some(({ entry }) => entry.id === target.clickedId)
+  );
+}
+const rowMenuLive = computed(() => !!rowTarget.value && rowTargetLive(rowTarget.value));
+const rowMenuItems = computed<MenuItem[]>(() =>
+  rowMenuLive.value
+    ? [{ key: 'next', label: '下一首播放', icon: 'next', disabled: !rowNextReady.value }]
+    : [],
+);
+function closeRowMenu() {
+  rowMenu.value?.close();
+  rowTarget.value = undefined;
+}
+watch(rowMenuLive, (live) => {
+  if (!live) closeRowMenu();
+});
+watch(
+  [
+    kind,
+    keyword,
+    () => props.batchMode,
+    () => props.routeIdentity,
+    () => props.account.epoch,
+    () => page.value?.kind,
+    () => page.value?.revision,
+  ],
+  () => {
+    browseSelection.value = { anchor: null, ids: [] };
+    rowNextNotice.value = '';
+    rowNextError.value = '';
+    closeRowMenu();
+  },
+  { flush: 'sync' },
+);
+onBeforeUnmount(closeRowMenu);
+
+function selectBrowseRow(entry: HistoryEntry, event: MouseEvent | KeyboardEvent) {
+  if (!browseRows.value || page.value?.kind !== entry.resource.kind || loading.value || busy.value)
+    return;
+  if (
+    event instanceof MouseEvent &&
+    (event.button !== 0 ||
+      (event.target instanceof Element &&
+        event.target.closest('button, a, input, [role="button"]')))
+  )
+    return;
+  closeRowMenu();
+  const modifier = event.ctrlKey || event.metaKey;
+  browseSelection.value = selectHistoryBrowseRow(
+    browseSelection.value,
+    browseIds.value,
+    entry.id,
+    event.shiftKey ? (modifier ? 'subtract-range' : 'range') : modifier ? 'toggle' : 'single',
+  );
+}
+async function showRowNext(entry: HistoryEntry, event: MouseEvent | KeyboardEvent) {
+  const snapshot = page.value;
+  if (
+    !browseRows.value ||
+    !snapshot ||
+    (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
+    entry.resource.kind !== snapshot.kind ||
+    !(event.currentTarget instanceof HTMLElement)
+  )
+    return;
+  const anchor = event.currentTarget
+    .closest('.history-row')
+    ?.querySelector<HTMLElement>('.history-row-more');
+  if (!anchor) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const point =
+    event instanceof MouseEvent && event.type === 'contextmenu'
+      ? { x: event.clientX, y: event.clientY }
+      : undefined;
+  const alreadyOpen = anchor.getAttribute('aria-expanded') === 'true';
+  closeRowMenu();
+  if (alreadyOpen && !point) return;
+  if (!browseSelected.value.has(entry.id) && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    browseSelection.value = { anchor: entry.id, ids: [entry.id] };
+  }
+  const target: BrowseMenuTarget = {
+    kind: snapshot.kind,
+    revision: snapshot.revision,
+    clickedId: entry.id,
+    selectedIds: historyBrowseMenuIds(browseSelection.value, entry.id),
+    epoch: props.account.epoch,
+    routeIdentity: props.routeIdentity,
+    keyword: keyword.value,
+    anchor,
+  };
+  rowTarget.value = target;
+  await nextTick();
+  if (!rowTargetLive(target)) return;
+  if (point) await rowMenu.value?.showAt(point.x, point.y, anchor);
+  else await rowMenu.value?.showBelow(anchor);
+}
+async function chooseRowNext(key: string) {
+  const target = rowTarget.value;
+  if (key !== 'next' || !target || !rowNextReady.value || !rowTargetLive(target)) return;
+  rowNextNotice.value = '';
+  rowNextError.value = '';
+  const live = () => rowTargetLive(target);
+  try {
+    const outcome = await props.rowNextSelection(target, live);
+    if (!live()) return;
+    if (outcome === 'playing') rowNextNotice.value = '已开始播放';
+    else if (outcome === 'queued') rowNextNotice.value = '已设为下一首播放';
+  } catch (cause) {
+    if (!live()) return;
+    const issue = failure(cause);
+    if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+    rowNextError.value = ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+      ? '播放记录或播放状态已更新，请重新打开菜单。'
+      : issue.message;
+  }
+}
 const uncollect = shallowRef<{
   id: string;
   scope: string;
@@ -241,9 +396,17 @@ function showRadioMenu(entry: HistoryEntry, event: MouseEvent | KeyboardEvent) {
       : undefined,
   );
 }
-function radioMenuKeyboard(entry: HistoryEntry, event: KeyboardEvent) {
-  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
-    showRadioMenu(entry, event);
+function showHistoryRowMenu(entry: HistoryEntry, event: MouseEvent | KeyboardEvent) {
+  if (browseRows.value) void showRowNext(entry, event);
+  else showRadioMenu(entry, event);
+}
+function rowMenuKeyboard(entry: HistoryEntry, event: KeyboardEvent) {
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+    showHistoryRowMenu(entry, event);
+  } else if (browseRows.value && event.key === ' ' && event.target === event.currentTarget) {
+    event.preventDefault();
+    if (!event.repeat) selectBrowseRow(entry, event);
+  }
 }
 async function selectRadioMenu(
   action: 'open' | 'play' | 'next' | 'collect' | 'remove',
@@ -662,6 +825,8 @@ function keyboard(event: KeyboardEvent) {
     <div
       v-if="
         collectFeedback ||
+        rowNextNotice ||
+        rowNextError ||
         addNotice ||
         batchError ||
         error ||
@@ -681,6 +846,12 @@ function keyboard(event: KeyboardEvent) {
       </p>
       <p v-if="addNotice" class="history-outcome history-add-notice" role="status">
         {{ addNotice }}
+      </p>
+      <p v-if="rowNextNotice" class="history-outcome history-row-next-notice" role="status">
+        {{ rowNextNotice }}
+      </p>
+      <p v-if="rowNextError" class="catalog-error history-row-next-error" role="alert">
+        {{ rowNextError }}
       </p>
       <p v-if="batchError" class="catalog-error history-add-error" role="alert">{{ batchError }}</p>
       <div v-if="error" class="catalog-error" role="alert">
@@ -752,14 +923,20 @@ function keyboard(event: KeyboardEvent) {
                   class="history-row"
                   :class="{
                     'is-playing': playing(entry),
-                    'is-selected': selected.has(entry.id),
+                    'is-selected': browseRows
+                      ? browseSelected.has(entry.id)
+                      : selected.has(entry.id),
                     'is-radio': entry.resource.kind === radioKind,
                   }"
                   role="row"
                   :aria-rowindex="start + offset + 2"
+                  :aria-selected="browseRows ? browseSelected.has(entry.id) : undefined"
+                  :data-history-row-id="browseRows ? entry.id : undefined"
+                  :tabindex="browseRows ? 0 : undefined"
+                  @click="selectBrowseRow(entry, $event)"
                   @dblclick="play(entry)"
-                  @contextmenu="showRadioMenu(entry, $event)"
-                  @keydown="radioMenuKeyboard(entry, $event)"
+                  @contextmenu="showHistoryRowMenu(entry, $event)"
+                  @keydown="rowMenuKeyboard(entry, $event)"
                 >
                   <div v-if="selectRows" role="cell" @dblclick.stop>
                     <input
@@ -819,6 +996,21 @@ function keyboard(event: KeyboardEvent) {
                         }}<span v-if="!historyLabel(entry).available"> · 暂不可播放</span>
                       </p>
                     </div>
+                    <button
+                      v-if="browseRows"
+                      type="button"
+                      class="icon-button history-row-more"
+                      :data-history-row-more="entry.id"
+                      :aria-label="`更多：${historyLabel(entry).name}`"
+                      title="更多"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                      @click.stop="showRowNext(entry, $event)"
+                      @keydown.down.prevent="showRowNext(entry, $event)"
+                      @dblclick.stop
+                    >
+                      <Icon name="more" />
+                    </button>
                     <div
                       v-if="entry.resource.kind === radioKind"
                       class="history-radio-row-controls"
@@ -902,6 +1094,15 @@ function keyboard(event: KeyboardEvent) {
         </p>
       </div>
     </BoundedPanelTransition>
+    <ActionMenu
+      ref="rowMenu"
+      context-only
+      label="播放记录操作"
+      variant="song"
+      :items="rowMenuItems"
+      :disabled="!rowMenuLive"
+      @select="chooseRowNext"
+    />
     <HistoryRadioMenu
       ref="radioMenu"
       :signed-in="account.status === 'authenticated'"
