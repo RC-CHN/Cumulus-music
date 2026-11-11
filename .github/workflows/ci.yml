@@ -593,7 +593,9 @@ jobs:
           CUMULUS_MEDIA_BUILD_JOBS: '4'
         with:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
+          # A cold runner on the release critical path can own an exact
+          # FFmpeg recipe key even if no Native shard warmed that key.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
           cargo-profile: release
           release-package-probes: 'true'
       - name: Stage the exact native files shared with packaging
