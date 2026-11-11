@@ -13,7 +13,9 @@ import {
 } from '../src/services/history.ts';
 import {
   historyBrowseMenuIds,
+  historyBrowseRemovalIds,
   historyBrowseSongMenuBlocked,
+  historyBrowseTableGroup,
   selectHistoryBrowseRow,
   type HistoryBrowseSelection,
 } from '../src/services/historyBrowseSelection.ts';
@@ -361,4 +363,16 @@ test('history song menu disables definite copyright blocks but leaves mixed and 
     false,
   );
   assert.equal(historyBrowseSongMenuBlocked('voice', 'blocked', [], blocked), false);
+});
+
+test('history menu keeps the table group separate and deletes only the clicked row or its frozen group', () => {
+  const ids = ['older', 'recent'];
+  const selection = { anchor: 'recent', ids };
+  const group = historyBrowseTableGroup(selection);
+  ids.push('late-selection');
+  assert.deepEqual(group, ['older', 'recent']);
+  assert.deepEqual(historyBrowseRemovalIds('recent', group), ['older', 'recent']);
+  assert.deepEqual(historyBrowseRemovalIds('outside', group), []);
+  assert.deepEqual(historyBrowseMenuIds(selection, 'outside'), []);
+  assert.deepEqual(historyBrowseRemovalIds('outside', []), ['outside']);
 });

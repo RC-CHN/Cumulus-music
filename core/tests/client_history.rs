@@ -1,6 +1,8 @@
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_history/row_menu_info.rs"]
+mod row_menu_info;
 #[path = "client_history/row_next.rs"]
 mod row_next;
 #[path = "client_history/row_play.rs"]
@@ -48,6 +50,8 @@ struct Backend {
     collect_release: Notify,
     collect_calls: Mutex<Vec<Value>>,
     collected: Mutex<std::collections::BTreeSet<String>>,
+    row_comment_calls: Mutex<Vec<Value>>,
+    row_comment_failure: AtomicUsize,
 }
 fn song(id: &Value) -> Value {
     json!({"id":id,"name":"歌曲","dt":120000,"ar":[{"id":12,"name":"创作者"}],"al":{"id":7,"name":"专辑","picUrl":"https://p1.music.126.net/image.jpg?token=PRIVATE"},"url":"https://example.invalid/PRIVATE","cookie":"PRIVATE"})
@@ -65,10 +69,39 @@ impl Api for Backend {
         ))
     }
 
-    fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, p: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
+                "/api/resource/commentInfo/list" => {
+                    assert!(!cache);
+                    self.row_comment_calls.lock().unwrap().push(p.clone());
+                    if self.hold.load(Ordering::SeqCst) {
+                        self.started.notify_one();
+                        self.release.notified().await;
+                    }
+                    let ids: Vec<String> =
+                        serde_json::from_str(p["resourceIds"].as_str().unwrap()).unwrap();
+                    let [id] = ids.as_slice() else {
+                        panic!("a single clicked history row");
+                    };
+                    let (prefix, total) = match p["resourceType"].as_u64() {
+                        Some(4) => ("R_SO_4", 36),
+                        Some(1) => ("A_DJ_1", 47),
+                        _ => panic!("unexpected history comment discriminator"),
+                    };
+                    let thread = match self.row_comment_failure.load(Ordering::SeqCst) {
+                        0 => format!("{prefix}_{id}"),
+                        1 => {
+                            return Err(Error::Transport(
+                                "synthetic comment count unavailable".into(),
+                            ));
+                        }
+                        2 => "R_SO_4_999".into(),
+                        _ => unreachable!(),
+                    };
+                    json!({"code":200,"data":[{"threadId":thread,"commentCount":total}]})
+                }
                 "/api/v3/song/detail" => {
                     if self.hold.load(Ordering::SeqCst) {
                         self.started.notify_one();

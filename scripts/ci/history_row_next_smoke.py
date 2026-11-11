@@ -1,11 +1,13 @@
-"""Verify Recently Played row Play and Next through the sealed desktop WebView."""
+"""Verify Recently Played row menus through the sealed desktop WebView."""
 
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import sys
 
 from history_header_smoke import projected, read
@@ -19,6 +21,10 @@ STAGES = (
     'empty_song_clicked', 'empty_voice_clicked',
     'play_blocked', 'play_rejected', 'play_song', 'play_resume_ready', 'play_resumed',
     'play_voice',
+    'actions_song_menu', 'actions_song_comment', 'actions_song_copied',
+    'actions_song_count_fallback', 'actions_voice_menu', 'actions_voice_comment',
+    'actions_voice_copied', 'actions_delete_confirm', 'actions_delete_cancelled',
+    'actions_delete_confirmed',
 )
 SEED = ['voice:5', 'voice:6', 'voice:7']
 SONGS = ['voice:5', 'voice:6', 'song:3', 'song:1', 'voice:7']
@@ -27,6 +33,11 @@ PLAY_SEED = ['voice:11', 'voice:12', 'voice:13']
 PLAY_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13']
 RESUMED_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13']
 PLAY_VOICES = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:4', 'voice:2', 'voice:13']
+SINGLE_ACTIONS = ['play', 'next', 'comments', 'copy', 'remove']
+DELETE_CALL = dict(path='/api/play-record/batch/delete', cached=False, args={
+    'type': 'SONG', 'resourceIds': '["10","7"]', 'lastResourceId': '300',
+    'lastPlayTime': 1793179700000,
+})
 
 
 def kept_queue_entries(before, after):
@@ -55,13 +66,75 @@ def native_play(row, prior, *, song, voice=None, resume=False):
     kept_queue_entries(prior, row)
 
 
+def audit_row_actions(actions, incumbent, complete):
+    (song_menu, song_comment, song_copy, fallback, voice_menu, voice_comment, voice_copy,
+     confirmation, cancelled, removed) = actions
+    baseline = song_menu['nativePlayer']
+    assert baseline['state'] == 'paused'
+    assert all(baseline[key] == incumbent['nativePlayer'][key] for key in (
+        'epoch', 'playId', 'entryId', 'track',
+    ))
+    for row in actions:
+        assert row['nativeQueue'] == incumbent['nativeQueue']
+        assert all(row['nativePlayer'][key] == baseline[key] for key in (
+            'epoch', 'playId', 'entryId', 'state', 'position', 'track',
+        ))
+
+    for row, resource_type, id in (
+        (song_menu, 4, '10'), (fallback, 4, '11'), (voice_menu, 1, '10'), (confirmation, 4, '7'),
+    ):
+        expected = dict(path='/api/resource/commentInfo/list', cached=False, args={
+            'resourceType': resource_type, 'resourceIds': json.dumps([id]),
+        })
+        assert expected in row['historyRowMenuCalls']
+    for row, opened, kind, label, body, thread in (
+        (song_comment, song_menu, 'track', '查看评论(36)', '合成历史歌曲评论', 'R_SO_4_10'),
+        (voice_comment, voice_menu, 'voice', '查看评论(47)', '合成历史声音评论', 'A_DJ_1_10'),
+    ):
+        assert opened['keys'] == SINGLE_ACTIONS
+        assert (opened['clicked'], opened['label']) == ('10', label)
+        assert (row['commentKind'], row['commentId'], row['label'], row['body']) == (
+            kind, '10', label, body,
+        )
+        assert any(call['path'] == '/api/v1/resource/comments/' + thread and not call['cached']
+                   and call['args']['offset'] == 0 for call in row['historyRowMenuCalls'])
+    assert fallback['clicked'] == '11' and fallback['label'] == '查看评论'
+    assert voice_menu['selected'] == ['9', '10']
+    for row, category, selected in (
+        (song_copy, 'song', ['10']), (voice_copy, 'dj', ['9', '10']),
+    ):
+        assert row['clicked'] == '10' and row['selected'] == selected
+        assert row['focusRestored'] and row['nativeClipboard'] and row['notice'] == '复制成功'
+        assert row['clipboard'] == f'https://music.163.com/{category}?id=10'
+
+    assert all(row['clicked'] == '7' and row['selected'] == ['10', '7']
+               for row in (confirmation, cancelled, removed))
+    assert confirmation['keys'] == ['play', 'next', 'remove']
+    assert (confirmation['title'], confirmation['actions'], confirmation['focus']) == (
+        '删除 2 条播放记录？', ['取消', '确认'], '取消',
+    )
+    assert '音乐文件、收藏和歌单内容会保留' in confirmation['description']
+    assert cancelled['focusRestored'] and cancelled['revision'] == confirmation['beforeRevision']
+    assert removed['fallbackFocus'] == '歌曲' and removed['remaining'] == 298
+    assert removed['revision'] != cancelled['revision']
+    for row, expected in ((confirmation, []), (cancelled, []), (removed, [DELETE_CALL]),
+                          (complete, [DELETE_CALL])):
+        assert [call for call in row['historyRowMenuCalls'] if '/delete' in call['path']] == expected
+
+
 def audit(output, screenshots, runtime=None):
     complete = read(output / 'complete.json')
     assert complete['ok'] and complete['stages'] == list(STAGES)
     names = [f'ux_{index:02d}_{stage}' for index, stage in enumerate(STAGES, 1)]
     assert [path.stem for path in sorted(output.glob('ux_*.json'))] == names
     rows = [read(output / f'{name}.json') for name in names]
-    assert all(row['syntheticHistoryWrites'] == 0 for row in [*rows, complete])
+    assert all(row['syntheticHistoryWrites'] == 0 for row in rows[:-1])
+    assert rows[-1]['syntheticHistoryWrites'] == complete['syntheticHistoryWrites'] == 1
+    previous_calls = []
+    for row in (*rows, complete):
+        current = row['historyRowMenuCalls']
+        assert current[:len(previous_calls)] == previous_calls
+        previous_calls = current
     photos = sorted(output.glob('ux_*.png'))
     assert [photo.stem for photo in photos] == (names if screenshots else [])
     hashes = {}
@@ -71,7 +144,7 @@ def audit(output, screenshots, runtime=None):
         hashes[photo.name] = hashlib.sha256(image).hexdigest()
 
     (context, song, voice, random_step, empty_song, empty_voice,
-     blocked, rejected, song_play, paused, resumed, voice_play) = rows
+     blocked, rejected, song_play, paused, resumed, voice_play, *actions) = rows
     assert (context['nativeHistorySize'], context['menuKey']) == (300, 'next')
     assert 0 < context['visibleRows'] < context['nativeHistorySize']
     for row, selection, clicked, gesture in (
@@ -83,10 +156,10 @@ def audit(output, screenshots, runtime=None):
     ):
         assert (row['selected'], row['clicked'], row['gesture']) == (selection, clicked, gesture)
 
-    for row, ids in zip(rows, (SEED, SONGS, VOICES, VOICES, ['song:4', 'song:2'],
-                               ['voice:3', 'voice:1'], PLAY_SEED, PLAY_SEED, PLAY_SONGS, PLAY_SONGS,
-                               RESUMED_SONGS,
-                               PLAY_VOICES), strict=True):
+    expected_ids = (SEED, SONGS, VOICES, VOICES, ['song:4', 'song:2'],
+                    ['voice:3', 'voice:1'], PLAY_SEED, PLAY_SEED, PLAY_SONGS, PLAY_SONGS,
+                    RESUMED_SONGS, PLAY_VOICES) + (PLAY_VOICES,) * len(actions)
+    for row, ids in zip(rows, expected_ids, strict=True):
         player, queue = row['nativePlayer'], row['nativeQueue']
         assert player['epoch'] == queue['epoch'] and player['entryId'] == queue['current']
         assert player['queueRevision'] == queue['revision'] and not player['error']
@@ -128,6 +201,7 @@ def audit(output, screenshots, runtime=None):
         '8', ['8'], True, True,
     )
     assert blocked['copyrightHint'] == ['暂无版权', '暂无版权']
+    assert blocked['keys'] == ['play', 'next', 'comments', 'remove']
     assert (rejected['clicked'], rejected['selected'], rejected['focusRestored']) == (
         '8', ['3', '8'], True,
     )
@@ -150,13 +224,25 @@ def audit(output, screenshots, runtime=None):
     native_play(resumed, paused, song='1', resume=True)
     assert (voice_play['clicked'], voice_play['selected']) == ('2', ['4', '2'])
     native_play(voice_play, resumed, song='1002', voice='2')
+    audit_row_actions(actions, voice_play, complete)
+    database = output.parent / 'state/core.sqlite3'
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
+        journal = connection.execute(
+            "SELECT owner, value FROM state WHERE kind='play-history-mutations-v1'"
+        ).fetchall()
+    assert len(journal) == 1 and journal[0][0] == '2'
+    mutation = json.loads(journal[0][1])
+    assert mutation['kind'] == 'song' and mutation['phase'] == 'confirmed'
+    assert mutation['action'] == {'kind': 'delete', 'ids': ['10', '7']} and mutation['remote_planned']
     report = dict(ok=True, actualWebView='WebView2' if runtime else 'WebKitGTK',
                   stages=len(STAGES), screenshots=hashes, nativeNullPlayback=True,
                   preservedPausedClock=True, randomTraversalEpisode='4',
                   emptySongStarted='2', emptyVoiceStarted='1',
                   playSongStarted='1', playVoiceStarted='2', playResumedSameDecoder=True,
                   playRetainedUnrelatedEntries=True, copyrightBlockedSelection=True,
-                  syntheticHistoryWrites=0,
+                  commentCounts={'song': 36, 'voice': 47}, commentCountFallback=True,
+                  nativeClipboardChecks=2, cancelledDeletionWrites=0,
+                  deletedSongIds=['10', '7'], syntheticHistoryWrites=1, confirmedDeletionJournal=True,
                   realMusicRequests=0, realAccountWrites=0)
     if runtime:
         report.update(runtime=runtime, network='synthetic-transports-only')

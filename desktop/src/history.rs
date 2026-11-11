@@ -38,6 +38,23 @@ pub async fn history_page(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn history_row_menu_info<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryRowMenuTarget,
+) -> Result<AccountData<HistoryRowMenuInfo>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("history row menu is main-window only").into(),
+        );
+    }
+    client
+        .history_row_menu_info(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn history_command(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

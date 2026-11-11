@@ -17,6 +17,25 @@ export interface HistoryRowQueueTarget {
   routeIdentity: object;
 }
 export type HistoryRowQueueOutcome = 'queued' | 'playing';
+export interface HistoryRowMenuTarget {
+  history_kind: HistoryQueueKind;
+  revision: string;
+  clicked_id: string;
+  selected_ids: string[];
+}
+export interface HistoryRowMenuInfo {
+  comment: {
+    resource: { kind: 'track' | 'voice'; id: string };
+    count: number | null;
+  } | null;
+  copyLink: string | null;
+}
+export interface HistoryRowMenuClient {
+  historyRowMenuInfo(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+  ): Promise<AccountData<HistoryRowMenuInfo>>;
+}
 export interface HistorySelectionScope {
   revision: string;
   ids: string[];

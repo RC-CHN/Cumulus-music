@@ -13,7 +13,8 @@ pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{
     HistoryCollectTarget, HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage,
-    HistoryPlaylistCard, HistoryRadioCollection, HistoryResource, HistorySelectionScope,
+    HistoryPlaylistCard, HistoryRadioCollection, HistoryResource, HistoryRowComment,
+    HistoryRowCommentResource, HistoryRowMenuInfo, HistoryRowMenuTarget, HistorySelectionScope,
     ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{

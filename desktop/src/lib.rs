@@ -449,6 +449,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 catalog::latest_releases,
                 collections::collection_page,
                 history::history_page,
+                history::history_row_menu_info,
                 history::listened_books,
                 history::history_command,
                 history::history_radio_collection,

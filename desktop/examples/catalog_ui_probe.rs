@@ -29,6 +29,8 @@ mod follow_new_song_fixture;
 mod history_download_fixture;
 #[path = "support/history_fixture.rs"]
 mod history_fixture;
+#[path = "support/history_row_menu_fixture.rs"]
+mod history_row_menu_fixture;
 #[path = "support/history_song_collect_fixture.rs"]
 mod history_song_collect_fixture;
 #[path = "support/history_song_download_fixture.rs"]
@@ -367,6 +369,19 @@ fn main() {
                 });
                 return;
             }
+            if stage=="history-row-clipboard" && history_row_next {
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                let handle=handle.clone();
+                let expected=value["expected"].as_str().unwrap().to_owned();
+                assert!(matches!(expected.as_str(), "https://music.163.com/song?id=10" | "https://music.163.com/dj?id=10"));
+                let attempt=value["attempt"].as_u64().unwrap();
+                tauri::async_runtime::spawn(async move {
+                    let matches=handle.clipboard().read_text().is_ok_and(|text|text==expected);
+                    let result=serde_json::json!({"attempt":attempt,"matches":matches});
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__historyRowClipboard={result};")).unwrap();
+                });
+                return;
+            }
             if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && relays && !is_live {relay_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="album_url_reads" && album_queue_drop && !is_live {
@@ -420,6 +435,7 @@ fn main() {
             let history_download_report=history_fixture.downloads.as_ref().map(|fixture|fixture.report());
             let history_song_collect_report=history_fixture.song_collect.as_ref().map(|fixture|fixture.report());
             let history_song_download_report=history_fixture.song_download.as_ref().map(|fixture|fixture.report(&follow_store));
+            let history_row_menu_calls=history_row_next.then(||history_fixture.row_menu.report());
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -442,6 +458,7 @@ fn main() {
                 if let Some(report)=history_download_report {value["historyDownloadCalls"]=report;}
                 if let Some(report)=history_song_collect_report {value["historySongCollectCalls"]=report;}
                 if let Some(report)=history_song_download_report {value["historySongDownload"]=report;}
+                if let Some(report)=history_row_menu_calls {value["historyRowMenuCalls"]=report;}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}

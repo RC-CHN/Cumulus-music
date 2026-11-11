@@ -5,11 +5,19 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn project(
-    snapshot: HistorySnapshot,
+pub(super) struct ResolvedRows<'a> {
+    pub clicked: &'a HistoryRecord,
+    pub selected: Vec<&'a HistoryRecord>,
+}
+
+/// M106 keeps the existing table selection on modifier right-click. Bind
+/// both identities here; playback additionally requires its clicked anchor
+/// to be a member of a multi-selection.
+pub(super) fn resolve<'a>(
+    snapshot: &'a HistorySnapshot,
     clicked: &str,
     selected: &[String],
-) -> Result<(Vec<HistoryRecord>, usize)> {
+) -> Result<ResolvedRows<'a>> {
     if !matches!(snapshot.kind, HistoryKind::Song | HistoryKind::Voice)
         || clicked.is_empty()
         || selected.len() == 1
@@ -17,34 +25,45 @@ pub(super) fn project(
     {
         return Err(Error::InvalidInput("invalid history row menu selection"));
     }
-    let mut available: HashMap<_, _> = snapshot
+    let available: HashMap<_, _> = snapshot
         .entries
-        .into_iter()
-        .map(|row| (row.id.clone(), row))
+        .iter()
+        .map(|row| (row.id.as_str(), row))
         .collect();
-    let (rows, anchor) = if selected.is_empty() {
-        (
-            vec![available.remove(clicked).ok_or(Error::QueueChanged)?],
-            0,
-        )
+    let clicked = *available.get(clicked).ok_or(Error::QueueChanged)?;
+    let mut seen = HashSet::with_capacity(selected.len());
+    let selected = selected
+        .iter()
+        .map(|id| {
+            if !seen.insert(id) {
+                return Err(Error::InvalidInput("duplicate history row menu selection"));
+            }
+            available
+                .get(id.as_str())
+                .copied()
+                .ok_or(Error::QueueChanged)
+        })
+        .collect::<Result<_>>()?;
+    Ok(ResolvedRows { clicked, selected })
+}
+
+pub(super) fn project(
+    snapshot: HistorySnapshot,
+    clicked: &str,
+    selected: &[String],
+) -> Result<(Vec<HistoryRecord>, usize)> {
+    let selection = resolve(&snapshot, clicked, selected)?;
+    let (rows, anchor) = if selection.selected.is_empty() {
+        (vec![selection.clicked], 0)
     } else {
-        let anchor = selected
+        let anchor = selection
+            .selected
             .iter()
-            .position(|id| id == clicked)
+            .position(|row| row.id == selection.clicked.id)
             .ok_or(Error::InvalidInput(
                 "history row menu anchor is outside selection",
             ))?;
-        let mut seen = HashSet::with_capacity(selected.len());
-        let rows = selected
-            .iter()
-            .map(|id| {
-                if !seen.insert(id) {
-                    return Err(Error::InvalidInput("duplicate history row menu selection"));
-                }
-                available.remove(id).ok_or(Error::QueueChanged)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        (rows, anchor)
+        (selection.selected, anchor)
     };
     // M556:96–100,134–139 uses the displayed rights for menu enablement; it
     // disables the group only when every chosen track is copyright-down.
@@ -57,7 +76,7 @@ pub(super) fn project(
             "history row menu selection is copyright blocked",
         ));
     }
-    Ok((rows, anchor))
+    Ok((rows.into_iter().cloned().collect(), anchor))
 }
 
 pub(super) fn song_copyright_blocked(row: &HistoryRecord) -> Option<bool> {

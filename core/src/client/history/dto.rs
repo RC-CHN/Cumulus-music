@@ -1,5 +1,6 @@
 use crate::{
     client::dto::{AlbumCard, EpisodeView, PodcastCard, TrackView},
+    comments::ResourceKind,
     history::{HistoryAction, HistoryKind, HistoryMutationPhase, RecordOrigin},
 };
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,32 @@ use serde::{Deserialize, Serialize};
 pub struct HistorySelectionScope {
     pub revision: String,
     pub ids: Vec<String>,
+}
+
+/// The identities frozen by the table at menu opening, separate from playback.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryRowMenuTarget {
+    pub history_kind: HistoryKind,
+    pub revision: String,
+    pub clicked_id: String,
+    pub selected_ids: Vec<String>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRowMenuInfo {
+    pub comment: Option<HistoryRowComment>,
+    pub copy_link: Option<String>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct HistoryRowComment {
+    pub resource: HistoryRowCommentResource,
+    pub count: Option<u64>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct HistoryRowCommentResource {
+    pub kind: ResourceKind,
+    pub id: String,
 }
 
 #[derive(Serialize)]

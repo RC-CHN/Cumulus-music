@@ -148,7 +148,7 @@ import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
 import type { CatalogSession } from './composables/useCatalogSession';
 import CollectionsPage from './components/CollectionsPage.vue';
 import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
-import HistoryPage from './components/HistoryPage.vue';
+import HistoryPage, { type HistoryCommentReturn } from './components/HistoryPage.vue';
 import ListenedBooksPage from './components/history/ListenedBooksPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
@@ -2342,6 +2342,31 @@ const comments = useComments(undefined, () => {
   void music.bootstrap(false);
 });
 const commentContext = useCommentContext(comments, core);
+const historyCommentDestinations = new WeakMap<Page, HistoryCommentReturn>();
+const historyCommentReturn = shallowRef<HistoryCommentReturn>();
+function openHistoryRowComments(
+  resource: CommentResource,
+  title: string,
+  opener: HistoryCommentReturn,
+) {
+  const origin = music.page.value;
+  if (
+    origin.kind !== 'history' ||
+    origin !== opener.routeIdentity ||
+    origin.scope !== opener.kind ||
+    origin.batch ||
+    music.initializing.value ||
+    music.account.value.epoch !== opener.epoch ||
+    recent.page.value?.kind !== opener.kind ||
+    recent.page.value.revision !== opener.revision
+  )
+    return;
+  const destination = openComments(resource, title);
+  historyCommentDestinations.set(destination, opener);
+}
+function historyCommentRestored(opener: HistoryCommentReturn) {
+  if (historyCommentReturn.value === opener) historyCommentReturn.value = undefined;
+}
 const commentAuthorReturn = shallowRef<{
   epoch: string;
   origin: Page;
@@ -2384,6 +2409,7 @@ function openComments(
   const target: Page = { kind: 'comments', resource, title, initialSort };
   if (likedOpener) likedCommentOpeners.set(target, likedOpener);
   music.navigate(target);
+  return target;
 }
 function openLikedPodcastComments(
   id: string,
@@ -5842,6 +5868,8 @@ watch([relay.playbackTarget, player.view], () => {
 watch(
   () => [account.value.epoch, account.value.status],
   () => {
+    if (historyCommentReturn.value?.epoch !== account.value.epoch)
+      historyCommentReturn.value = undefined;
     recent.connect(account.value);
     settings.connect(account.value);
     publication.connect(account.value);
@@ -5853,6 +5881,11 @@ watch(
 watch(
   () => page.value,
   (value, previous) => {
+    const historyFocus = historyCommentDestinations.get(previous);
+    historyCommentReturn.value =
+      historyFocus?.routeIdentity === value && historyFocus.epoch === account.value.epoch
+        ? historyFocus
+        : undefined;
     if (previous.kind === 'podcasts' && value.kind !== 'podcasts') {
       podcastBackRoute = previous;
       podcasts.show(false, false, likedCommentOpeners.get(value));
@@ -5875,8 +5908,16 @@ watch(
         commentStartPosition(value.initialCommentId, value.initialSort),
       );
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
-    if (value.kind === 'history' && (previous.kind !== 'history' || previous.scope !== value.scope))
-      void recent.open(value.scope);
+    if (
+      value.kind === 'history' &&
+      (previous.kind !== 'history' || previous.scope !== value.scope)
+    ) {
+      // A comment round-trip returns to the saved history visit. A remote
+      // refresh would change its receipt even if every displayed row matched.
+      if (historyCommentReturn.value && recent.kind.value === value.scope)
+        void recent.localRefresh();
+      else void recent.open(value.scope);
+    }
     if (value.kind === 'settings' && !value.accountDetail) void settings.open();
   },
 );
@@ -6595,6 +6636,7 @@ onUnmounted(() => {
                 :row-queue-ready="historyRowQueueReady"
                 :row-queue-selection="selectHistoryRowQueue"
                 :route-identity="page"
+                :comment-return="historyCommentReturn"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
@@ -6607,6 +6649,8 @@ onUnmounted(() => {
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"
                 @chapter="playHistoryChapter"
+                @row-comments="openHistoryRowComments"
+                @comment-restored="historyCommentRestored"
                 @open="openHistory"
                 @login="loginOpen = true"
                 @expired="music.bootstrap(false)"

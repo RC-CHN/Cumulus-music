@@ -1,3 +1,17 @@
+<script lang="ts">
+import type { HistoryQueueKind } from '../services/history';
+
+export interface HistoryCommentReturn {
+  kind: HistoryQueueKind;
+  revision: string;
+  clickedId: string;
+  epoch: string;
+  routeIdentity: object;
+  keyword: string;
+  scrollTop: number;
+}
+</script>
+
 <script setup lang="ts">
 import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
@@ -10,6 +24,7 @@ import HistoryRadioMenu, { type HistoryRadioMenuTarget } from './history/History
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { usePodcastFollow } from '../composables/usePodcastFollow';
 import type { HistoryModel } from '../composables/useHistory';
+import type { CommentResource } from '../services/comments';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { PodcastSearchFollow } from '../services/podcast';
@@ -26,18 +41,20 @@ import {
   type HistoryEntry,
   type HistoryKind,
   type HistoryQueueAction,
-  type HistoryQueueKind,
   type HistoryRadioKind,
   type HistoryRadioMenuAction,
   type HistoryResource,
   type HistoryRowQueueAction,
   type HistoryRowQueueOutcome,
   type HistoryRowQueueTarget,
+  type HistoryRowMenuInfo,
   type HistorySelectionScope,
 } from '../services/history';
 import {
   historyBrowseMenuIds,
+  historyBrowseRemovalIds,
   historyBrowseSongMenuBlocked,
+  historyBrowseTableGroup,
   selectHistoryBrowseRow,
   type HistoryBrowseSelection,
 } from '../services/historyBrowseSelection';
@@ -49,6 +66,7 @@ const props = defineProps<{
   playable: boolean;
   rowQueueReady: boolean;
   routeIdentity: object;
+  commentReturn?: HistoryCommentReturn;
   batchMode: boolean;
   collecting?: boolean;
   downloadingSongs?: boolean;
@@ -85,6 +103,8 @@ const emit = defineEmits<{
   ];
   downloadVoices: [target: HistorySelectionScope];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
+  rowComments: [resource: CommentResource, title: string, opener: HistoryCommentReturn];
+  commentRestored: [opener: HistoryCommentReturn];
   open: [resource: HistoryResource];
   login: [];
   expired: [];
@@ -99,7 +119,10 @@ const entries = computed(() => {
     return !needle || normalizeKeyword(`${label.name} ${label.subtitle}`).includes(needle);
   });
 });
-const { container, start, end, onScroll, reset } = useVirtualRows(() => entries.value.length, 68);
+const { container, start, end, onScroll, reset, restore } = useVirtualRows(
+  () => entries.value.length,
+  68,
+);
 const allSelected = computed(
   () => entries.value.length > 0 && entries.value.every((e) => selected.value.has(e.id)),
 );
@@ -128,7 +151,13 @@ watch([kind, keyword, () => props.account.epoch], () => {
 const label = computed(() => historyTabs.find((t) => t.kind === kind.value)?.label ?? '记录');
 const activeOperations = computed(() => page.value?.operations.filter(historyPending) ?? []);
 const latest = computed(() => page.value?.operations.find((op) => !historyPending(op)));
-const confirm = shallowRef<{ title: string; description: string; command: HistoryCommand }>();
+const confirm = shallowRef<{
+  title: string;
+  description: string;
+  command: HistoryCommand;
+  row?: BrowseMenuTarget;
+}>();
+let confirmOpener: HTMLElement | null = null;
 const core = useCore();
 const radioKind = computed(() =>
   kind.value === 'podcast' || kind.value === 'audiobook' ? kind.value : undefined,
@@ -186,24 +215,32 @@ const shown = computed(() =>
 );
 const historyPage = ref<HTMLElement>();
 type BrowseMenuTarget = HistoryRowQueueTarget & {
+  tableGroup: string[];
+  title: string;
   keyword: string;
   anchor: HTMLElement;
 };
 const rowMenu = ref<InstanceType<typeof ActionMenu>>();
 const rowTarget = shallowRef<BrowseMenuTarget>();
+const rowMenuInfo = shallowRef<{ target: BrowseMenuTarget; value: HistoryRowMenuInfo }>();
 const rowMenuNotice = ref('');
 const rowMenuError = ref('');
 const rowQueueReady = computed(() => props.rowQueueReady && !loading.value && !busy.value);
-function rowTargetLive(target: BrowseMenuTarget) {
+function sameBrowseScope(target: BrowseMenuTarget) {
   return (
-    rowTarget.value === target &&
     browseRows.value &&
     kind.value === target.kind &&
     page.value?.kind === target.kind &&
     page.value.revision === target.revision &&
     props.account.epoch === target.epoch &&
     props.routeIdentity === target.routeIdentity &&
-    keyword.value === target.keyword &&
+    keyword.value === target.keyword
+  );
+}
+function rowTargetLive(target: BrowseMenuTarget) {
+  return (
+    rowTarget.value === target &&
+    sameBrowseScope(target) &&
     target.anchor.isConnected &&
     !target.anchor.closest('[inert]') &&
     shown.value.some(({ entry }) => entry.id === target.clickedId)
@@ -226,20 +263,50 @@ function rowMenuCopyrightBlocked(target: BrowseMenuTarget) {
     blockedBrowseSongs.value,
   );
 }
+const rowRemovalLimit = 50_000;
 const rowMenuItems = computed<MenuItem[]>(() => {
   const target = rowTarget.value;
   if (!target || !rowMenuLive.value) return [];
+  const info = rowMenuInfo.value?.target === target ? rowMenuInfo.value.value : undefined;
+  const ids = historyBrowseRemovalIds(target.clickedId, target.tableGroup);
   const blocked = rowMenuCopyrightBlocked(target);
   const disabled = !rowQueueReady.value || blocked;
   const hint = blocked ? '暂无版权' : undefined;
   return [
     { key: 'play', label: '播放', icon: 'play', disabled, hint },
     { key: 'next', label: '下一首播放', icon: 'next', disabled, hint },
+    ...(info?.comment
+      ? [
+          {
+            key: 'comments',
+            label: `查看评论${info.comment.count ? `(${info.comment.count})` : ''}`,
+            icon: 'comment',
+          },
+        ]
+      : []),
+    ...(info?.copyLink
+      ? [
+          { key: 'link-divider', label: '', separator: true },
+          { key: 'copy', label: '复制链接', icon: 'copy' },
+        ]
+      : []),
+    ...(ids.length
+      ? [
+          { key: 'remove-divider', label: '', separator: true },
+          {
+            key: 'remove',
+            label: '从列表中删除',
+            icon: 'trash',
+            disabled: !canMutate.value || ids.length > rowRemovalLimit,
+          },
+        ]
+      : []),
   ];
 });
 function closeRowMenu() {
   rowMenu.value?.close();
   rowTarget.value = undefined;
+  rowMenuInfo.value = undefined;
 }
 watch(rowMenuLive, (live) => {
   if (!live) closeRowMenu();
@@ -259,6 +326,7 @@ watch(
     rowMenuNotice.value = '';
     rowMenuError.value = '';
     closeRowMenu();
+    if (confirm.value?.row && !sameBrowseScope(confirm.value.row)) confirm.value = undefined;
   },
   { flush: 'sync' },
 );
@@ -314,6 +382,8 @@ async function showBrowseRowMenu(entry: HistoryEntry, event: MouseEvent | Keyboa
     revision: snapshot.revision,
     clickedId: entry.id,
     selectedIds: historyBrowseMenuIds(browseSelection.value, entry.id),
+    tableGroup: historyBrowseTableGroup(browseSelection.value),
+    title: historyLabel(entry).name || '未命名',
     epoch: props.account.epoch,
     routeIdentity: props.routeIdentity,
     keyword: keyword.value,
@@ -325,18 +395,70 @@ async function showBrowseRowMenu(entry: HistoryEntry, event: MouseEvent | Keyboa
   if (point) await rowMenu.value?.showAt(point.x, point.y, anchor);
   else await rowMenu.value?.showBelow(anchor);
 }
+async function prepareBrowseRowMenu(signal: AbortSignal) {
+  const target = rowTarget.value;
+  if (!target || !rowTargetLive(target) || loading.value || busy.value) return false;
+  try {
+    const result = await core.historyRowMenuInfo(target.epoch, {
+      history_kind: target.kind,
+      revision: target.revision,
+      clicked_id: target.clickedId,
+      selected_ids: target.tableGroup,
+    });
+    if (
+      signal.aborted ||
+      result.epoch !== target.epoch ||
+      !rowTargetLive(target) ||
+      loading.value ||
+      busy.value
+    )
+      return false;
+    rowMenuInfo.value = { target, value: result.value };
+    return true;
+  } catch (cause) {
+    if (!signal.aborted && rowTargetLive(target)) {
+      const issue = failure(cause);
+      if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+      else rowMenuError.value = issue.message;
+    }
+    return false;
+  }
+}
 async function chooseRowMenu(key: string) {
   const target = rowTarget.value;
-  if (
-    (key !== 'play' && key !== 'next') ||
-    !target ||
-    !rowQueueReady.value ||
-    !rowTargetLive(target) ||
-    rowMenuCopyrightBlocked(target)
-  )
-    return;
+  const item = rowMenuItems.value.find((entry) => entry.key === key);
+  if (!target || !rowTargetLive(target) || !item || item.disabled || item.separator) return;
   rowMenuNotice.value = '';
   rowMenuError.value = '';
+  const info = rowMenuInfo.value?.target === target ? rowMenuInfo.value.value : undefined;
+  if (key === 'comments' && info?.comment) {
+    const { kind, revision, clickedId, epoch, routeIdentity, keyword } = target;
+    emit('rowComments', info.comment.resource, target.title, {
+      kind,
+      revision,
+      clickedId,
+      epoch,
+      routeIdentity,
+      keyword,
+      scrollTop: container.value?.scrollTop ?? 0,
+    });
+    return;
+  }
+  if (key === 'copy' && info?.copyLink) {
+    try {
+      await core.copyText(info.copyLink);
+      if (rowTargetLive(target)) rowMenuNotice.value = '复制成功';
+    } catch {
+      if (rowTargetLive(target)) rowMenuError.value = '复制失败，请重新打开菜单重试。';
+    }
+    return;
+  }
+  if (key === 'remove') {
+    const ids = historyBrowseRemovalIds(target.clickedId, target.tableGroup);
+    if (ids.length && ids.length <= rowRemovalLimit) remove({ kind: 'delete', ids }, target);
+    return;
+  }
+  if (key !== 'play' && key !== 'next') return;
   const live = () => rowTargetLive(target) && !rowMenuCopyrightBlocked(target);
   try {
     const outcome = await props.rowQueueSelection(key, target, live);
@@ -361,6 +483,40 @@ const uncollect = shallowRef<{
 let uncollectOpener: HTMLElement | null = null;
 const collectionFallback = () =>
   historyPage.value?.querySelector<HTMLElement>('[aria-current="page"]') ?? null;
+let commentRestoreAttempt = 0;
+watch(
+  [() => props.commentReturn, loading, container, () => page.value?.revision],
+  async ([opener]) => {
+    const attempt = ++commentRestoreAttempt;
+    const current = () =>
+      !!opener &&
+      attempt === commentRestoreAttempt &&
+      props.commentReturn === opener &&
+      props.routeIdentity === opener.routeIdentity &&
+      props.account.epoch === opener.epoch &&
+      browseRows.value &&
+      kind.value === opener.kind &&
+      !loading.value;
+    if (!opener || !current() || !page.value) return;
+    let anchor: HTMLElement | null = null;
+    if (page.value.revision === opener.revision) {
+      keyword.value = opener.keyword;
+      await nextTick();
+      if (!current() || page.value?.revision !== opener.revision) return;
+      restore(opener.scrollTop);
+      await nextTick();
+      if (!current() || page.value?.revision !== opener.revision) return;
+      anchor =
+        container.value?.querySelector<HTMLElement>(
+          `[data-history-row-more="${CSS.escape(opener.clickedId)}"]`,
+        ) ?? null;
+    }
+    (anchor ?? collectionFallback())?.focus({ preventScroll: true });
+    emit('commentRestored', opener);
+  },
+  { immediate: true, flush: 'post' },
+);
+onBeforeUnmount(() => commentRestoreAttempt++);
 watch([collectionScope, () => props.account.epoch], () => (uncollect.value = undefined), {
   flush: 'sync',
 });
@@ -646,10 +802,11 @@ function playChapter(entry: HistoryEntry) {
     return;
   emit('chapter', snapshot.kind, snapshot.chapterRevision, entry.id);
 }
-function remove(action: HistoryAction) {
-  if (!page.value || !canMutate.value) return;
+function remove(action: HistoryAction, row?: BrowseMenuTarget) {
+  if (!page.value || !canMutate.value || (row && !sameBrowseScope(row))) return;
   const count = action.kind === 'clear' ? page.value.entries.length : action.ids.length;
   if (!count) return;
+  confirmOpener = row?.anchor ?? null;
   confirm.value = {
     title: action.kind === 'clear' ? `清空${label.value}播放记录？` : `删除 ${count} 条播放记录？`,
     description: `${action.kind === 'clear' ? '将清空这一类型的全部历史，不仅是筛选结果。' : '将移除选中的历史记录。'}${page.value.canSync && page.value.syncEnabled ? '同时请求删除当前账号的多端记录。' : '仅删除本机记录。'}音乐文件、收藏和歌单内容会保留。`,
@@ -659,10 +816,12 @@ function remove(action: HistoryAction) {
       expected_revision: page.value.revision,
       action,
     },
+    row,
   };
 }
 function accept(id: string) {
   if (!page.value) return;
+  confirmOpener = null;
   confirm.value = {
     title: '保留当前读取的记录？',
     description:
@@ -671,12 +830,12 @@ function accept(id: string) {
   };
 }
 async function submit() {
-  if (!confirm.value) return;
-  const input = confirm.value.command;
-  const ok = await props.model.command(input);
+  const saved = confirm.value;
+  if (!saved || (saved.row && (!sameBrowseScope(saved.row) || !canMutate.value))) return;
+  const ok = await props.model.command(saved.command);
   // A lost reply is represented in the page journal, not a tempting second
   // submit button. Native intent IDs are never regenerated on retry.
-  if (ok || pending.value) confirm.value = undefined;
+  if (confirm.value === saved && (ok || pending.value)) confirm.value = undefined;
 }
 function keyboard(event: KeyboardEvent) {
   if (
@@ -1141,6 +1300,7 @@ function keyboard(event: KeyboardEvent) {
       variant="song"
       :items="rowMenuItems"
       :disabled="!rowMenuLive"
+      :before-open="prepareBrowseRowMenu"
       @select="chooseRowMenu"
     />
     <HistoryRadioMenu
@@ -1169,7 +1329,7 @@ function keyboard(event: KeyboardEvent) {
         · 最近读取 {{ historyTime(page.remoteFetchedAt).short }}</template
       >
     </p>
-    <ModalTransition
+    <ModalTransition :return-focus="() => confirmOpener" :fallback-focus="collectionFallback"
       ><HistoryConfirm
         v-if="confirm"
         :title="confirm.title"

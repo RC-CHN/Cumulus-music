@@ -100,7 +100,7 @@ fn any_truthy(resource: &Value, keys: &[&str]) -> bool {
     keys.iter().any(|key| js_truthy(&resource[*key]))
 }
 
-fn source(row: &HistoryRecord) -> HistorySongDownloadSource<'_> {
+pub(super) fn source(row: &HistoryRecord) -> HistorySongDownloadSource<'_> {
     use HistorySongDownloadSource as Source;
     let song = &row.resource;
     if row.id.starts_with("local:")

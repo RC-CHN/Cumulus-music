@@ -61,7 +61,12 @@ import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
 import type { CollectionClient } from './collections';
-import type { HistoryClient, HistoryRadioCollectionClient, HistorySyncClient } from './history';
+import type {
+  HistoryClient,
+  HistoryRadioCollectionClient,
+  HistoryRowMenuClient,
+  HistorySyncClient,
+} from './history';
 import type { SettingsClient } from './settings';
 import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
 import type { AccountDetailClient, AccountRegionTable } from './accountDetail';
@@ -189,6 +194,7 @@ export interface CoreClient
     CollectionClient,
     HistoryClient,
     HistoryRadioCollectionClient,
+    HistoryRowMenuClient,
     HistorySyncClient,
     SettingsClient,
     AccountDetailClient,

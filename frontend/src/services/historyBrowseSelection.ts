@@ -37,6 +37,20 @@ export function historyBrowseMenuIds(
 ): string[] {
   return selection.ids.length > 1 && selection.ids.includes(clickedId) ? [...selection.ids] : [];
 }
+
+/** The table still has a group when a modifier opens an unrelated row. */
+export function historyBrowseTableGroup(selection: HistoryBrowseSelection): string[] {
+  return selection.ids.length > 1 ? [...selection.ids] : [];
+}
+
+/** Do not offer a destructive group action on a row outside that group. */
+export function historyBrowseRemovalIds(
+  clickedId: string,
+  tableGroup: readonly string[],
+): string[] {
+  if (!tableGroup.length) return [clickedId];
+  return tableGroup.includes(clickedId) ? [...tableGroup] : [];
+}
 import type { HistoryQueueKind } from './history';
 
 /** M556 disables the clicked song, or a group only if every selected song is blocked. */

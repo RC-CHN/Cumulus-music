@@ -19,6 +19,7 @@ pub struct Library {
     collections: bool,
     menu: bool,
     pub row_queue_menu: bool,
+    pub row_menu: super::history_row_menu_fixture::Fixture,
     chapter_calls: Mutex<Vec<Value>>,
     collected: Mutex<BTreeSet<String>>,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
@@ -381,9 +382,17 @@ impl Api for Library {
             if let Some(result) = self.chapter_response(path, &args, cache) {
                 return result;
             }
+            if self.row_queue_menu
+                && let Some(result) = self.row_menu.response(path, &args, cache)
+            {
+                return result;
+            }
             let mode = self.mode.load(Ordering::SeqCst);
             if path.starts_with("/api/play-record/") {
                 if path.ends_with("/delete") || path.ends_with("/clear") {
+                    if self.row_queue_menu {
+                        self.row_menu.authorize_delete(path, &args, cache)?;
+                    }
                     if self.menu {
                         self.chapter_calls
                             .lock()

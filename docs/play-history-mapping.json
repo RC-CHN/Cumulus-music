@@ -373,6 +373,33 @@
         "The other song and voice menu actions have separate contracts and are not added here",
         "No modifier right-click outside the selected group, FM, intelligence or room-specific insertion parity in this path"
       ]
+    },
+    {
+      "feature": "Read recent song and voice comments, copy public links, and remove selected history rows",
+      "official": [
+        "M556:68–79,144–229,724–761; M622:1174–1182,1214–1271,1471–1491; M225:354–359,590–602",
+        "M3085:1013–1017,1578–1601,2892–2915,4565–4615; M232:824–842; M15:1671–1674; M1384:888–909,982–1002"
+      ],
+      "rust": [
+        "core/src/client/history/row_menu_info.rs account and snapshot binding, comment count and public link projection",
+        "core/src/comments/api.rs exact thread identity and existing comment page",
+        "core/src/history/mutation.rs journaled snapshot-scoped deletion and readback"
+      ],
+      "ui": [
+        "desktop/src/history.rs main-window-only history_row_menu_info",
+        "frontend/src/components/HistoryPage.vue prepared menu, clipboard and frozen deletion confirmation",
+        "frontend/src/App.vue typed comment page and same-visit Back restoration"
+      ],
+      "tests": [
+        "core/tests/client_history/row_menu_info.rs visibility, wire arguments, count failure, stale account/history and private identity",
+        "desktop/tests/ipc.rs foreign window rejection",
+        "scripts/ci/history_row_next_smoke.py and desktop/examples/history_row_next_ui_probe.js combined real WebView flow"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase299-history-row-actions-final/audit.json: 22 WebKitGTK states and PNGs, two clipboard readbacks, typed comment routes and focus restoration, zero writes on cancel, one exact batch delete and confirmed SQLite journal; Windows pending",
+      "boundaries": [
+        "Only a verified ordinary public song or episode identity; no account attribution, private file paths, or external sharing",
+        "Cumulus confirms selected-row deletion; modifier right-click outside the selected group does not expose deletion"
+      ]
     }
   ],
   "alternativeClientSources": [],

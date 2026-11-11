@@ -32,6 +32,10 @@ RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音�
 恢复、随机下一项与点中项的真实解码。证据在 `.build/ui-proof/phase298-history-row-play-final/`；
 最新 Windows 行菜单和其他菜单项仍待各自验证。
 
+[最近播放行菜单的评论、复制和删除](play-history-contracts.txt)已通过 22 个合并 Linux
+实窗检查点，包括声音多选时仍针对点击节目、两次系统剪贴板读回、取消零写入和确认后的
+原生历史日志。报告和截图在 `.build/ui-proof/phase299-history-row-actions-final/`。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。
