@@ -47,6 +47,9 @@ def verify(root, capture):
     local_path, = (root / 'first').glob('ux_*_local_unavailable.json')
     local = json.loads(local_path.read_text(encoding='utf-8'))
     assert local['unboundLocalMutationOmitted'] and local['menuFocus']
+    for stage, focus in [('ux_44_unavailable', 'remove'), ('ux_45_unavailable_keyboard', 'manage')]:
+        state = json.loads((root / 'first' / f'{stage}.json').read_text(encoding='utf-8'))
+        assert state['missingSongMenu'] == dict(row='2', commentVisible=False, commentReads=0, focus=focus)
     if capture:
         assert len(list((root / 'first').glob('ux_*.png'))) == complete['stageCount']
     result = dict(complete, actualWebView=True,

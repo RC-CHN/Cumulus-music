@@ -46,9 +46,11 @@
     failCopy = false,
     holdCopy = false,
     copyCalls = 0,
-    playerCalls = 0;
+    playerCalls = 0,
+    playlistCommentCalls = 0;
   const originalFetch = window.fetch;
   window.fetch = async function (url, options) {
+    if (String(url).endsWith("/playlist_song_row_comment_count")) playlistCommentCalls++;
     if (String(url).endsWith("/copy_text")) {
       copyCalls++;
       if (holdCopy) await sleep(900);
@@ -491,6 +493,7 @@
     await wait(() => window.__searchFixtureAck, "missing song fixture");
     click(all(".playlist-card").find((n) => n.getAttribute("aria-label") === "合成歌单 5"));
     await wait(() => one(".playlist-hero") && more(), "unavailable playlist");
+    const commentBaseline = playlistCommentCalls;
     const local = await open();
     assert(
       !local.closest(".track-row").classList.contains("current"),
@@ -512,30 +515,38 @@
     await wait(() => document.activeElement === menu(), "empty enabled group focuses menu itself");
     await capture("local_unavailable", { unboundLocalMutationOmitted: true, menuFocus: true });
     await escape(local);
-    const missing = await open(
-      all(".track-row")[1].querySelector(".track-more"),
+    const placeholder = one('.track-row[data-track-id="2"]');
+    assert(placeholder?.textContent.includes("暂不可用的歌曲"), "exact missing Song placeholder");
+    const missing = await open(placeholder.querySelector(".track-more"));
+    assert(
+      ["播放", "下一首播放", "收藏", "下载"].every((label) => button(label, menu())?.disabled),
+      "missing Song transport and collection actions disabled",
     );
     assert(
-      button("播放", menu()).disabled &&
-        button("下一首播放", menu()).disabled &&
-        button("下载", menu()).disabled,
-      "unavailable actions disabled",
+      !menu().querySelector('[data-menu-key="comments"]') &&
+        !button("分享", menu()) && !button("复制链接", menu()),
+      "missing Song has no comment or public link authority",
     );
     assert(
-      !button("分享", menu()) && !button("复制链接", menu()),
-      "unavailable share omitted",
+      enabled().map((choice) => choice.dataset.menuKey).join(",") === "remove,manage",
+      "missing remote row only retains owned playlist management controls",
     );
-    assert(
-      document.activeElement === button("查看评论", menu()),
-      "keyboard skips disabled actions",
-    );
-    await capture("unavailable");
+    const placeholderEvidence = () => ({
+      row: placeholder.dataset.trackId,
+      commentVisible: !!menu().querySelector('[data-menu-key="comments"]'),
+      commentReads: playlistCommentCalls - commentBaseline,
+      focus: document.activeElement?.dataset.menuKey,
+    });
+    await wait(() => document.activeElement === button("从歌单中删除", menu()),
+      "keyboard initially skips every disabled action");
+    assert(playlistCommentCalls === commentBaseline, "neither placeholder reads a comment count");
+    await capture("unavailable", { missingSongMenu: placeholderEvidence() });
     key(menu(), "ArrowDown");
     assert(
-      document.activeElement === button("从歌单中删除", menu()),
-      "keyboard skips disabled group",
+      document.activeElement === button("调整歌曲顺序…", menu()),
+      "keyboard moves to the next enabled management control",
     );
-    await capture("unavailable_keyboard");
+    await capture("unavailable_keyboard", { missingSongMenu: placeholderEvidence() });
     await escape(missing);
     await emit("complete", {
       ok: true,

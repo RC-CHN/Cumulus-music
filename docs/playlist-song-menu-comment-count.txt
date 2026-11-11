@@ -9,6 +9,14 @@ Track 的评论数；本地、云盘、miniBar 或 songType=1 不显示此项。
 M3085:4565–4615 表明菜单等待异步检查完成后弹出。带私有云盘标记
 的资源不被当成公开单曲来读计数。
 
+详情及权限均未返回的歌单条目：M2997:415–450 只将详情格式化返回的行写入
+trackEntities（:107–126）。TrackList.jsx:108–128 遇到未解析的原始 ID 会中断
+当前展示范围，这个 ID 不会自己成为 TrackTitleCell 或 M556 菜单资源。
+Cumulus 为保留位置和本人歌单管理入口显示「暂不可用的歌曲」占位；这不是
+已验证的 Track，不显示评论也不读评论数。M21.B:683–705 还存在只收到
+单条权限信息时合成最小实体的分支；本合成遗漏样本没有匹配的权限行，不据此
+判断该分支的实际显示和菜单。
+
 读取：POST /api/resource/commentInfo/list（M232:824–842）。
 字段仅 resourceType=4、resourceIds=JSON.stringify([准确的歌曲 ID])；
 不批量读取整张歌单。沿用 CommentApi，要求恰好一行且 threadId 等于
