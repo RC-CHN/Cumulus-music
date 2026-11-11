@@ -191,6 +191,7 @@ onUnmounted(() => {
         </button>
       </div>
       <p v-if="model.error.value" role="alert" class="catalog-error">{{ model.error.value }}</p>
+      <slot name="continuation" />
     </div>
   </section>
 </template>

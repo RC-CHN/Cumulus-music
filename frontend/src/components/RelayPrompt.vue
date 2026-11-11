@@ -20,12 +20,14 @@ function pause() {
 }
 function start() {
   pause();
-  if (!disposed && visible.value && !hovered && !ownsFocus())
+  const offer = props.model.offer.value;
+  if (offer && !disposed && visible.value && !hovered && !ownsFocus())
     timer = setTimeout(() => {
       timer = undefined;
       // A window blur may omit relatedTarget and a WebView can deliver its
       // focus events late. Never dismiss a control that still owns DOM focus.
-      if (!disposed && visible.value && !hovered && !ownsFocus()) void props.model.dismiss();
+      if (!disposed && visible.value && !hovered && !ownsFocus())
+        void props.model.dismiss(offer, 'timeout');
     }, 8000);
 }
 function enter() {
@@ -59,15 +61,24 @@ function continueHere() {
   if (visible.value && props.model.alert.value) void props.model.continueHere(props.quality);
 }
 function close(event: Event) {
-  if (!visible.value || !props.model.alert.value) return;
+  const node = (event.currentTarget as HTMLElement).closest<HTMLElement>('.relay-prompt');
+  const offer = props.model.offer.value;
   if (
-    (event.currentTarget as HTMLElement).closest('.relay-prompt')?.contains(document.activeElement)
+    !visible.value ||
+    !node ||
+    node !== element.value ||
+    node.inert ||
+    !offer ||
+    node.dataset.relayRevision !== offer.revision ||
+    node.dataset.relayEpoch !== offer.epoch
   )
+    return;
+  if (node.contains(document.activeElement))
     document.querySelector<HTMLButtonElement>('.settings-button')?.focus({ preventScroll: true });
-  void props.model.dismiss();
+  void props.model.dismiss(offer, 'close');
 }
 watch(
-  visible,
+  [visible, props.model.offer],
   () => {
     hovered = !!element.value?.matches(':hover');
     start();
@@ -86,6 +97,8 @@ onUnmounted(() => {
       v-if="visible && model.alert.value"
       class="relay-prompt"
       aria-label="跨端续播"
+      :data-relay-revision="model.offer.value?.revision"
+      :data-relay-epoch="model.offer.value?.epoch"
       @pointerenter="enter"
       @pointerleave="exit"
       @focusin="focus"
@@ -110,4 +123,9 @@ onUnmounted(() => {
       </button>
     </aside>
   </Transition>
+  <div class="relay-dismiss-status" role="status" aria-atomic="true">
+    <span v-if="model.dismissalNotice.value" class="relay-dismiss-notice"
+      >可在设置-播放中关闭跨端续播</span
+    >
+  </div>
 </template>

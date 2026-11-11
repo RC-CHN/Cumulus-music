@@ -834,6 +834,8 @@ def main():
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         assert complete['mediaSubstitution'] == 'exact synthetic CDN URL to generated PCM'
         assert complete['autoDismiss']
+        assert 2800 <= complete['dismissHintMs'] < 5500
+        assert complete['syntheticRelaySettingWrites'] == 0
         assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
         assert complete['nativeWindowFocusHold'] and complete['nullRelatedFocusOutInjected']
         receipts = complete['windowFocusReceipts']
@@ -905,6 +907,15 @@ def main():
         assert by_name['modal_suppression']['dialog'] and not by_name['modal_suppression']['prompt']
         assert not by_name['modal_restored']['dialog'] and by_name['modal_restored']['prompt']
         assert not by_name['auto_dismiss']['prompt'] and not by_name['closed_focus']['prompt']
+        assert by_name['closed_focus']['relayInPlayback']
+        assert [(v['stage'][6:], v['dismissHint']) for v in stages if v['dismissHint'] is not None] == [
+            ('closed_focus', '可在设置-播放中关闭跨端续播'),
+        ]
+        background_publications = {'/api/relay/songlist/submit', '/api/relay/play/state/submit'}
+        for after in [by_name['closed_focus'], complete]:
+            assert {k: n for k, n in after['relayCalls'].items() if k not in background_publications} == {
+                k: n for k, n in by_name['modal_restored']['relayCalls'].items() if k not in background_publications
+            }
     elif args.relay_settings:
         assert all(v['scrollBottom'] <= v['playerTop'] + 1 for v in stages)
         by_name = {v['stage'][6:]: v for v in stages}

@@ -7,6 +7,8 @@
   const click=n=>{assert(n&&!n.disabled,'button unavailable');n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.click();};
   const ready=()=>one('.relay-settings')?.getAttribute('aria-busy')==='false';
   const state=()=>one('.playerbar')?.dataset.state;
+  const dismissHint=()=>one('.relay-dismiss-notice');
+  const relayInPlayback=()=>!!one('.relay-switch input')?.closest('[aria-labelledby="settings-playback"]');
   const position=()=>Number(one('.playerbar')?.dataset.position??0);
   const detail=()=>one('.lyrics-panel:not([inert])');
   const detailTitle=()=>detail()?.querySelector('.vinyl-info h1')?.textContent.trim()??null;
@@ -69,8 +71,10 @@
     const card=one('.relay-prompt')?.getBoundingClientRect(),bar=one('.playerbar').getBoundingClientRect(),scroll=one('.settings-scroll')?.getBoundingClientRect();
     if(card)assert(card.left>=0&&card.right<=innerWidth&&card.bottom<=bar.top-3,'relay prompt overlaps player or window');
     if(card){const action=one('.relay-continue');assert(action.scrollWidth<=action.clientWidth,'default relay action text clipped');}
+    const hint=dismissHint(),hintBox=hint?.getBoundingClientRect();
+    if(hintBox)assert(hintBox.left>=0&&hintBox.right<=innerWidth&&hintBox.bottom<=bar.top-3,'dismissal notice overlaps player or window');
     if(scroll)assert(scroll.bottom<=bar.top+1,'settings content overlaps player');
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{geometry:geometry(),width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,prompt:!!card,promptBottom:card?.bottom,playerTop:bar.top,position:position(),playing,detailTitle:detailTitle(),dialog:!!one('dialog[open]'),status:one('.relay-settings [role="status"]')?.textContent,operations:all('.relay-operation').map(n=>n.textContent.trim())});await sleep(850);
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{geometry:geometry(),width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,prompt:!!card,promptBottom:card?.bottom,playerTop:bar.top,position:position(),playing,detailTitle:detailTitle(),dialog:!!one('dialog[open]'),dismissHint:hint?.textContent.trim()??null,relayInPlayback:relayInPlayback(),status:one('.relay-settings [role="status"]')?.textContent,operations:all('.relay-operation').map(n=>n.textContent.trim())});await sleep(850);
   }
   async function theme(value){click(one(`input[name="settings-theme"][value="${value}"]`));await wait(()=>document.documentElement.dataset.theme===value,'theme');}
   async function resize(width,height){await emit('resize',{width,height});await sleep(180);if(innerWidth!==width||innerHeight!==height)await emit('resize',{width:width*width/innerWidth,height:height*height/innerHeight});await wait(()=>innerWidth===width&&innerHeight===height,'small window');}
@@ -105,7 +109,7 @@
     one('[aria-label="打开设置"]').focus({preventScroll:true});
     await sleep(8500);assert(one('.relay-prompt')?.matches(':hover'),'hover must prevent auto-dismiss after focus leaves');
     await emit('pointer',{x:4,y:4});await wait(()=>!one('.relay-prompt')?.matches(':hover'),'pointer released');
-    await wait(()=>!one('.relay-prompt')&&ready(),'8 second auto-dismiss acknowledgement');await capture('auto_dismiss');
+    await wait(()=>!one('.relay-prompt')&&ready(),'8 second auto-dismiss acknowledgement');assert(!dismissHint(),'automatic expiry must not show close feedback');await capture('auto_dismiss');
     one('.relay-settings').scrollIntoView({block:'center'});await refresh('empty');assert(one('.relay-settings').textContent.includes('暂时没有'),'empty device state');await capture('empty');
     await refresh('excluded');assert(one('.relay-settings').textContent.includes('尚未向当前账号开放'),'experiment excluded');await capture('excluded');
     await refresh('disabled');assert(one('.relay-settings').textContent.includes('未开启'),'server disabled');await capture('disabled');
@@ -127,6 +131,7 @@
     const held=window.__CUMULUS_PUBLICATION_PROOF__?await contention('hold'):null;
     if(held)assert(held.held&&held.preparing.length===0,'synthetic publisher lock not held');
     click(button('继续播放'));
+    assert(!dismissHint(),'Continue must not show close feedback');
     if(held){
       let preparing;for(let i=0;i<10;i++){preparing=await contention('inspect');if(preparing.preparing.length===1)break;await sleep(25);}
       assert(preparing.held&&preparing.preparing.length===1&&preparing.pulls===held.pulls&&!ready(),'continuation did not wait before sending');
@@ -136,9 +141,18 @@
     if(window.__CUMULUS_PUBLICATION_PROOF__){const slider=one('[aria-label="播放进度"]');slider.value='18';slider.dispatchEvent(new Event('input',{bubbles:true}));slider.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>position()>=18,'native voice seek publication');}
     await capture('voice_playing',true);await closeDetail();click(one('[aria-label="停止播放"]'));await wait(()=>state()==='idle'&&!one('[aria-label="停止播放"]')?.disabled,'voice stop acknowledgement');
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
-    click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
+    const closedAt=performance.now();
+    click(one('[aria-label="关闭接续提示"]'));
+    await wait(()=>!one('.relay-prompt')&&ready()&&dismissHint(),'close prompt and show its settings notice');
+    assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');
+    assert(dismissHint().textContent.trim()==='可在设置-播放中关闭跨端续播'&&dismissHint().closest('[role="status"]'),'exact polite dismissal notice missing');
+    assert(getComputedStyle(dismissHint()).pointerEvents==='none'&&relayInPlayback(),'notice intercepts input or settings location is false');
+    await capture('closed_focus');
+    await wait(()=>!dismissHint(),'dismissal notice expires automatically');
+    const dismissHintMs=Math.round(performance.now()-closedAt);
+    assert(dismissHintMs>=2800&&dismissHintMs<5500,'dismissal notice did not last about three seconds');
     assert(leavingFocusChecks.every(v=>v.inert&&v.focusBlocked),'leaving prompt later accepted focus');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,publicationLockContention:contentionVerified,unsentTimeout:unsentVerified,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace,windowFocusReceipts});
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,publicationLockContention:contentionVerified,unsentTimeout:unsentVerified,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,dismissHintMs,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace,windowFocusReceipts});
   }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,geometry:geometry(),focusState:focusState(),focusTrace,leavingFocusChecks,windowFocusReceipts});}
   finally{leavingObserver.disconnect();}
 })();

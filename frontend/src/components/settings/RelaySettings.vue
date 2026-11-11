@@ -35,11 +35,11 @@ const status = computed(() => {
 </script>
 <template>
   <section
-    class="settings-section relay-settings"
+    class="relay-settings"
     aria-labelledby="settings-relay"
     :aria-busy="model.busy.value || model.loading.value"
   >
-    <h2 id="settings-relay">跨端续播</h2>
+    <h3 id="settings-relay">跨端续播</h3>
     <div class="settings-section-content">
       <div class="settings-read-status">
         <span role="status">{{ status }}</span

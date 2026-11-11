@@ -61,11 +61,90 @@ test('relay consumes only an explicit continuation and ignores duplicate clicks 
   assert.equal(calls, 0);
   const operation = model.continueHere();
   assert.equal(model.alert.value, undefined);
+  assert.equal(model.dismissalNotice.value, false);
   assert.equal(await model.continueHere(), false);
   assert.equal(calls, 1);
   gate.resolve(reply({ ...page(), alert: null }));
   await operation;
   assert.equal(model.busy.value, false);
+});
+test('only closing the current offer shows the settings notice for three seconds', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const gate = deferred<ReturnType<typeof reply>>();
+  const dismissals: unknown[] = [];
+  const model = useRelay(
+    backend({
+      relayCommand: async (epoch, command) => {
+        dismissals.push({ epoch, command });
+        return gate.promise;
+      },
+    }),
+  );
+  try {
+    assert.equal(model.offer.value, undefined);
+    model.connect(account);
+    await model.read(true);
+    const offer = model.offer.value!;
+    await model.dismiss({ ...offer, revision: 'superseded' }, 'close');
+    assert.equal(model.dismissalNotice.value, false);
+    assert.deepEqual(dismissals, []);
+
+    const close = model.dismiss(offer, 'close');
+    assert.equal(model.offer.value, undefined);
+    assert.equal(model.dismissalNotice.value, true);
+    assert.deepEqual(dismissals, [
+      { epoch: account.epoch, command: { kind: 'dismiss', revision: offer.revision } },
+    ]);
+    t.mock.timers.tick(2999);
+    await model.dismiss(offer, 'close');
+    assert.equal(model.dismissalNotice.value, true);
+    t.mock.timers.tick(1);
+    assert.equal(model.dismissalNotice.value, false);
+    gate.resolve(reply({ ...page(), alert: null }));
+    await close;
+    assert.equal(model.dismissalNotice.value, false);
+    assert.equal(dismissals.length, 1);
+  } finally {
+    model.dispose();
+  }
+});
+test('relay timeout is silent and an old account cannot close an identical replacement offer', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const dismissals: string[] = [];
+  const model = useRelay(
+    backend({
+      relayCommand: async (epoch, command) => {
+        assert.equal(command.kind, 'dismiss');
+        dismissals.push(epoch);
+        return reply({ ...page(), alert: null }, epoch);
+      },
+    }),
+  );
+  try {
+    model.connect(account);
+    await model.read(true);
+    const original = model.offer.value!;
+    await model.dismiss(original, 'close');
+    assert.equal(model.dismissalNotice.value, true);
+    t.mock.timers.tick(1000);
+    const next = { ...account, epoch: '2' };
+    model.connect(next);
+    assert.equal(model.dismissalNotice.value, false);
+    await model.read(true);
+    const replacement = model.offer.value!;
+    assert.equal(replacement.revision, original.revision);
+    await model.dismiss(original, 'close');
+    assert.equal(model.dismissalNotice.value, false);
+    assert.deepEqual(dismissals, [account.epoch]);
+    assert.deepEqual(model.offer.value, replacement);
+
+    await model.dismiss(replacement, 'timeout');
+    assert.equal(model.dismissalNotice.value, false);
+    assert.equal(model.offer.value, undefined);
+    assert.deepEqual(dismissals, [account.epoch, next.epoch]);
+  } finally {
+    model.dispose();
+  }
 });
 test('relay lost IPC acknowledgement inspects native history without repeating the pull', async () => {
   let calls = 0,

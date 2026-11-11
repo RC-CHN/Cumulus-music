@@ -318,7 +318,16 @@ function accept(op: SettingsOperation) {
         <h2 id="settings-general">常规</h2>
         <div class="settings-section-content"><InterfaceFont :epoch="account.epoch" /></div>
       </section>
-      <PlaybackStartup :account="account" />
+      <PlaybackStartup :account="account">
+        <template #continuation>
+          <RelaySettings
+            :epoch="account.epoch"
+            :model="relay"
+            :publication="publication"
+            :signed-in="account.status === 'authenticated'"
+          />
+        </template>
+      </PlaybackStartup>
       <QueueClickPreferences :account="account" />
       <RecentHistoryPreference :account="account" @expired="emit('expired')" />
       <AudioOutput :account="account" />
@@ -550,12 +559,6 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
       <DailyNotificationSettings :epoch="account.epoch" />
-      <RelaySettings
-        :epoch="account.epoch"
-        :model="relay"
-        :publication="publication"
-        :signed-in="account.status === 'authenticated'"
-      />
       <section class="settings-section" aria-labelledby="settings-download">
         <h2 id="settings-download" tabindex="-1">下载</h2>
         <div class="settings-section-content">

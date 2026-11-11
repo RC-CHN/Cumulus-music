@@ -11,6 +11,8 @@ import {
   type RelayView,
 } from '../services/relay.ts';
 import { useCore } from '../services/core.ts';
+type RelayOffer = { epoch: string; revision: string };
+
 export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
   const page = shallowRef<RelayView>(),
     loading = ref(false),
@@ -20,11 +22,16 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
   const unknown = shallowRef<{ id: string; revision: string }>();
   const settingUnknown = shallowRef<Extract<RelaySettingCommand, { enabled: boolean }>>();
   const playbackTarget = shallowRef<RelayPlaybackTarget>();
+  const dismissalNotice = ref(false);
+  let dismissalTimer: ReturnType<typeof setTimeout> | undefined;
   let epoch: string | undefined,
     serial = 0,
     disposed = false;
   const alert = computed(() =>
     page.value?.revision !== hidden.value ? page.value?.alert : undefined,
+  );
+  const offer = computed<RelayOffer | undefined>(() =>
+    alert.value && page.value && epoch ? { epoch, revision: page.value.revision } : undefined,
   );
   const canChangeSetting = computed(
     () =>
@@ -35,11 +42,17 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
       !error.value &&
       !settingUnknown.value,
   );
+  function clearDismissalNotice() {
+    clearTimeout(dismissalTimer);
+    dismissalTimer = undefined;
+    dismissalNotice.value = false;
+  }
   function connect(account: AccountView) {
     const next = account.status === 'authenticated' ? account.epoch : undefined;
     if (next === epoch) return false;
     epoch = next;
     serial++;
+    clearDismissalNotice();
     page.value = undefined;
     hidden.value = '';
     unknown.value = undefined;
@@ -68,6 +81,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
     if (['session_expired', 'profile_changed', 'stale'].includes(issue.code)) {
       epoch = undefined;
       serial++;
+      clearDismissalNotice();
       page.value = undefined;
       unknown.value = undefined;
       settingUnknown.value = undefined;
@@ -161,10 +175,24 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
       return false;
     return command({ kind: 'retry', id: crypto.randomUUID(), previous_id, quality });
   }
-  async function dismiss() {
-    if (!page.value?.alert) return;
-    hidden.value = page.value.revision;
-    await command({ kind: 'dismiss', revision: page.value.revision });
+  async function dismiss(expected: RelayOffer, reason: 'close' | 'timeout') {
+    const current = offer.value;
+    if (
+      !current ||
+      disposed ||
+      busy.value ||
+      loading.value ||
+      current.epoch !== expected.epoch ||
+      current.revision !== expected.revision
+    )
+      return;
+    hidden.value = current.revision;
+    if (reason === 'close') {
+      clearDismissalNotice();
+      dismissalNotice.value = true;
+      dismissalTimer = setTimeout(clearDismissalNotice, 3000);
+    }
+    await command({ kind: 'dismiss', revision: current.revision });
   }
   async function cancelUnknown() {
     if (unknown.value) await command({ kind: 'cancel_unseen', ...unknown.value });
@@ -201,11 +229,14 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
   function dispose() {
     disposed = true;
     serial++;
+    clearDismissalNotice();
     playbackTarget.value = undefined;
   }
   return {
     page,
     alert,
+    offer,
+    dismissalNotice,
     loading,
     busy,
     error,

@@ -48,7 +48,7 @@ async function confirm() {
 <template>
   <div class="relay-publication" :aria-busy="model.busy.value || model.loading.value">
     <div class="settings-read-status">
-      <h3>本机播放同步</h3>
+      <h4>本机播放同步</h4>
       <button
         ref="refreshButton"
         class="secondary"

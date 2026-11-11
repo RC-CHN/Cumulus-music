@@ -80,6 +80,35 @@
 .relay-prompt-leave-active {
   pointer-events: none;
 }
+.relay-dismiss-status {
+  position: fixed;
+  inset-inline: 12px;
+  bottom: calc(var(--player, 88px) + 14px);
+  z-index: 46;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.relay-dismiss-notice {
+  box-sizing: border-box;
+  max-inline-size: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 28px #0002;
+  overflow-wrap: anywhere;
+}
+.relay-settings {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.relay-settings h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
 .relay-settings-device,
 .relay-operation {
   display: flex;
@@ -153,7 +182,7 @@
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-.relay-publication h3 {
+.relay-publication h4 {
   font-size: 14px;
   margin: 0;
 }

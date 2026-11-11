@@ -503,14 +503,19 @@ fn main() {
                 if let Some(report)=history_row_share_calls {value["historyRowShareCalls"]=report;}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
-                if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
+                if relays {
+                    value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);
+                    value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);
+                    if !is_live {
+                        value["relayCalls"]=serde_json::json!(*publication_fixture.relay_calls.lock().unwrap());
+                    }
+                }
                 let client=handle.state::<MusicClient>();
                 let epoch=client.account().unwrap().epoch;
                 if relay_recovery {
                     value["publicationView"]=serde_json::to_value(client.relay_publication_view(&epoch,None).unwrap().value).unwrap();
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
-                    value["relayCalls"]=serde_json::json!(*publication_fixture.relay_calls.lock().unwrap());
                 }
                 let paused_history = (history_collection || history_queue_actions) && value["checkPausedPlayback"]==true;
                 if ((is_live || relays || interactive || history_capture) && value["playing"]==true) || paused_history {
