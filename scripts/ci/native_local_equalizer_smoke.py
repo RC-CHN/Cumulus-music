@@ -195,7 +195,7 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100, in
     assert complete['fixtureOpens'] == 2 and native['ordinary_loads'] == 1 and not native['yields']
     load, = native['loads']
     seek, = native['seeks']
-    rooted_windows = sys.platform == 'win32' and source_kind == 'wav'
+    rooted_windows = sys.platform == 'win32' and source_kind == 'wav' and not indexed_wave
     assert stock['native']['stock_rooted_windows'] == native['stock_rooted_windows'] == [rooted_windows]
     assert load['rooted_windows'] is rooted_windows
     assert load['native_file'] is (not indexed_wave) and load['indexed_file'] is indexed_wave
@@ -241,7 +241,7 @@ def main():
     spatial.add_argument('--indexed-flac-only', action='store_true',
                          help='run trusted graph and held stock via a native Linux library index')
     spatial.add_argument('--indexed-wav-only', action='store_true',
-                         help='exercise indexed Linux local WAV via actual Local Music row clicks')
+                         help='exercise indexed local WAV via actual Local Music row clicks')
     spatial.add_argument('--spatial-controls-only', action='store_true',
                          help='run the actual EQ UI with the ordinary held FLAC source')
     spatial.add_argument('--spatial-wav-only', action='store_true',
@@ -262,8 +262,8 @@ def main():
         parser.error('the WAV-only proof does not configure a FLAC or independent filter library')
     if not is_wave and not (args.flac_library and args.flac_sha256):
         parser.error('FLAC proofs require --flac-library and --flac-sha256')
-    if args.indexed_wav_only and not sys.platform.startswith('linux'):
-        parser.error('--indexed-wav-only requires the verified Linux indexed source')
+    if args.indexed_wav_only and not (sys.platform.startswith('linux') or sys.platform == 'win32'):
+        parser.error('--indexed-wav-only requires a supported Linux or Windows indexed source')
     if args.indexed_flac_only and (not sys.platform.startswith('linux') or args.filter_library):
         parser.error('--indexed-flac-only requires Linux and no independent filter library')
     root = args.root.resolve()

@@ -227,8 +227,10 @@ impl Actor {
                     && item.resource["local_revision"]["kind"] == "file"));
         let local_equalizer = local_material.filter(|_| native_open);
         let indexed_equalizer = local_material.filter(|_| {
-            cfg!(all(target_os = "linux", target_arch = "x86_64"))
-                && !native_open
+            cfg!(all(
+                any(target_os = "linux", windows),
+                target_arch = "x86_64"
+            )) && !native_open
                 && !options.recover
                 && options.position.is_none()
                 && matches!(&options.source, LoadSource::CurrentPreference)

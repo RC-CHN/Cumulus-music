@@ -127,13 +127,33 @@ impl LocalLibrary {
         let mut seen = HashSet::new();
         let mut cue_seen = HashSet::new();
         let mut report = ScanReport::default();
+        #[cfg(windows)]
+        let wav_claims: Option<crate::storage::WindowsIndexedDownloadClaims> = paths
+            .iter()
+            .any(|path| super::windows_wave::is_wave(path))
+            .then(|| self.store.windows_indexed_download_claims().ok())
+            .flatten();
         for path in paths.iter().filter(|path| supported_audio(path)) {
             check(cancelled)?;
             let id = path_id(path)?;
             seen.insert(id.clone());
             let previous = new.files.get(&id);
+            let observed = || {
+                #[cfg(windows)]
+                if super::windows_wave::is_wave(path)
+                    && wav_claims
+                        .as_ref()
+                        .is_some_and(|claims| !claims.excludes(&id, path))
+                    && let Ok(Some(strong)) = super::windows_wave::observe(path)
+                {
+                    return Ok(strong);
+                }
+                // Legacy rows remain ordinary stock inputs. Failure to capture
+                // rooted identity or disprove a claim grants no DSP authority.
+                fingerprint(path)
+            };
             let build = (|| {
-                let before = fingerprint(path)?;
+                let before = observed()?;
                 if previous.is_some_and(|item| {
                     item.available()
                         && item.revision
@@ -148,7 +168,7 @@ impl LocalLibrary {
                 if !metadata.duration.is_finite() || metadata.duration < 0.0 {
                     return Err(Error::Media("invalid local audio duration"));
                 }
-                if before != fingerprint(path)? {
+                if before != observed()? {
                     return Err(Error::State("file changed during metadata probe"));
                 }
                 Ok(Some(LibraryItem {

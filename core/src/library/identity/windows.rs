@@ -1,4 +1,4 @@
-//! A separate Windows handle identity. It does not change library fingerprints.
+//! Windows handle identity, separate from the legacy portable fingerprint.
 
 mod drive_path;
 mod drive_root;
@@ -23,6 +23,26 @@ pub struct WindowsFileIdentity {
 }
 
 impl WindowsFileIdentity {
+    /// Used only by the scan-owned indexed WAV lane. Keep this marker
+    /// separate from the older portable creation-time identity.
+    pub(crate) const INDEXED_WAV_PREFIX: &str = "win-indexed-wav-v1:";
+
+    pub(crate) fn indexed_wav_marker(self) -> String {
+        format!(
+            "{}{:016x}:{}",
+            Self::INDEXED_WAV_PREFIX,
+            self.volume,
+            hex::encode(self.id)
+        )
+    }
+
+    pub(crate) fn current_indexed_wav(file: &File) -> io::Result<Option<Self>> {
+        if !drive_root::is_single_live_link(file)? {
+            return Ok(None);
+        }
+        Self::from_nofollow_file(file)
+    }
+
     /// Query an already opened file without reopening its path. The native
     /// caller must have opened the leaf with FILE_FLAG_OPEN_REPARSE_POINT
     /// and separately checked its parent path. This cannot tell whether a

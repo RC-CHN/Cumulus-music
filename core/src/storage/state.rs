@@ -1,5 +1,10 @@
 //! Account-scoped SQLite state, compatible with the recovered Python schema.
 //! All read/modify/write workflows must use `transaction`, not separate calls.
+#[cfg(windows)]
+mod windows_index_claims;
+#[cfg(windows)]
+pub(crate) use windows_index_claims::WindowsIndexedDownloadClaims;
+
 use crate::{Error, Result};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde_json::Value;
@@ -275,6 +280,7 @@ impl StateStore {
     /// Boolean exclusion only: an ordinary indexed source must not take a
     /// file owned by any download account, including when the player is a
     /// guest. Inputs are an exact canonical index path and its offline key.
+    #[cfg(any(not(windows), test))]
     pub(crate) fn download_claims_indexed_path(&self, key: &str, path: &str) -> Result<bool> {
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
         // Use exact index seeks for owner-independent keys and avoid scanning

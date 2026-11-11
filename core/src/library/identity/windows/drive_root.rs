@@ -305,7 +305,7 @@ const _: () = {
     );
 };
 
-fn is_single_live_link(file: &File) -> io::Result<bool> {
+pub(super) fn is_single_live_link(file: &File) -> io::Result<bool> {
     let mut info = FileStandardInfoBytes::default();
     // SAFETY: File owns the borrowed handle; the raw C structure has the
     // exact FileStandardInfo size/layout and permits any BOOLEAN bytes.

@@ -6,5 +6,7 @@ mod state;
 pub use directory::private_directory_builder;
 pub use operation_lock::OperationLock;
 pub(crate) use qr_candidate::QrCandidateStore;
+#[cfg(windows)]
+pub(crate) use state::WindowsIndexedDownloadClaims;
 pub(crate) use state::{LIKED_PREFIX_KEY, LIKED_PREFIX_KIND, PlaybackDownloadKind};
 pub use state::{StateRow, StateStore, StateTransaction};

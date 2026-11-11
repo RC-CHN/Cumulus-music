@@ -6,6 +6,8 @@ mod playlist_membership;
 mod relocate;
 mod scan;
 mod view;
+#[cfg(windows)]
+mod windows_wave;
 use super::{
     LibraryItem, LocalRevision,
     monitor::DirectoryScope,

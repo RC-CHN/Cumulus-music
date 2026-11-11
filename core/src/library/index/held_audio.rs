@@ -41,7 +41,7 @@ impl IndexedAudioFormat {
         }
     }
 
-    fn check_container(self, file: &mut File) -> Result<bool> {
+    pub(super) fn check_container(self, file: &mut File) -> Result<bool> {
         let mut header = [0; 12];
         let bytes = match self {
             Self::Flac => &mut header[..4],
@@ -85,6 +85,10 @@ impl LocalLibrary {
         let LocalRevision::File { fingerprint } = &selected.local_revision else {
             return Ok(false);
         };
+        #[cfg(windows)]
+        if format != IndexedAudioFormat::Wave || !super::windows_wave::witnessed(fingerprint) {
+            return Ok(false);
+        }
         let indexed = self.indexed_audio_path(selected, fingerprint)?;
         if indexed != path || IndexedAudioFormat::from_path(&indexed) != Some(format) {
             // An indexed NCM can legitimately resolve to a different FLAC
@@ -94,9 +98,15 @@ impl LocalLibrary {
         let Some(path) = path.to_str() else {
             return Ok(false);
         };
-        Ok(!self
+        #[cfg(windows)]
+        let claimed = self
             .store
-            .download_claims_indexed_path(&selected.local_id, path)?)
+            .download_claims_indexed_windows_path(&selected.local_id, path)?;
+        #[cfg(not(windows))]
+        let claimed = self
+            .store
+            .download_claims_indexed_path(&selected.local_id, path)?;
+        Ok(!claimed)
     }
 
     pub(crate) fn hold_ordinary_indexed_audio(
@@ -106,15 +116,17 @@ impl LocalLibrary {
         format: IndexedAudioFormat,
         cancel: &Cancellation,
     ) -> Result<Option<IndexedAudioReceipt>> {
-        if !cfg!(all(target_os = "linux", target_arch = "x86_64"))
-            || !self.ordinary_indexed_audio_current(selected, path, format)?
+        if !cfg!(all(
+            any(target_os = "linux", windows),
+            target_arch = "x86_64"
+        )) || !self.ordinary_indexed_audio_current(selected, path, format)?
         {
             return Ok(None);
         }
         let Some(held) = self.hold_indexed_audio(selected, format, cancel)? else {
             return Ok(None);
         };
-        if held.path != path || !single_link(&held.file)? {
+        if held.path != path || !single_link(&held.file, &held.fingerprint)? {
             return Ok(None);
         }
         Ok(Some(held))
@@ -157,6 +169,30 @@ impl LocalLibrary {
         // Only bound container identification, not sample format. In
         // particular, never pass a renamed NCM to a decryptor here.
         let matches_container = format.check_container(&mut file)?;
+        file.seek(SeekFrom::Start(0))?;
+        #[cfg(windows)]
+        if format == IndexedAudioFormat::Wave {
+            if !matches_container {
+                return Err(Error::QueueChanged);
+            }
+            use crate::library::matching::MatchHint;
+            let same_handle_gain = crate::library::matching::opened_metadata_hint(
+                &mut file,
+                false,
+                crate::media::ncm::HeaderPolicy::Compatible,
+            );
+            if match same_handle_gain {
+                Ok(MatchHint::Absent) => false,
+                Ok(MatchHint::Song(info)) => !info["volumeDelta"].is_null(),
+                Ok(MatchHint::Invalid) | Err(_) => true,
+            } {
+                // The ordinary path already reported no competing gain;
+                // a mismatch on the actual descriptor is stale, not a
+                // reason to load a pathname after this acquisition.
+                return Err(Error::StaleResponse);
+            }
+        }
+        #[cfg(windows)]
         file.seek(SeekFrom::Start(0))?;
         check_fingerprint(&file, fingerprint)?;
         if self.indexed_audio_path(selected, fingerprint)? != path {
@@ -212,7 +248,7 @@ impl IndexedAudioReceipt {
         selected: &LocalResource,
         cancel: &Cancellation,
     ) -> Result<File> {
-        if !single_link(&self.file)?
+        if !single_link(&self.file, &self.fingerprint)?
             || !self
                 .library
                 .ordinary_indexed_audio_current(selected, &self.path, self.format)?
@@ -245,17 +281,31 @@ impl IndexedAudioReceipt {
 }
 
 #[cfg(unix)]
-fn single_link(file: &File) -> Result<bool> {
+fn single_link(file: &File, _: &FileFingerprint) -> Result<bool> {
     use std::os::unix::fs::MetadataExt;
     Ok(file.metadata()?.nlink() == 1)
 }
 
-#[cfg(not(unix))]
-fn single_link(_file: &File) -> Result<bool> {
+#[cfg(windows)]
+fn single_link(file: &File, expected: &FileFingerprint) -> Result<bool> {
+    // The Windows identity comparison includes a current single live link.
+    super::windows_wave::matches(file, expected)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn single_link(_file: &File, _: &FileFingerprint) -> Result<bool> {
     Ok(false)
 }
 
 fn check_fingerprint(file: &File, expected: &FileFingerprint) -> Result<()> {
+    #[cfg(windows)]
+    if super::windows_wave::witnessed(expected) {
+        return if super::windows_wave::matches(file, expected)? {
+            Ok(())
+        } else {
+            Err(Error::QueueChanged)
+        };
+    }
     if fingerprint_metadata(file.metadata()?)? != *expected {
         return Err(Error::QueueChanged);
     }
@@ -288,10 +338,24 @@ fn open_indexed_file(path: &Path, expected: &FileFingerprint) -> Result<Option<F
     Ok(Some(file))
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn open_indexed_file(path: &Path, expected: &FileFingerprint) -> Result<Option<File>> {
+    if !super::windows_wave::witnessed(expected) {
+        return Ok(None);
+    }
+    let (file, _) =
+        crate::library::identity::windows::WindowsFileIdentity::open_local_fixed_ntfs_nofollow(
+            path,
+        )?
+        .ok_or(Error::QueueChanged)?;
+    Ok(Some(file))
+}
+
+#[cfg(not(any(
+    all(target_os = "linux", target_arch = "x86_64"),
+    all(windows, target_arch = "x86_64")
+)))]
 fn open_indexed_file(_path: &Path, _expected: &FileFingerprint) -> Result<Option<File>> {
-    // The current Windows index may contain creation time, not a device/file
-    // ID taken from this handle. Do not open or try to prove identity by path.
     Ok(None)
 }
 
@@ -416,3 +480,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(all(test, windows, target_arch = "x86_64"))]
+mod windows_tests;

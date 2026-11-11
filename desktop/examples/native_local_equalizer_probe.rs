@@ -127,7 +127,11 @@ fn main() {
     let indexed_wave = case == Some("indexed_wav");
     let wave = indexed_wave || matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
     let indexed = indexed_wave || matches!(case, Some("indexed_flac" | "indexed_wrong_digest"));
-    assert!(!indexed || cfg!(all(target_os = "linux", target_arch = "x86_64")));
+    assert!(
+        !indexed
+            || cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            || indexed_wave && cfg!(all(windows, target_arch = "x86_64"))
+    );
     let rate_48k = matches!(case, Some("spatial_wav_48k" | "spatial_flac_48k"));
     let (expect_graph, exercise_peq, exercise_spatial) = match case {
         Some("trusted" | "indexed_flac") => (true, false, false),

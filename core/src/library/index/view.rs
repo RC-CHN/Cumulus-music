@@ -285,7 +285,16 @@ impl LocalLibrary {
         let matches = match &item.revision {
             LocalRevision::File {
                 fingerprint: expected,
-            } => fingerprint(&item.path)? == *expected,
+            } => {
+                #[cfg(windows)]
+                if super::windows_wave::witnessed(expected) {
+                    if super::windows_wave::observe(&item.path)?.as_ref() != Some(expected) {
+                        return Err(Error::State("local source changed; rescan before playing"));
+                    }
+                    return Ok(());
+                }
+                fingerprint(&item.path)? == *expected
+            }
             LocalRevision::Cue {
                 sheet,
                 sheet_fingerprint,
