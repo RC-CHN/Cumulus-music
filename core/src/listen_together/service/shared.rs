@@ -5,11 +5,26 @@ use crate::listen_together::CommonPrivilege;
 pub struct SharedReception {
     pub id: String,
     pub room_id: String,
+    #[serde(default)]
+    peer_id: Option<String>,
     pub phase: IncomingPhase,
     pub ignore_play_command: bool,
     pub snapshot: Option<TogetherSnapshot>,
     pub privileges: Vec<CommonPrivilege>,
     pub received_at_ms: u64,
+}
+impl SharedReception {
+    /// Identity, list/version, sequenced playback and common access must all
+    /// match. An older persisted receipt without peer identity is not proof.
+    pub(crate) fn already_applied_as(&self, new: &Self) -> bool {
+        self.phase == IncomingPhase::Applied
+            && self.room_id == new.room_id
+            && self.peer_id.is_some()
+            && self.peer_id == new.peer_id
+            && self.snapshot.is_some()
+            && self.snapshot == new.snapshot
+            && self.privileges == new.privileges
+    }
 }
 impl TogetherService {
     /// M/3079: equal list versions still refresh common access; changed versions
@@ -39,6 +54,7 @@ impl TogetherService {
         let mut receipt = SharedReception {
             id: uuid::Uuid::new_v4().simple().to_string(),
             room_id: room.into(),
+            peer_id: Some(peer.clone()),
             phase: IncomingPhase::Pending,
             ignore_play_command,
             snapshot: None,

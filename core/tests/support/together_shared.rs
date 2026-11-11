@@ -238,6 +238,95 @@ async fn same_version_privilege_change_restricts_current_audio_and_all_blocked_s
 }
 
 #[tokio::test]
+async fn pause_at_zero_survives_redundant_shared_read_but_changed_rights_stay_blocked() {
+    for changed_rights in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let api = Arc::new(Backend::default());
+        let (session, client) = world(root.path(), api.clone());
+        let im = Arc::new(im::Device::default());
+        let client = client.with_together_im_factory(Arc::new(im::Factory(im.clone())));
+        play(&client).await;
+        joined(&client, &api, &im).await;
+        let service = TogetherService::new(session.clone()).unwrap();
+        let token = session.token().unwrap();
+        wait(&client, |v| {
+            v.playing
+                && v.pending.is_empty()
+                && service
+                    .state_for(&token)
+                    .unwrap()
+                    .shared
+                    .is_some_and(|r| r.phase == IncomingPhase::Applied && !r.ignore_play_command)
+        })
+        .await;
+        let before = client.player_snapshot("1").await.unwrap();
+        assert_eq!(before.state, PlaybackStatus::Playing);
+        assert_eq!(before.position, Some(0.0));
+        let reports = || {
+            api.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(path, _)| path == "/api/listen/together/play/command/report")
+                .map(|(_, body)| {
+                    serde_json::from_str::<Value>(body["commandInfo"].as_str().unwrap()).unwrap()
+                })
+                .collect::<Vec<_>>()
+        };
+        let count = reports().len();
+        if changed_rights {
+            *api.common.lock().unwrap() = Some(vec![
+                rights("91", "trial"),
+                rights("92", ""),
+                rights("93", ""),
+            ]);
+        }
+        api.hold_privilege.store(true, Ordering::SeqCst);
+        send(&im, 20002, json!({"roomId":"test-room"}));
+        tokio::time::timeout(Duration::from_secs(4), api.privilege_started.notified())
+            .await
+            .unwrap();
+        let paused = client
+            .player_action("1", PlayerAction::Pause { paused: true })
+            .await
+            .unwrap();
+        assert_eq!(paused.state, PlaybackStatus::Paused);
+        assert_eq!(paused.position, Some(0.0));
+        assert_eq!(paused.play_id, before.play_id);
+        assert_eq!(reports().len(), count);
+        api.hold_privilege.store(false, Ordering::SeqCst);
+        api.privilege_release.notify_one();
+        if changed_rights {
+            wait(&client, |v| {
+                v.shared_phase == Some(IncomingPhase::Superseded) && v.sync_error.is_some()
+            })
+            .await;
+            assert_eq!(reports().len(), count);
+        } else {
+            wait(&client, |v| {
+                v.shared_phase == Some(IncomingPhase::Applied)
+                    && !v.playing
+                    && v.pending.is_empty()
+                    && v.sync_error.is_none()
+            })
+            .await;
+            let wire = reports();
+            assert_eq!(wire.len(), count + 1);
+            assert_eq!(wire[count]["commandType"], "PAUSE");
+            assert_eq!(wire[count]["playStatus"], "PAUSE");
+            assert_eq!(wire[count]["progress"], 0);
+            assert_eq!(wire[count]["targetSongId"], "91");
+        }
+        let after = client.player_snapshot("1").await.unwrap();
+        assert_eq!(after.play_id, before.play_id);
+        assert_eq!(after.queue_revision, before.queue_revision);
+        assert_eq!(after.position, Some(0.0));
+        assert_eq!(after.state, PlaybackStatus::Paused);
+        client.close_together().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn local_seek_during_shared_rights_fetch_prevents_late_queue_install() {
     let root = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());
