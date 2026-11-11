@@ -149,7 +149,8 @@
     await emit('mode', { mode: 3 });
     click(retry());
     await wait(() => roots().length === 10 && !retry(), 'optional sections omitted');
-    assert(one('[data-home-section=playlists] [data-home-card]').dataset.homeCard === 'playlists:daily:', 'daily fallback to recommendations');
+    assert(one('[data-home-section=playlists] .discovery-home-rail [data-home-card]')?.dataset.homeCard ===
+      'playlists:daily:', 'daily remains the first carousel card in the fallback');
     await emit('mode', { mode: 2 });
     click(refresh());
     await wait(() => one('.discovery-home')?.textContent.includes('个性化推荐被关闭'), 'privacy disabled');
