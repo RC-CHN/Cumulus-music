@@ -38,6 +38,19 @@ impl SongTitleNames {
         (!text.is_empty()).then_some(text)
     }
 
+    /// M/32.i checks the first translation's truthiness before trimming and
+    /// falls back only to the first alias. M/123.b trims the chosen value.
+    pub(crate) fn filter_label(&self) -> Option<&str> {
+        let names = self.0.as_ref()?;
+        names
+            .translations
+            .as_ref()
+            .and_then(|values| values.first())
+            .filter(|name| !name.is_empty())
+            .or_else(|| names.aliases.as_ref().and_then(|values| values.first()))
+            .map(String::as_str)
+    }
+
     pub(crate) fn write_queue_fields(&self, song: &mut Value) {
         let Some(fields) = self.0.as_ref() else {
             return;

@@ -6,6 +6,7 @@ use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{future::Future, sync::Arc, time::Duration};
+pub(crate) use suggestion_marks::NormalizedSearchLiteral;
 
 #[derive(Clone, Deserialize)]
 #[serde(

@@ -94,8 +94,11 @@ fn normalize(query: &str) -> String {
     if query.chars().nth(MAX_SCALARS).is_some() {
         return String::new();
     }
-    query
-        .split(js_whitespace)
+    normalize_keyword(query)
+}
+
+fn normalize_keyword(text: &str) -> String {
+    text.split(js_whitespace)
         .filter(|piece| !piece.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
@@ -103,6 +106,41 @@ fn normalize(query: &str) -> String {
         .chars()
         .map(|c| simplified(width(c)))
         .collect()
+}
+
+/// M/123.e(M/123.b(keyword)) in a non-u RegExp /i, with M/123.b
+/// applied to the candidate. Escaping every metacharacter makes it a
+/// literal substring. Unlike the marking helper, spaces are not split.
+pub(crate) struct NormalizedSearchLiteral(String);
+
+impl NormalizedSearchLiteral {
+    pub(crate) fn new(keyword: &str) -> Self {
+        let mut previous_space = false;
+        Self(
+            normalize_keyword(keyword)
+                .chars()
+                .filter(|c| {
+                    let duplicate_space = *c == ' ' && previous_space;
+                    previous_space = *c == ' ';
+                    !duplicate_space
+                })
+                .map(legacy_case)
+                .collect(),
+        )
+    }
+
+    pub(crate) fn matches_all(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn matches(&self, candidate: &str) -> bool {
+        self.matches_all()
+            || normalize_keyword(candidate)
+                .chars()
+                .map(legacy_case)
+                .collect::<String>()
+                .contains(&self.0)
+    }
 }
 
 // M/123.f searches the normalized query, then calls u with that already

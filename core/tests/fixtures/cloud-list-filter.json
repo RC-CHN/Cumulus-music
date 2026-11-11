@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {"songId": 1001, "fileName": "文件独有.flac", "addTime": 1, "simpleSong": {"id": 9001, "name": "Ａ＋Ｂ　樂隊\t夜場", "ar": [{"name": "甲"}], "al": {"name": "首张"}}},
+    {"songId": 1002, "fileName": "plain.flac", "addTime": 2, "simpleSong": {"id": 9002, "name": "AB 乐队 夜场", "ar": [{"name": "乙"}], "al": {"name": "次张"}}},
+    {"songId": 1003, "fileName": "translated.flac", "addTime": 3, "simpleSong": {"id": 9003, "name": "丙曲", "tns": ["臺灣 錄音", "次位译名"], "alia": ["被译名遮住"], "ar": [], "al": {}}},
+    {"songId": 1004, "fileName": "alias.flac", "addTime": 4, "simpleSong": {"id": 9004, "name": "丁曲", "tns": ["", "次位译名"], "alia": ["回退別名", "次位别名"], "ar": [], "al": {}}},
+    {"songId": 1005, "fileName": "blank.flac", "addTime": 5, "simpleSong": {"id": 9005, "name": "戊曲", "tns": [" \t "], "alia": ["被空白译名遮住"], "ar": [], "al": {}}},
+    {"songId": 1006, "fileName": "credits.flac", "addTime": 6, "artist": "上傳首位", "album": "回補 專輯", "simpleSong": {"id": 9006, "name": "己曲", "ar": [{"name": ""}, {"name": "協奏\t唱將"}], "al": {"name": ""}}},
+    {"songId": 1007, "fileName": "兜底文件.flac", "addTime": 7, "artist": "仅外层歌手", "album": "仅外层专辑", "simpleSong": {"id": 9007}},
+    {"songId": 1008, "fileName": "width-space.flac", "addTime": 8, "simpleSong": {"id": 9008, "name": "前缀\uff00\uff00尾字", "ar": [], "al": {}}}
+  ],
+  "queries": [
+    ["Ａ＋Ｂ", ["1001"]],
+    ["a+b", ["1001"]],
+    ["a.b", []],
+    ["乐队\u00a0夜场", ["1002", "1001"]],
+    ["乐队 ab", []],
+    ["台湾\t录音", ["1003"]],
+    ["被译名遮住", []],
+    ["次位译名", []],
+    ["回退别名", ["1004"]],
+    ["次位别名", []],
+    ["被空白译名遮住", []],
+    ["上传首位", ["1006"]],
+    ["协奏 唱将", ["1006"]],
+    ["回补 专辑", ["1006"]],
+    ["文件独有", []],
+    ["兜底文件", []],
+    ["仅外层歌手", []],
+    ["仅外层专辑", []],
+    ["前缀\uff00\uff00尾字", []],
+    ["\uff00\uff00", ["1008", "1006", "1003", "1002", "1001"]],
+    ["\ufeff\t", ["1008", "1007", "1006", "1005", "1004", "1003", "1002", "1001"]]
+  ]
+}

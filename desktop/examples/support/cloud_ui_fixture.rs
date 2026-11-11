@@ -7,7 +7,10 @@ use std::sync::{
 };
 use tokio::sync::Notify;
 pub fn enabled() -> bool {
-    std::env::var_os("CUMULUS_CLOUD_UI_PROOF").is_some() || batch_enabled()
+    std::env::var_os("CUMULUS_CLOUD_UI_PROOF").is_some() || batch_enabled() || filter_enabled()
+}
+fn filter_enabled() -> bool {
+    std::env::var_os("CUMULUS_CLOUD_FILTER_UI_PROOF").is_some()
 }
 pub fn menu_enabled() -> bool {
     std::env::var_os("CUMULUS_CLOUD_MENU_UI_PROOF").is_some()
@@ -36,6 +39,7 @@ pub struct Fixture {
     capacity_member: AtomicUsize,
     capacity_member_reads: Mutex<Vec<usize>>,
     capacity_version_reads: AtomicUsize,
+    filter_reads: Mutex<Vec<Value>>,
 }
 fn rows(count: usize) -> Vec<Value> {
     (1..=count).map(|i| {
@@ -51,7 +55,15 @@ fn rows(count: usize) -> Vec<Value> {
 impl Default for Fixture {
     fn default() -> Self {
         Self {
-            rows: Mutex::new(if capacity_enabled() {
+            rows: Mutex::new(if filter_enabled() {
+                serde_json::from_str::<Value>(include_str!(
+                    "../../../core/tests/fixtures/cloud-list-filter.json"
+                ))
+                .unwrap()["rows"]
+                    .as_array()
+                    .unwrap()
+                    .clone()
+            } else if capacity_enabled() {
                 rows(2)
             } else if enabled() {
                 rows(405)
@@ -72,6 +84,7 @@ impl Default for Fixture {
             capacity_member: AtomicUsize::new(0),
             capacity_member_reads: Mutex::new(vec![]),
             capacity_version_reads: AtomicUsize::new(0),
+            filter_reads: Mutex::new(vec![]),
         }
     }
 }
@@ -139,6 +152,9 @@ impl Fixture {
                 json!(self.capacity_member_reads.lock().unwrap().clone());
             report["capacityVersionReads"] =
                 json!(self.capacity_version_reads.load(Ordering::Acquire));
+        }
+        if filter_enabled() {
+            report["filterReads"] = json!(self.filter_reads.lock().unwrap().clone());
         }
         report
     }
@@ -260,6 +276,9 @@ impl Fixture {
             }
         }
         if path == "/api/v1/cloud/get" {
+            if filter_enabled() {
+                self.filter_reads.lock().unwrap().push(payload.clone());
+            }
             if self.held.load(Ordering::Acquire) {
                 self.release.notified().await;
             }
@@ -277,6 +296,9 @@ impl Fixture {
             let ids: Vec<String> =
                 serde_json::from_str(payload["songIds"].as_str().unwrap()).unwrap();
             self.writes.lock().unwrap().push(ids.clone());
+            if filter_enabled() {
+                return Some(Err(Error::State("cloud filter proof refused a mutation")));
+            }
             let mode = self.mode.load(Ordering::Acquire);
             if mode == 1 {
                 return Some(Ok(json!({"code":403})));

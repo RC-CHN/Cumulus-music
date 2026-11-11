@@ -237,7 +237,7 @@ pub(super) fn catalog(
     snapshot: Option<&crate::cloud::library::CloudSnapshot>,
     query: &CloudQuery,
 ) -> Result<Vec<CloudTrackView>> {
-    let keyword = query.keyword.trim().to_lowercase();
+    let keyword = crate::catalog::search::NormalizedSearchLiteral::new(&query.keyword);
     let mut tracks = snapshot
         .map(|s| {
             s.items
@@ -278,16 +278,23 @@ pub(super) fn catalog(
         })
         .transpose()?
         .unwrap_or_default();
-    tracks.retain(|(row, _)| {
-        [
-            row.track.name.as_str(),
-            row.track.album.as_str(),
-            row.file_name.as_str(),
-        ]
-        .into_iter()
-        .chain(row.track.artists.iter().map(String::as_str))
-        .any(|s| s.to_lowercase().contains(&keyword))
-    });
+    if !keyword.matches_all() {
+        // M/3100 and M/404 both call M/546.b on the normalized cloud origin.
+        // Older snapshots can use the labels they already carry until a
+        // successful refresh records which fields came from that origin.
+        tracks.retain(|(row, raw)| {
+            let track = &row.track;
+            let origin = &raw["_cloud_filter_origin"];
+            (origin["title"] != false && keyword.matches(&track.name))
+                || track
+                    .title_names
+                    .filter_label()
+                    .is_some_and(|label| keyword.matches(label))
+                || (origin["artists"] != false
+                    && track.artists.iter().any(|artist| keyword.matches(artist)))
+                || (origin["album"] != false && keyword.matches(&track.album))
+        });
+    }
     if matches!(query.sort, CloudSort::Natural) {
         return Ok(tracks.into_iter().map(|(row, _)| row).collect());
     }

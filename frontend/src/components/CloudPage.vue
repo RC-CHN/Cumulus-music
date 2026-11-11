@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, watch, onUnmounted, nextTick } from 'vue';
 import ModalTransition from './ModalTransition.vue';
 import type { CloudDeleteTarget } from '../composables/useCloudDelete';
+import { useCloudListFilter } from '../composables/useCloudListFilter';
 import { cloudDeleteTarget } from '../services/cloudDelete';
 import Icon from './Icon.vue';
 import CloudCapacity from './cloud/CloudCapacity.vue';
@@ -66,8 +67,16 @@ function fallbackFocus() {
   );
 }
 const songGrowth = shallowRef(cloudSongColumns.map((column) => column.grow));
-const keyword = ref(query.value.keyword),
-  selected = ref(new Set<string>()),
+const cloudFilter = useCloudListFilter(
+  () => ({
+    epoch: props.model.accountEpoch.value,
+    tab: query.value.tab,
+    keyword: query.value.keyword,
+  }),
+  (keyword) => props.model.filter({ keyword }),
+);
+const { keyword } = cloudFilter;
+const selected = ref(new Set<string>()),
   uploadOpen = ref(false),
   deletion = ref<CloudDeleteTarget>(),
   taskRemoval = ref<CloudTaskTarget>(),
@@ -198,12 +207,7 @@ watch(
     collecting.value = undefined;
     dialogReturn.value = undefined;
     rowMenu.value?.close();
-    keyword.value = query.value.keyword;
   },
-);
-watch(
-  () => query.value.keyword,
-  (value) => (keyword.value = value),
 );
 onUnmounted(() => emit('dialog', false));
 function openUpload() {
@@ -212,9 +216,11 @@ function openUpload() {
   dialogOwner.value = props.model.accountEpoch.value;
   uploadOpen.value = true;
 }
-function clearSearch() {
-  keyword.value = '';
-  props.model.filter({ keyword: '' });
+function changeSearch(event: Event) {
+  cloudFilter.change((event.target as HTMLInputElement).value, (event as InputEvent).isComposing);
+}
+function endSearchComposition(event: CompositionEvent) {
+  cloudFilter.endComposition((event.target as HTMLInputElement).value);
 }
 function tabKey(event: KeyboardEvent) {
   const keys: Record<string, string> = {
@@ -458,20 +464,23 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         v-if="query.tab === 'uploaded'"
         class="cloud-search"
         role="search"
-        @submit.prevent="model.filter({ keyword })"
+        @submit.prevent="cloudFilter.submit"
       >
         <input
-          v-model="keyword"
+          :value="keyword"
           aria-label="搜索云盘歌曲"
           placeholder="搜索云盘歌曲"
           maxlength="256"
+          @input="changeSearch"
+          @compositionstart="cloudFilter.startComposition"
+          @compositionend="endSearchComposition"
         />
         <button
           v-if="keyword"
           type="button"
           class="icon-button"
           aria-label="清空云盘搜索"
-          @click="clearSearch"
+          @click="cloudFilter.clear"
         >
           <Icon name="close" />
         </button>
@@ -556,9 +565,7 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         <h2>{{ query.keyword ? '没有找到相关歌曲' : '把喜欢的音乐带在身边' }}</h2>
         <p>
           {{
-            query.keyword
-              ? '试试歌曲名、歌手、专辑或文件名'
-              : '上传本地音乐，在音乐云盘中保存和收听'
+            query.keyword ? '试试歌曲名、歌手、专辑或别名' : '上传本地音乐，在音乐云盘中保存和收听'
           }}
         </p>
         <button v-if="!query.keyword" class="primary" :disabled="busy || full" @click="openUpload">

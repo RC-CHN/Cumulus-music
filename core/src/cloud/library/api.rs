@@ -19,17 +19,17 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
     if !simple.is_null() && !simple.is_object() {
         return Err(Error::Response("invalid cloud song metadata"));
     }
-    let title = simple["name"]
-        .as_str()
-        .filter(|s| !s.is_empty())
+    let origin_title = simple["name"].as_str().filter(|s| !s.is_empty());
+    let title = origin_title
         .or_else(|| raw["songName"].as_str())
         .or_else(|| raw["fileName"].as_str())
         .unwrap_or("");
     let uploaded_artist = raw["artist"].as_str().unwrap_or("");
-    let mut artists = simple["ar"]
+    let origin_artists = simple["ar"]
         .as_array()
         .or_else(|| simple["artists"].as_array())
-        .filter(|a| !a.is_empty())
+        .filter(|a| !a.is_empty());
+    let mut artists = origin_artists
         .cloned()
         .unwrap_or_else(|| vec![json!({"name":uploaded_artist})]);
     // M/15 fills only an unnamed first normalized catalog artist, leaving
@@ -42,11 +42,10 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
     {
         first.insert("name".into(), json!(uploaded_artist));
     }
-    let mut album = simple["album"]
+    let origin_album = simple["album"]
         .as_object()
-        .or_else(|| simple["al"].as_object())
-        .cloned()
-        .unwrap_or_default();
+        .or_else(|| simple["al"].as_object());
+    let mut album = origin_album.cloned().unwrap_or_default();
     if album
         .get("name")
         .and_then(Value::as_str)
@@ -67,6 +66,15 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
         "privilege":simple["privilege"],"_cloud_delete_kind":CloudDeletionKind::from_api(simple),
         "_cloud_public_id":public_id,"_cloud_catalog_id":catalog_id,
         "_cloud_sort":{"title":row_string(raw,"songName"),"artist":row_string(raw,"artist"),"album":row_string(raw,"album")}});
+    // M/15 filters on normalized origin, not the outer upload row. Keep our
+    // display fallbacks, but don't let them make a new row match the filter.
+    if origin_title.is_none() || origin_artists.is_none() || origin_album.is_none() {
+        song["_cloud_filter_origin"] = json!({
+            "title": origin_title.is_some(),
+            "artists": origin_artists.is_some(),
+            "album": origin_album.is_some()
+        });
+    }
     crate::catalog::metadata::SongTitleNames::from_song(simple).write_queue_fields(&mut song);
     Ok(song)
 }
