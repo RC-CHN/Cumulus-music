@@ -66,15 +66,12 @@ async fn settings_choice_preserves_naming_and_rejects_a_stale_confirmation() {
     assert!(directory.active().unwrap().is_none());
     directory.configure(&f.source, 1, 2).unwrap();
     assert!(matches!(
-        directory.change_from_choice(&first.target, first.revision.as_deref()),
+        directory.change_from_choice(&first),
         Err(Error::StaleResponse)
     ));
     assert!(directory.list().unwrap().is_empty());
     let next = directory.preview_choice(&f.target).unwrap();
-    let operation = directory
-        .change_from_choice(&next.target, next.revision.as_deref())
-        .unwrap()
-        .unwrap();
+    let operation = directory.change_from_choice(&next).unwrap().unwrap();
     assert_eq!(operation.phase, MigrationPhase::Quiescing);
     let done = directory.resume(&operation.id).unwrap();
     assert_eq!(done.phase, MigrationPhase::Complete);
@@ -96,19 +93,15 @@ fn first_settings_choice_requires_explicit_empty_revision_and_does_not_move_anot
     assert_eq!(preview.decision, DirectoryChoiceDecision::Ready);
     assert!(!preview.move_existing);
     assert_eq!(preview.revision, None);
-    let mut request = json!({"kind":"change_directory","root":preview.target});
+    let mut request = json!({"kind":"change_directory","root":preview.target,
+        "receipt":"0123456789abcdef0123456789abcdef"});
     assert!(serde_json::from_value::<DownloadCommand>(request.clone()).is_err());
     request["revision"] = serde_json::Value::Null;
     assert!(matches!(
         serde_json::from_value::<DownloadCommand>(request),
         Ok(DownloadCommand::ChangeDirectory { revision: None, .. })
     ));
-    assert!(
-        other
-            .change_from_choice(&preview.target, None)
-            .unwrap()
-            .is_none()
-    );
+    assert!(other.change_from_choice(&preview).unwrap().is_none());
     assert_eq!(other.settings().unwrap().unwrap().root, preview.target);
     assert_eq!(f.directory().settings().unwrap().unwrap().root, f.source);
 }
@@ -126,11 +119,29 @@ fn settings_confirmation_refuses_a_path_redirected_after_preview() {
     fs::remove_dir(&f.target).unwrap();
     std::os::unix::fs::symlink(&different, &f.target).unwrap();
     assert!(matches!(
-        directory.change_from_choice(&preview.target, preview.revision.as_deref()),
+        directory.change_from_choice(&preview),
         Err(Error::StaleResponse)
     ));
     assert!(directory.list().unwrap().is_empty());
     assert!(fs::read_dir(different).unwrap().next().is_none());
+}
+
+#[test]
+fn settings_confirmation_refuses_a_different_folder_at_the_same_path() {
+    let f = Fixture::new();
+    let directory = f.directory();
+    fs::create_dir(&f.target).unwrap();
+    let preview = directory.preview_choice(&f.target).unwrap();
+    assert_eq!(preview.decision, DirectoryChoiceDecision::Ready);
+    let displaced = f.root.path().join("displaced");
+    fs::rename(&f.target, displaced).unwrap();
+    fs::create_dir(&f.target).unwrap();
+    assert!(matches!(
+        directory.change_from_choice(&preview),
+        Err(Error::StaleResponse)
+    ));
+    assert!(directory.list().unwrap().is_empty());
+    assert_eq!(directory.settings().unwrap().unwrap().root, f.source);
 }
 
 struct Fixture {

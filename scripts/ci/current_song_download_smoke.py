@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 
 from search_group_download_smoke import flac_frames
 from vinyl_lyric_copy_smoke import require_xvfb
@@ -34,8 +35,11 @@ def verify_directory_setup(root, output, labels, stages, complete):
         assert audit['activeCount'] == audit['completedCount'] == 0
 
     confirmation = audits['directory_confirm']
+    receipt = confirmation['previewCalls'][0]['result']['receipt']
+    assert isinstance(receipt, str) and re.fullmatch(r'[0-9a-f]{32}', receipt)
     first_preview = {'epoch': epoch, 'root': saved_root, 'result': {
-        'epoch': epoch, 'target': saved_root, 'revision': None, 'decision': 'ready', 'moveExisting': False,
+        'epoch': epoch, 'target': saved_root, 'revision': None, 'decision': 'ready',
+        'moveExisting': False, 'receipt': receipt,
     }}
     assert confirmation['nativeDirectory'] is None and confirmation['path'] == '未设置'
     assert confirmation['chooserCalls'] == [epoch] and confirmation['pickerResults'] == [saved_root]
@@ -46,7 +50,7 @@ def verify_directory_setup(root, output, labels, stages, complete):
         'action': '继续更改', 'ownsFocus': True,
     }
     change = {'epoch': epoch, 'command': {
-        'kind': 'change_directory', 'root': saved_root, 'revision': None,
+        'kind': 'change_directory', 'root': saved_root, 'revision': None, 'receipt': receipt,
     }, 'result': {'epoch': epoch, 'accepted': [], 'failed': [], 'operationId': None}}
     saved = audits['directory_saved']
     native = saved['nativeDirectory']
@@ -58,7 +62,7 @@ def verify_directory_setup(root, output, labels, stages, complete):
     same = audits['directory_same']
     same_preview = {'epoch': epoch, 'root': saved_root, 'result': {
         'epoch': epoch, 'target': saved_root, 'revision': native['revision'],
-        'decision': 'same_directory', 'moveExisting': True,
+        'decision': 'same_directory', 'moveExisting': True, 'receipt': None,
     }}
     assert same['nativeDirectory'] == native and same['path'] == saved_root and not same['focus']
     assert same['chooserCalls'] == [epoch] * 2 and same['pickerResults'] == [saved_root] * 2

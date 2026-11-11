@@ -239,16 +239,19 @@
     resolveNativeChooser(directory);
     await wait(() => enabled(byText('继续更改', directoryConfirmation() ?? null)),
       'ready native preview opens a confirmation without committing');
-    assert(directoryPreviewCalls.length === 1 && directoryPreviewCalls[0].result?.decision === 'ready' &&
+    const ready = directoryPreviewCalls[0]?.result;
+    assert(directoryPreviewCalls.length === 1 && ready?.decision === 'ready' &&
+      typeof ready.receipt === 'string' && ready.receipt.length === 32 && /^[0-9a-f]+$/.test(ready.receipt) &&
       directoryChangeCalls.length === 0 && settingsDirectoryPath() === '未设置',
-      'selecting a folder only previews');
+      'selecting a folder only previews and receives its native receipt');
     await capture('directory_confirm');
     await click(() => byText('继续更改', directoryConfirmation() ?? null), 'explicitly save the initial directory');
     await wait(() => !directoryConfirmation() && !edit.disabled && document.activeElement === edit &&
       settingsDirectoryPath() === directory && downloadSettings()?.textContent.includes('下载目录已更改。'),
       'saved native directory is rendered inline and returns focus');
-    assert(directoryChangeCalls.length === 1 && directoryChangeCalls[0].result?.epoch === epoch,
-      'exactly one same-account initial directory command completed');
+    assert(directoryChangeCalls.length === 1 && directoryChangeCalls[0].result?.epoch === epoch &&
+      directoryChangeCalls[0].command.receipt === ready.receipt,
+      'exactly one same-account initial directory command used the preview receipt');
     await capture('directory_saved');
 
     await click(() => edit, 'pick the current directory again');
@@ -257,6 +260,7 @@
     await wait(() => enabled(byText('重新选择', directoryConfirmation() ?? null)),
       'the same directory receives only a repick action');
     assert(directoryPreviewCalls.length === 2 && directoryPreviewCalls[1].result?.decision === 'same_directory' &&
+      directoryPreviewCalls[1].result.receipt === null &&
       directoryChangeCalls.length === 1, 'same directory is rejected before changing it');
     await capture('directory_same');
     await click(() => byText('重新选择', directoryConfirmation() ?? null), 'explicitly request a replacement folder');

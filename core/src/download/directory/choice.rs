@@ -5,7 +5,7 @@ impl DownloadDirectory {
     pub fn preview_choice(&self, target: &Path) -> Result<DirectoryChoice> {
         let token = self.files.token()?;
         let before = self.choice_settings(&token)?;
-        let choice = self.check_choice(target, before.as_ref(), &token, false)?;
+        let choice = self.check_choice(target, before.as_ref(), &token, None)?;
         // A concurrent settings change also retires the displayed decision.
         if self.choice_settings(&token)? != before {
             return Err(Error::StaleResponse);
@@ -13,28 +13,32 @@ impl DownloadDirectory {
         Ok(choice)
     }
 
-    pub fn change_from_choice(
-        &self,
-        target: &Path,
-        expected_revision: Option<&str>,
-    ) -> Result<Option<MigrationView>> {
+    pub fn change_from_choice(&self, selected: &DirectoryChoice) -> Result<Option<MigrationView>> {
+        use DirectoryChoiceDecision::*;
+        let expected = selected
+            .target_identity
+            .as_ref()
+            .ok_or(Error::StaleResponse)?;
+        if selected.owner != self.files.owner || selected.decision != Ready {
+            return Err(Error::StaleResponse);
+        }
         let token = self.files.token()?;
         let _directory = gate::lock(&self.files.store, &self.files.owner)?;
         let before = self.choice_settings(&token)?;
-        if before.as_ref().map(|value| value.revision.as_str()) != expected_revision {
+        if before.as_ref().map(|value| &value.revision) != selected.revision.as_ref() {
             return Err(Error::StaleResponse);
         }
-        let choice = self.check_choice(target, before.as_ref(), &token, true)?;
-        use DirectoryChoiceDecision::*;
+        let choice =
+            self.check_choice(&selected.target, before.as_ref(), &token, Some(expected))?;
         match choice.decision {
             SameDirectory => Err(Error::InvalidInput("choose a different download directory")),
             NotWritable => Err(Error::InvalidInput("download directory is not writable")),
             InsufficientSpace => Err(Error::State("insufficient space for completed downloads")),
             Ready if before.is_some() => self
-                .start_locked(&choice.target, None, false, &token)
+                .start_locked(&choice.target, None, Some(expected), &token)
                 .map(Some),
             Ready => {
-                self.configure_locked(&choice.target, 0, 1, false, &token)?;
+                self.configure_locked(&choice.target, 0, 1, Some(expected), &token)?;
                 Ok(None)
             }
         }
@@ -52,7 +56,7 @@ impl DownloadDirectory {
         target: &Path,
         before: Option<&DirectorySettings>,
         token: &Option<SessionToken>,
-        must_match: bool,
+        expected: Option<&Identity>,
     ) -> Result<DirectoryChoice> {
         use DirectoryChoiceDecision::*;
         let result = |target, decision| DirectoryChoice {
@@ -60,6 +64,8 @@ impl DownloadDirectory {
             revision: before.map(|value| value.revision.clone()),
             decision,
             move_existing: before.is_some(),
+            owner: self.files.owner.clone(),
+            target_identity: None,
         };
         if !target.is_absolute() || target.as_os_str().as_encoded_bytes().len() > 32 * 1024 {
             return Err(Error::InvalidInput("expected a picked absolute directory"));
@@ -75,9 +81,10 @@ impl DownloadDirectory {
             }
             Err(error) => return Err(error),
         };
-        if must_match && target != selected {
-            return Err(Error::StaleResponse);
+        if let Some(expected) = expected {
+            check_choice_identity(selected, &target, expected)?;
         }
+        let current = identity(&target)?;
         if let Some(before) = before {
             if before.root == target {
                 return Ok(result(target, SameDirectory));
@@ -117,6 +124,9 @@ impl DownloadDirectory {
                 return Ok(result(target, InsufficientSpace));
             }
         }
-        Ok(result(target, Ready))
+        check_choice_identity(&target, &target, &current)?;
+        let mut choice = result(target, Ready);
+        choice.target_identity = Some(current);
+        Ok(choice)
     }
 }

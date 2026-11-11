@@ -38,6 +38,61 @@ function state(epoch = '1', total = 0, offset = 0): DownloadsView {
   };
 }
 const turn = () => new Promise((r) => setImmediate(r));
+test('explicit refresh returns only the snapshot it actually published', async () => {
+  let read = async (): Promise<DownloadsView> => state('1', 1);
+  const model = useDownloads({ downloads: () => read() } as DownloadClient);
+  await model.connect(account());
+  const cached = model.view.value;
+  read = async () => {
+    throw { code: 'unavailable', message: '无法读取目录' };
+  };
+  assert.equal(await model.refresh(), undefined);
+  assert.equal(model.view.value, cached);
+  assert.equal(model.readError.value, '无法读取目录');
+
+  const held = deferred<DownloadsView>();
+  read = () => held.promise;
+  const superseded = model.refresh();
+  read = async () => state('2', 2);
+  assert.equal(await model.refresh(), undefined);
+  assert.equal(model.view.value, cached);
+  read = async () => state('1', 3);
+  const accepted = await model.refresh();
+  assert.equal(accepted?.total, 3);
+  assert.equal(model.view.value, accepted);
+  held.resolve(state('1', 4));
+  assert.equal(await superseded, undefined);
+  assert.equal(model.view.value, accepted);
+  assert.equal(model.readError.value, '');
+  model.dispose();
+});
+
+test('directory command reports the write acknowledgement separately from a failed readback', async () => {
+  let failRead = false;
+  const result = { epoch: '1', accepted: [], failed: [], operationId: null };
+  const model = useDownloads({
+    downloads: async () => {
+      if (failRead) throw { code: 'unavailable', message: '当前目录读取失败' };
+      return state('1');
+    },
+    downloadCommand: async () => result,
+  } as DownloadClient);
+  await model.connect(account());
+  failRead = true;
+  assert.deepEqual(
+    await model.changeDirectory(
+      { kind: 'change_directory', root: '/sealed/new', revision: null, receipt: 'a'.repeat(32) },
+      '1',
+    ),
+    { result, readback: undefined },
+  );
+  assert.equal(model.readError.value, '当前目录读取失败');
+  failRead = false;
+  assert.equal((await model.refresh())?.epoch, '1');
+  assert.equal(model.readError.value, '');
+  model.dispose();
+});
+
 test('a previous account cannot supply default download quality after an account switch', async () => {
   const pending = deferred<DownloadQualityPreferences>();
   const current: DownloadQualityPreferences = {

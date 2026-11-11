@@ -11,7 +11,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     download::{
         completed::{CompletedDownloads, FilePhase},
-        file_identity::identity,
+        file_identity::{Identity, identity},
         service::{DownloadStatus, DownloadTask, TASKS},
     },
     storage::{OperationLock, StateStore},
@@ -67,14 +67,14 @@ impl DownloadDirectory {
     ) -> Result<DirectorySettings> {
         let token = self.files.token()?;
         let _lock = gate::lock(&self.files.store, &self.files.owner)?;
-        self.configure_locked(root, path_type, file_type, true, &token)
+        self.configure_locked(root, path_type, file_type, None, &token)
     }
     fn configure_locked(
         &self,
         root: &Path,
         path_type: u8,
         file_type: u8,
-        create: bool,
+        expected: Option<&Identity>,
         token: &Option<SessionToken>,
     ) -> Result<DirectorySettings> {
         if path_type > 2 || file_type > 2 {
@@ -84,9 +84,9 @@ impl DownloadDirectory {
             gate::require(&self.files.store, &self.files.owner, None)
         })?;
         let selected = root;
-        let root = paths::root(selected, self.files.store.directory(), create)?;
-        if !create && root != selected {
-            return Err(Error::StaleResponse);
+        let root = paths::root(selected, self.files.store.directory(), expected.is_none())?;
+        if let Some(expected) = expected {
+            check_choice_identity(selected, &root, expected)?;
         }
         paths::writable(&root)?;
         let result = DirectorySettings {
@@ -96,6 +96,9 @@ impl DownloadDirectory {
             revision: new_id(),
         };
         self.files.guarded(token, || {
+            if let Some(expected) = expected {
+                check_choice_identity(selected, &result.root, expected)?;
+            }
             self.files.store.put(
                 &self.files.owner,
                 SETTINGS,
@@ -108,13 +111,13 @@ impl DownloadDirectory {
     pub fn start(&self, target: &Path, source: Option<&Path>) -> Result<MigrationView> {
         let token = self.files.token()?;
         let _directory = gate::lock(&self.files.store, &self.files.owner)?;
-        self.start_locked(target, source, true, &token)
+        self.start_locked(target, source, None, &token)
     }
     fn start_locked(
         &self,
         target: &Path,
         source: Option<&Path>,
-        create: bool,
+        expected: Option<&Identity>,
         token: &Option<SessionToken>,
     ) -> Result<MigrationView> {
         let _files = OperationLock::acquire(self.files.store.directory(), "download-files", "all")?;
@@ -134,9 +137,9 @@ impl DownloadDirectory {
             ));
         }
         let selected = target;
-        let target = paths::root(selected, self.files.store.directory(), create)?;
-        if !create && target != selected {
-            return Err(Error::StaleResponse);
+        let target = paths::root(selected, self.files.store.directory(), expected.is_none())?;
+        if let Some(expected) = expected {
+            check_choice_identity(selected, &target, expected)?;
         }
         if source.starts_with(&target) || target.starts_with(&source) {
             return Err(Error::InvalidInput(
@@ -145,6 +148,9 @@ impl DownloadDirectory {
         }
         paths::writable(&target)?;
         let batch = self.files.guarded(token, || {
+            if let Some(expected) = expected {
+                check_choice_identity(selected, &target, expected)?;
+            }
             self.files.store.transaction(|tx| {
                 let mut original = std::collections::BTreeMap::new();
                 for row in tx.rows(TASKS)? {
@@ -161,7 +167,7 @@ impl DownloadDirectory {
                 }
                 let batch = types::Batch {
                     source_identity: identity(&source)?,
-                    target_identity: identity(&target)?,
+                    target_identity: expected.cloned().map_or_else(|| identity(&target), Ok)?,
                     before,
                     original,
                     view: MigrationView {
@@ -257,6 +263,12 @@ impl DownloadDirectory {
             .with_options(self.options.files.clone())
             .for_migration(&batch.view.id, token.clone())
     }
+}
+fn check_choice_identity(selected: &Path, target: &Path, expected: &Identity) -> Result<()> {
+    if selected != target {
+        return Err(Error::StaleResponse);
+    }
+    paths::check(target, expected).map_err(|_| Error::StaleResponse)
 }
 fn new_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()

@@ -26,6 +26,10 @@ pub struct DirectoryChoice {
     pub revision: Option<String>,
     pub decision: DirectoryChoiceDecision,
     pub move_existing: bool,
+    #[serde(skip)]
+    pub(super) owner: String,
+    #[serde(skip)]
+    pub(super) target_identity: Option<Identity>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

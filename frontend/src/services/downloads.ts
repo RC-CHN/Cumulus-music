@@ -40,6 +40,7 @@ export interface DownloadDirectoryPreview {
   revision: string | null;
   decision: 'ready' | 'same_directory' | 'not_writable' | 'insufficient_space';
   moveExisting: boolean;
+  receipt: string | null;
 }
 export interface DownloadTask {
   id: string;
@@ -154,7 +155,7 @@ export type DownloadCommand =
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'migrate'; root: string }
-  | { kind: 'change_directory'; root: string; revision: string | null }
+  | { kind: 'change_directory'; root: string; revision: string | null; receipt: string }
   | { kind: 'migration' | 'file_operation'; operation_id: string; cancel: boolean }
   | { kind: 'file'; task_id: string; action: 'move' | 'delete' | 'forget'; target: string | null }
   | { kind: 'rename'; task_id: string; name: string }

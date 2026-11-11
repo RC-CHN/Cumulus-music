@@ -2,6 +2,7 @@ mod clear;
 mod collect;
 mod commands;
 mod comments;
+mod directory_choice;
 mod dto;
 mod history_voice;
 mod jobs;
@@ -110,6 +111,7 @@ struct Host {
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
     clear: Mutex<Option<clear::ClearVisit>>,
+    directory_choice: Mutex<directory_choice::Choices>,
     voice_quality: Mutex<voice_quality::Preparation>,
     collect_prepare: std::sync::atomic::AtomicU64,
 }
@@ -170,6 +172,7 @@ impl DownloadHost {
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
                 clear: Mutex::new(None),
+                directory_choice: Mutex::new(directory_choice::Choices::default()),
                 voice_quality: Mutex::new(voice_quality::Preparation::default()),
                 collect_prepare: std::sync::atomic::AtomicU64::new(0),
             }),
@@ -491,26 +494,6 @@ impl MusicClient {
     }
     pub fn validate_download_epoch(&self, epoch: &str) -> Result<()> {
         self.downloads.inner.context(epoch).map(|_| ())
-    }
-    pub async fn download_directory_preview(
-        &self,
-        epoch: &str,
-        root: String,
-    ) -> Result<DownloadDirectoryPreview> {
-        let context = self.downloads.inner.context(epoch)?;
-        tokio::task::spawn_blocking(move || {
-            context.guard()?;
-            let choice = context
-                .directory
-                .preview_choice(std::path::Path::new(&root))?;
-            context.guard()?;
-            Ok(DownloadDirectoryPreview {
-                epoch: context.token.generation.to_string(),
-                choice,
-            })
-        })
-        .await
-        .map_err(|_| Error::State("directory preview worker stopped"))?
     }
     pub(super) async fn configured_download_directory_available(
         &self,

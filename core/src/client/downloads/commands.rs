@@ -158,6 +158,14 @@ impl MusicClient {
         let host = self.downloads.inner.clone();
         let context = host.prepared_context(epoch).await?;
         match command {
+            DownloadCommand::ChangeDirectory {
+                root,
+                revision,
+                receipt,
+            } => {
+                host.apply_directory_choice(context, &root, revision.as_deref(), &receipt)
+                    .await
+            }
             DownloadCommand::Start { song_ids, options } => {
                 self.start_catalog_downloads(context, song_ids, options)
                     .await
@@ -512,12 +520,6 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
             context
                 .directory
                 .configure(std::path::Path::new(&root), path_type, file_type)?;
-        }
-        DownloadCommand::ChangeDirectory { root, revision } => {
-            result.operation_id = context
-                .directory
-                .change_from_choice(std::path::Path::new(&root), revision.as_deref())?
-                .map(|operation| operation.id);
         }
         DownloadCommand::Migrate { root } => {
             result.operation_id = Some(

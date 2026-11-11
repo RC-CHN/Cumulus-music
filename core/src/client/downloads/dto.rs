@@ -200,6 +200,7 @@ pub enum DownloadCommand {
         root: String,
         #[serde(deserialize_with = "explicit_directory_revision")]
         revision: Option<String>,
+        receipt: String,
     },
     Migrate {
         root: String,
@@ -237,6 +238,7 @@ fn explicit_directory_revision<'de, D: serde::Deserializer<'de>>(
 #[derive(Serialize)]
 pub struct DownloadDirectoryPreview {
     pub epoch: String,
+    pub receipt: Option<String>,
     #[serde(flatten)]
     pub choice: crate::download::directory::DirectoryChoice,
 }

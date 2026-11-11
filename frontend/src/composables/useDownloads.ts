@@ -1,5 +1,5 @@
 import { computed, ref, shallowRef } from 'vue';
-import type { AccountView } from '../services/contracts.ts';
+import type { AccountView, CoreFailure } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { downloadAdmissionSummary, downloadCommandLabel } from '../services/downloadFeedback.ts';
@@ -13,6 +13,10 @@ import type {
   DownloadsView,
   VoiceDownloadPreparation,
 } from '../services/downloads.ts';
+
+export type DownloadCommandObservation =
+  | { result: DownloadResult; readback?: DownloadsView }
+  | { failure: CoreFailure };
 
 /** Polling projects native state. Transfers and recovery workers live in core. */
 export function useDownloads(core: DownloadClient = useCore(), sessionChanged = () => {}) {
@@ -50,6 +54,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     if (v.code !== 'stale')
       (reading ? readError : error).value = context ? `${context}：${v.message}` : v.message;
     if (['session_expired', 'profile_changed'].includes(v.code)) sessionChanged();
+    return v;
   }
   function stopTimer() {
     clearTimeout(timer);
@@ -65,7 +70,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       view.value?.jobs.some((job) => job.running);
     timer = setTimeout(() => void refresh(true), active ? 850 : 5000);
   }
-  async function refresh(quiet = false) {
+  async function refresh(quiet = false): Promise<DownloadsView | undefined> {
     stopTimer();
     if (!epoch) return;
     const serial = ++read,
@@ -78,6 +83,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       if (version !== generation || serial !== read || result.epoch !== epoch) return;
       view.value = result;
       readError.value = '';
+      return result;
     } catch (e) {
       if (version === generation && serial === read) issue(e, true);
     } finally {
@@ -240,10 +246,10 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       if (current()) throw value;
     }
   }
-  async function command(
+  async function observeCommand(
     input: DownloadCommand,
     expectedEpoch?: string,
-  ): Promise<DownloadResult | undefined> {
+  ): Promise<DownloadCommandObservation | undefined> {
     if (!epoch || busy.value || (expectedEpoch !== undefined && expectedEpoch !== epoch)) return;
     const version = generation,
       captured = epoch;
@@ -273,13 +279,23 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
             ? `已受理 ${result.accepted.length} 项`
             : '已保存';
       notice.value = `${label}：${notice.value}`;
-      await refresh(true);
-      if (version === generation && captured === epoch) return result;
+      const readback = await refresh(true);
+      if (version === generation && captured === epoch) return { result, readback };
     } catch (e) {
-      if (version === generation) issue(e, false, label);
+      if (version === generation) return { failure: issue(e, false, label) };
     } finally {
       if (version === generation) busy.value = false;
     }
+  }
+  async function command(input: DownloadCommand, expectedEpoch?: string) {
+    const observation = await observeCommand(input, expectedEpoch);
+    return observation && 'result' in observation ? observation.result : undefined;
+  }
+  function changeDirectory(
+    input: Extract<DownloadCommand, { kind: 'change_directory' }>,
+    expectedEpoch: string,
+  ) {
+    return observeCommand(input, expectedEpoch);
   }
   async function pick() {
     const version = generation;
@@ -386,6 +402,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     show,
     filter,
     command,
+    changeDirectory,
     pick,
     open,
     dispose,

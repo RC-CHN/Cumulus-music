@@ -38,11 +38,12 @@ const displayedRoot = computed(() => {
   const root = downloads.value?.directory?.root;
   return root ? displayDownloadDirectory(root) : undefined;
 });
+const readError = computed(() => props.model.readError.value);
 const migration = computed(() => downloads.value?.migration);
 const blocked = () =>
   !scope.value ||
   !downloads.value ||
-  !!props.model.readError.value ||
+  !!readError.value ||
   props.model.busy.value ||
   !!migration.value;
 const directory = createDownloadDirectorySettings({
@@ -50,7 +51,8 @@ const directory = createDownloadDirectorySettings({
   blocked,
   pick: (epoch) => core.pickDownloadDirectory(epoch),
   preview: (epoch, path) => core.downloadDirectoryPreview(epoch, path),
-  commit: (epoch, command) => props.model.command(command, epoch),
+  refresh: () => props.model.refresh(),
+  commit: (epoch, command) => props.model.changeDirectory(command, epoch),
   expired: () => emit('expired'),
 });
 const { activity, confirmation, feedback } = directory;
@@ -124,11 +126,7 @@ async function left() {
 function check(event: MouseEvent) {
   const owner = scope.value;
   if (!owner || activity.value || props.model.loading.value) return;
-  void focus.run(event, async () => {
-    await props.model.refresh();
-    if (directory.live(owner) && downloads.value && !props.model.readError.value)
-      feedback.value = { text: '已读取当前下载目录。' };
-  });
+  void focus.run(event, () => directory.recheck(owner));
 }
 </script>
 
@@ -140,8 +138,7 @@ function check(event: MouseEvent) {
         {{
           account.status !== 'authenticated'
             ? '登录后可设置下载目录'
-            : displayedRoot ||
-              (downloads ? '未设置' : model.readError.value ? '暂时无法读取' : '正在读取…')
+            : displayedRoot || (downloads ? '未设置' : readError ? '暂时无法读取' : '正在读取…')
         }}
       </p>
       <button
@@ -154,6 +151,16 @@ function check(event: MouseEvent) {
         更改目录
       </button>
     </div>
+    <p
+      v-if="downloads && (readError || feedback?.recheck)"
+      class="settings-note"
+      data-download-directory-stale
+    >
+      以上为上次读取的设置，当前目录尚未核对。
+    </p>
+    <p v-if="readError" class="settings-note" role="alert" data-download-directory-read-error>
+      无法读取当前下载目录：{{ readError }}
+    </p>
     <p
       v-if="activity === 'picking' || activity === 'previewing'"
       class="settings-note"
@@ -171,10 +178,12 @@ function check(event: MouseEvent) {
     >
       {{ status }}
     </p>
-    <p v-if="feedback" class="settings-note" role="status">{{ feedback.text }}</p>
+    <p v-if="feedback" class="settings-note" role="status" data-download-directory-feedback>
+      {{ feedback.text }}
+    </p>
     <div class="settings-download-actions">
       <button
-        v-if="scope && (feedback?.recheck || model.readError.value)"
+        v-if="scope && (feedback?.recheck || readError)"
         type="button"
         class="secondary"
         :disabled="model.loading.value || !!activity"
