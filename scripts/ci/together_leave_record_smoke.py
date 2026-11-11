@@ -60,10 +60,13 @@ def audit(output, screenshots):
         assert row['values'] == ['3首歌曲', '1分钟']
         assert row['total'] == '累计27首歌曲，1小时1分钟'
         assert row['avatars'] == ['我的头像', '听友头像'] and row['focused'] == '关闭一起听记录'
-        assert row['community'] == 'CumulusMusic' and row['rect'] == [442, 404]
-        assert row['qrWidth'] == 72 and share_qr_payload(row['qr']) == PUBLIC_ACTIVITY
+        assert row['community'] == 'CumulusMusic' and row['layout'] == [442, 404]
+        assert all(abs(actual - expected) <= .5 for actual, expected in zip(row['rect'], (442, 404), strict=True))
+        assert abs(row['qrWidth'] - 72) <= .5 and share_qr_payload(row['qr']) == PUBLIC_ACTIVITY
         assert data[close]['operationId'] == operation and data[close]['gesture'] == gesture
         assert data[close]['modalOpen'] is False and data[close]['activeOutsideModal'] is True
+        focus = ('H1', '一起听') if close == 'leave_dismissed' else ('BUTTON', '关闭播放队列')
+        assert (data[close]['activeTag'], data[close]['activeLabel']) == focus
     assert len(set(operations)) == 2
     if screenshots:
         assert {path.stem for path in output.glob('leave_*.png')} == set(STAGES)

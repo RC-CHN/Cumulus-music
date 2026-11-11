@@ -122,7 +122,7 @@
       await capture(stage, {
         receipt, labels: text('.record-stats dt'), values: text('.record-stats dd'),
         total: text('.record-total')[0], avatars, focused: close.getAttribute('aria-label'),
-        rect: [box.rect.width, box.rect.height],
+        rect: [box.rect.width, box.rect.height], layout: [opened.offsetWidth, opened.offsetHeight],
         qrWidth: svg.getBoundingClientRect().width, qr, community: text('.record-footer strong')[0],
         paintSamples: [{ x: box.rect.left + 20, y: box.rect.top + 24, color: box.color }],
       });
@@ -131,6 +131,9 @@
     async function closedReceipt(stage, previous, gesture) {
       await wait(async () => !one('dialog[data-together-leave-record]') &&
         !(await view()).leaveRecord, 'record consumed once in the native view');
+      const expected = stage === 'leave_dismissed'
+        ? '.together-heading h1' : '.queue-panel [aria-label="关闭播放队列"]';
+      await wait(() => document.activeElement === one(expected), 'record close restores focus');
       await capture(stage, {
         operationId: previous.operationId, gesture, modalOpen: false,
         activeOutsideModal: !document.activeElement?.closest('dialog[data-together-leave-record]'),
