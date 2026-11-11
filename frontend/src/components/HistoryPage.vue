@@ -292,6 +292,7 @@ const rowMenuItems = computed<MenuItem[]>(() => {
   if (!target || !rowMenuLive.value) return [];
   const info = rowMenuInfo.value?.target === target ? rowMenuInfo.value.value : undefined;
   const songDownload = target.kind === 'song' ? info?.songDownload : undefined;
+  const songFile = target.kind === 'song' ? info?.songFile : undefined;
   const voiceFile = target.kind === 'voice' ? info?.voiceFile : undefined;
   const ids = historyBrowseRemovalIds(target.clickedId, target.tableGroup);
   const blocked = rowMenuCopyrightBlocked(target);
@@ -343,7 +344,7 @@ const rowMenuItems = computed<MenuItem[]>(() => {
         ? [{ key: 'download', label: '下载', icon: 'download' }]
         : []),
     ...(info?.copyLink ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
-    ...(voiceFile?.kind === 'reveal'
+    ...(songFile?.kind === 'reveal' || voiceFile?.kind === 'reveal'
       ? [{ key: 'reveal', label: '打开文件所在目录', icon: 'folder' }]
       : []),
     ...(ids.length
@@ -566,17 +567,30 @@ async function chooseRowMenu(key: string) {
     });
     return;
   }
-  if (key === 'reveal' && voiceFile?.kind === 'reveal') {
-    if (loading.value || busy.value) return;
+  if (key === 'reveal') {
+    const file = target.kind === 'song' ? info?.songFile : voiceFile;
+    if (file?.kind !== 'reveal' || loading.value || busy.value) return;
+    const scope = rowMenuScope(target);
     try {
-      await core.historyRowVoiceReveal(target.epoch, rowMenuScope(target), voiceFile.receipt);
+      if (target.kind === 'song')
+        await core.historyRowSongReveal(
+          target.epoch,
+          { ...scope, history_kind: 'song' },
+          file.receipt,
+        );
+      else await core.historyRowVoiceReveal(target.epoch, scope, file.receipt);
     } catch (cause) {
       if (!rowTargetLive(target)) return;
       const issue = failure(cause);
+      const changed =
+        ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code) ||
+        (target.kind === 'song' && issue.code === 'playback_download_missing');
       if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
       else
-        rowMenuError.value = ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
-          ? '播放记录或下载文件已更新，请重新打开菜单。'
+        rowMenuError.value = changed
+          ? target.kind === 'song'
+            ? '播放记录或本机文件已更新，请重新打开菜单。'
+            : '播放记录或下载文件已更新，请重新打开菜单。'
           : issue.message;
     }
     return;

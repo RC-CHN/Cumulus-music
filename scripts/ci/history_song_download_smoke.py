@@ -1,13 +1,19 @@
 """Exercise desktop history song downloads and publish only synthetic MP3 bytes."""
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import socket
+import subprocess
 import sys
+import time
 
+from history_download_smoke import install_fallback_guard
+from local_folder_reveal_smoke import fake_file_manager
 from motion_smoke import launch
 from playback_power_smoke import windows_runtime
 from voice_song_download_smoke import published_mp3
@@ -20,8 +26,15 @@ STAGES = (
 )
 ROW_STAGES = (
     'row_blocked_group', 'row_picker', 'row_cancelled', 'row_reopened',
-    'row_published', 'row_liked_singleton', 'row_completed_menu',
+    'row_published', 'row_liked_singleton', 'row_completed_menu', 'row_ambiguous_menu',
+    'row_download_reveal_offer', 'row_download_revealed',
+    'row_local_reveal_offer', 'row_local_revealed', 'row_mapped_reveal_offer', 'row_mapped_revealed',
 )
+STALE_STAGES = ('row_stale_offer', 'row_stale_rejected')
+CATALOG_REVEAL = ['play', 'next', 'comments', 'collect', 'copy', 'reveal', 'remove']
+GROUPED_REVEAL = ['play', 'next', 'collect', 'reveal', 'remove']
+PRIVATE_ROW_BUS = 'CUMULUS_HISTORY_SONG_ROW_PRIVATE_BUS'
+SEED = ROOT / 'core/tests/fixtures/tag_audio/seed.mp3'
 
 
 def read(path):
@@ -48,7 +61,7 @@ def verify_publications(root, group, single):
     assert [row['id'] for row in group['completed']] == ['2', '3']
     assert [row['id'] for row in single['completed']] == ['2', '3', '4']
     assert group['completed'] == single['completed'][:2]
-    audio = (ROOT / 'core/tests/fixtures/tag_audio/seed.mp3').read_bytes()
+    audio = SEED.read_bytes()
     destination = root / 'run/media'
     paths = set()
     for task in single['completed']:
@@ -98,17 +111,56 @@ def finish_report(output, result):
     return result
 
 
+def exact_reveal_paths(root, completed):
+    assert [task['id'] for task in completed] == ['2', '3', '4']
+    downloaded = published_mp3(completed[0]['path'], root / 'run/media')
+    library = root / 'run/reveal-library'
+    local, mapped, fallback, first, second = [
+        published_mp3(str(library / name), library) for name in (
+            '历史原始音频.mp3', '匹配原始音频.mp3', '匹配但下载优先.mp3', '歧义甲.mp3', '歧义乙.mp3',
+        )
+    ]
+    audio = SEED.read_bytes()
+    assert all(path.read_bytes() == audio for path in (local, mapped, fallback, first, second))
+    assert len({downloaded, local, mapped, fallback, first, second}) == 6
+    return downloaded, local, mapped
+
+
+def verify_show_items(root, completed, expected_count, *, wait=False):
+    logfile = root / 'show-items.jsonl'
+    expected = [[[path.resolve(strict=True).as_uri()], '']
+                for path in exact_reveal_paths(root, completed)[:expected_count]]
+    deadline = time.monotonic() + 4
+    while True:
+        lines = logfile.read_text(encoding='utf-8').splitlines() if logfile.exists() else []
+        if len(lines) >= expected_count or not wait:
+            break
+        assert time.monotonic() < deadline, 'private FileManager1 ShowItems did not reach the expected stage'
+        time.sleep(.04)
+    assert [json.loads(line) for line in lines] == expected
+    assert not (root / 'unexpected-file-manager-fallback').exists()
+
+
 def audit_row(root, output, screenshots):
-    complete, rows, hashes = captures(output, screenshots, ROW_STAGES)
+    native_shell = sys.platform.startswith('linux')
+    complete, rows, hashes = captures(output, screenshots, ROW_STAGES + (STALE_STAGES if native_shell else ()))
     assert complete['row']
-    blocked, first, cancelled, reopened, group, single, finished = rows
+    (blocked, first, cancelled, reopened, group, single, finished, ambiguous, download_offer,
+     download_returned, local_offer, local_returned, mapped_offer, mapped_returned, *stale) = rows
     group_keys = ['play', 'next', 'collect', 'download']
+    local_id = local_offer['clicked']
+    assert re.fullmatch(r'local:[a-f0-9]{64}', local_id)
     for cases, clicked, selection, gesture, keys in (
         ((blocked,), '6', ['1', '5'], 'ctrl-context', group_keys),
         ((first, cancelled, reopened, group), '5', ['3', '1', '2'], 'ctrl-context', group_keys),
         ((single,), '4', ['4'], 'button',
          ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']),
-        ((finished,), '2', ['2'], 'keyboard', ['play', 'next', 'comments', 'collect', 'copy', 'remove']),
+        ((finished,), '2', ['2'], 'keyboard', CATALOG_REVEAL),
+        ((ambiguous,), '1', ['1'], 'button', ['play', 'next', 'comments', 'collect', 'remove']),
+        ((download_offer, download_returned), '2', ['3', '2'], 'keyboard', GROUPED_REVEAL),
+        ((local_offer, local_returned), local_id, [local_id], 'button', GROUPED_REVEAL),
+        ((mapped_offer, mapped_returned), '6', ['6'], 'button', CATALOG_REVEAL),
+        (stale, '2', ['2'], 'button', CATALOG_REVEAL),
     ):
         for row in cases:
             assert (row['clicked'], row['selectedIds'], row['gesture'], row['menuKeys']) == (
@@ -125,7 +177,15 @@ def audit_row(root, output, screenshots):
     assert all(not row['completed'] for row in (blocked, first, cancelled, reopened))
     assert group['feedback'] == '已添加 2 首到下载列表，跳过 1 首'
     assert single['feedback'] == '已添加 1 首到下载列表' and single['chooserMounted'] is False
-    assert finished['downloadVisible'] is False and finished['completed'] == single['completed']
+    assert finished['downloadVisible'] is False and finished['revealVisible'] is True
+    assert not ambiguous['downloadVisible'] and not ambiguous['revealVisible']
+    assert all(row['completed'] == single['completed'] for row in rows[6:])
+    for row in (download_returned, local_returned, mapped_returned):
+        assert row['returnFocus'] and row['title'] is None
+        assert row['fileManagerDispatched'] is native_shell
+    if stale:
+        assert stale[-1]['returnFocus']
+        assert stale[-1]['staleError'] == '播放记录或本机文件已更新，请重新打开菜单。'
 
     reports = [row['historySongDownload'] for row in [*rows, complete]]
     assert all(row['syntheticHistoryWrites'] == 0 for row in [*rows, complete])
@@ -143,14 +203,24 @@ def audit_row(root, output, screenshots):
     assert count_reads(reports[3]) > count_reads(reports[2])
     verify_native_downloads(reports[4], reports[5], ['3', '2'], row_mode=True)
     assert count_reads(reports[4]) == count_reads(reports[5])
-    assert reports[6] == reports[7] == reports[5]
+    assert reports[6] == reports[5]
+    after_refresh = {**reports[5], 'calls': [*reports[5]['calls'], first_privileges]}
+    assert all(report == after_refresh for report in reports[7:])
     verify_publications(root, group, single)
+    exact_reveal_paths(root, single['completed'])
+    if native_shell:
+        verify_show_items(root, single['completed'], 3)
+    else:
+        assert not (root / 'show-items.jsonl').exists()
     return finish_report(output, dict(
         ok=True, actualWebView='WebView2' if sys.platform == 'win32' else 'WebKitGTK',
         network='synthetic-transports-only', stages=len(rows), screenshots=hashes,
         groupBlockedDownload=True, clickedUnlikedAnchor='5', cancelledWithoutWrites=True,
         playlistAdd=['3', '2'], orderedDownload=['2', '3'], likedDirectDownload=['4'],
-        completedDownloadHidden='2', syntheticPlaylistWrites=1, realAccountWrites=0,
+        completedDownloadHidden='2', exactSongRevealOffers=['downloaded', 'local', 'matched'],
+        ambiguousLocalMatchesHidden=True, nativeFileManagerDispatched=native_shell,
+        fakeFileManager1Calls=3 if native_shell else 0, staleRevealRejected=native_shell,
+        realFileManagerOpened=False, syntheticPlaylistWrites=1, realAccountWrites=0,
         realMediaRequests=0,
     ))
 
@@ -202,7 +272,8 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path, help='same-run staged Windows native media directory')
     parser.add_argument('--screenshots', action='store_true', help='capture GTK screenshots on Linux')
-    parser.add_argument('--row', action='store_true', help='verify SONG browse row Download')
+    parser.add_argument('--row', action='store_true', help='verify SONG browse row Download and Reveal')
+    parser.add_argument('--private-row-child', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     windows = sys.platform == 'win32'
     if windows:
@@ -215,8 +286,22 @@ def main():
                 or {name for _, name in socket.if_nameindex()} != {'lo'}
                 or len(Path('/proc/net/route').read_text(encoding='ascii').splitlines()) != 1):
             parser.error('use X11 in a sealed Linux network namespace containing only loopback')
+        if args.row and not args.screenshots:
+            parser.error('Linux row proof requires screenshots for the sealed FileManager1 acknowledgement')
     else:
         parser.error('this WebView proof supports Linux and Windows')
+    if args.private_row_child and (
+        windows or not args.row or os.environ.get(PRIVATE_ROW_BUS) != '1' or
+        not os.environ.get('DBUS_SESSION_BUS_ADDRESS', '').startswith('unix:')
+    ):
+        parser.error('the private D-Bus child is Linux row proof only')
+    if args.row and not windows and not args.private_row_child:
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('DBUS_SESSION_BUS_ADDRESS', 'AT_SPI_BUS_ADDRESS', 'AT_SPI_DISPLAY')}
+        env[PRIVATE_ROW_BUS] = '1'
+        subprocess.run(['dbus-run-session', '--', sys.executable, __file__, *sys.argv[1:],
+                        '--private-row-child'], env=env, check=True, timeout=195)
+        return
     binary = args.binary.resolve(strict=True)
     runtime = None
     if windows:
@@ -231,9 +316,13 @@ def main():
                CUMULUS_UX_SCRIPT=str(script))
     if args.row:
         row_script = root / 'row-ui.js'
-        row_script.write_text('window.__historySongRowDownloadProof = true;\n' +
+        row_script.write_text('window.__historySongRowDownloadProof = ' +
+                              json.dumps(dict(fileManager=not windows)) + ';\n' +
                               script.read_text(encoding='utf-8'), encoding='utf-8')
-        env.update(CUMULUS_UX_SCRIPT=str(row_script), CUMULUS_HISTORY_SONG_ROW_DOWNLOAD_PROOF='1')
+        env.update(CUMULUS_UX_SCRIPT=str(row_script), CUMULUS_HISTORY_SONG_ROW_DOWNLOAD_PROOF='1',
+                   CUMULUS_HISTORY_SONG_ROW_REVEAL_PROOF='1')
+        if not windows:
+            install_fallback_guard(root, env)
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if windows:
@@ -247,8 +336,42 @@ def main():
         path.mkdir(mode=0o700)
         env[key] = str(path)
     output = root / 'run/first'
-    with (root / 'host.log').open('x', encoding='utf-8') as log:
-        status = launch(binary, env, log, output, args.screenshots, acknowledge_receipts=True)
+    use_shell = args.row and not windows
+    shell = fake_file_manager(root, env, exact_successes=3) if use_shell else nullcontext()
+    changed = None
+
+    def before_ack(path, value, _pid):
+        nonlocal changed
+        for name, count in (('download', 1), ('local', 2), ('mapped', 3)):
+            if path.stem.endswith(f'_row_{name}_revealed'):
+                verify_show_items(root, value['completed'], count, wait=True)
+                return
+        if path.stem.endswith('_row_stale_offer'):
+            verify_show_items(root, value['completed'], 3)
+            media, _, _ = exact_reveal_paths(root, value['completed'])
+            original = media.read_bytes()
+            assert original == SEED.read_bytes()
+            tampered = bytearray(original)
+            tampered[len(tampered) // 2] ^= 1
+            changed = (media, original, bytes(tampered))
+            media.write_bytes(tampered)
+        elif path.stem.endswith('_row_stale_rejected'):
+            assert changed is not None
+            media, original, tampered = changed
+            assert len(tampered) == len(original) and media.read_bytes() == tampered
+            verify_show_items(root, value['completed'], 3)
+            media.write_bytes(original)
+            changed = None
+
+    try:
+        with shell, (root / 'host.log').open('x', encoding='utf-8') as log:
+            status = launch(binary, env, log, output, args.screenshots, acknowledge_receipts=True,
+                            before_ack=before_ack if use_shell else None)
+    finally:
+        if changed is not None:
+            media, original, tampered = changed
+            if media.is_file() and media.read_bytes() == tampered:
+                media.write_bytes(original)
     failed = output / 'failed.json'
     assert not failed.exists(), read(failed) if failed.exists() else None
     assert status == 0, f'native probe exit {status}'

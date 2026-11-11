@@ -197,7 +197,7 @@ pub(in crate::client) fn row_hidden(
             .is_empty())
 }
 
-fn row_source(row: &HistoryRecord) -> HistorySongDownloadSource<'_> {
+pub(super) fn row_source(row: &HistoryRecord) -> HistorySongDownloadSource<'_> {
     let song = &row.resource;
     if song["fileId"].as_str().is_some_and(|id| !id.is_empty())
         || song["fileId"].as_u64().is_some_and(|id| id != 0)

@@ -317,6 +317,8 @@ export function createTauriClient(): CoreClient {
     listenedBooks: (epoch, query) => invoke('listened_books', { epoch, query }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     historyRowMenuInfo: (epoch, target) => invoke('history_row_menu_info', { epoch, target }),
+    historyRowSongReveal: (epoch, target, receipt) =>
+      invoke('history_row_song_reveal', { epoch, target, receipt }),
     historyRowVoiceReveal: (epoch, target, receipt) =>
       invoke('history_row_voice_reveal', { epoch, target, receipt }),
     historyCollectPrepare: (epoch, target) => invoke('history_collect_prepare', { epoch, target }),

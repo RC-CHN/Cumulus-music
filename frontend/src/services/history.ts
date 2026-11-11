@@ -32,6 +32,7 @@ export interface HistoryRowMenuInfo {
   } | null;
   copyLink: string | null;
   songDownload?: { kind: 'download' | 'copyright_blocked' | 'unavailable' };
+  songFile?: { kind: 'reveal'; receipt: string };
   voiceFile?: { kind: 'download' } | { kind: 'reveal'; receipt: string } | { kind: 'unavailable' };
 }
 export interface HistoryRowMenuClient {
@@ -43,6 +44,11 @@ export interface HistoryRowMenuClient {
     epoch: string,
     target: HistoryRowMenuTarget,
   ): Promise<VoiceDownloadPreparation>;
+  historyRowSongReveal(
+    epoch: string,
+    target: HistoryRowMenuTarget & { history_kind: 'song' },
+    receipt: string,
+  ): Promise<void>;
   historyRowVoiceReveal(
     epoch: string,
     target: HistoryRowMenuTarget,

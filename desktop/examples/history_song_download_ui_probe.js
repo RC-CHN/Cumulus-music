@@ -16,7 +16,7 @@
   const rows = () => all('.history-window input[type="checkbox"]', page());
   const selected = () => rows().filter(node => node.checked).map(node => node.getAttribute('aria-label').slice(-2));
   const feedback = () => text(q('.track-action-feedback')) ?? null;
-  const rowProof = window.__historySongRowDownloadProof === true;
+  const rowProof = window.__historySongRowDownloadProof;
   const songRow = id => q(`[data-history-row-id="${id}"]`, page());
   const more = id => q(`[data-history-row-more="${id}"]`, page());
   const rowMenu = () => q('[role="menu"][aria-label="播放记录操作"]:not([inert])');
@@ -26,6 +26,7 @@
     .map(node => node.dataset.historyRowId).sort();
   const browsing = () => page()?.dataset.historyView === 'browse' &&
     page()?.dataset.historyCategory === '歌曲' && page()?.getAttribute('aria-busy') === 'false';
+  const rowError = () => text(q('.history-row-menu-error[role="alert"]', page()));
   const stages = [];
   let epoch, step = 'startup';
   async function wait(observe, label) {
@@ -117,13 +118,16 @@
     assert(same(keys(), expectedKeys), 'official song history row menu keys ' + keys().join(','));
     assert(same(browseIds(), [...ids].sort()), 'retains exact selected song rows');
     if (rowItem('download')) assert(text(rowItem('download')) === '下载', 'official Download label');
+    if (rowItem('reveal')) assert(ready(rowItem('reveal')) &&
+      text(rowItem('reveal')) === '打开文件所在目录', 'official exact-file reveal label');
     return { anchor, receipt: { clicked, selectedIds: ids, gesture, menuKeys: keys() } };
   }
   async function rowCapture(name, target, moreFacts = {}) {
     assert(browsing() && same(browseIds(), [...target.receipt.selectedIds].sort()),
       'download preserves History route and exact browse selection');
     let menuPaint = {};
-    if (name === 'row_blocked_group' || name === 'row_completed_menu') {
+    if (['row_blocked_group', 'row_completed_menu', 'row_ambiguous_menu'].includes(name) ||
+        name.endsWith('_reveal_offer') || name === 'row_stale_offer') {
       const panel = await wait(() => {
         const current = rowMenu();
         if (current?.getClientRects().length && !current.classList.contains('menu-enter-active')
@@ -147,6 +151,76 @@
       ready(q('[data-playlist-id="81"]', modal())) && same(destinations(), ['81']),
     'clicked unliked anchor opens owned playlist picker');
     assert(!quality(), 'ordinary row downloads have no quality chooser');
+  }
+  const catalogReveal = ['play', 'next', 'comments', 'collect', 'copy', 'reveal', 'remove'];
+  const groupedReveal = ['play', 'next', 'collect', 'reveal', 'remove'];
+  const history = async () => (await invoke('history_page', { epoch, kind: 'song', refresh: false })).value;
+  async function seedFileRows() {
+    const before = await history();
+    window.__historySongFileFixture = null;
+    await emit('history-song-file-fixture', { action: 'seed' });
+    const fixture = await wait(() => window.__historySongFileFixture?.action === 'seed' &&
+      window.__historySongFileFixture, 'seed closed native song-file fixture');
+    assert(/^local:[0-9a-f]{64}$/.test(fixture.localId), 'exact native synthetic local history ID');
+    click(await wait(() => {
+      const refresh = q('button[aria-label="刷新播放记录"]', page());
+      return ready(refresh) && refresh;
+    }, 'actual History refresh control'));
+    const after = await wait(async () => {
+      if (!browsing() || !ready(more(fixture.localId))) return;
+      const result = await history();
+      return result.revision !== before.revision && result.remoteIncluded &&
+        result.entries.some(entry => entry.id === fixture.localId) && result;
+    }, 'refreshed History includes the exact seeded local row');
+    assert(before.entries.length === 6 && after.entries.length === 7,
+      'only the fixture local history record was added');
+    assert(text(q('.history-name', songRow(fixture.localId))) === '历史原始音频',
+      'the local row visibly identifies the sealed audio fixture');
+    return fixture.localId;
+  }
+  async function reveal(name, target) {
+    assert(!rowItem('download') && ready(rowItem('reveal')), 'file menu replaces Download with Reveal');
+    await rowCapture(`row_${name}_reveal_offer`, target);
+    if (rowProof.fileManager) click(rowItem('reveal'));
+    else await dismissRow(target);
+    await wait(() => !rowMenu() && !modal() && !quality() && !rowError() &&
+      browsing() && document.activeElement === target.anchor, 'file reveal restores clicked More');
+    // Linux waits for the exact native FileManager1 dispatch before acknowledging
+    // each receipt. Windows checks the offer/focus and never invokes Explorer.
+    await rowCapture(`row_${name}_revealed`, target, { fileManagerDispatched: rowProof.fileManager });
+    assert(!rowError(), 'file reveal produced no row error');
+  }
+  async function revealRows() {
+    const localId = await seedFileRows();
+    const ambiguous = await openSongRow(['1'], '1', 'button',
+      ['play', 'next', 'comments', 'collect', 'remove']);
+    assert(!rowItem('reveal') && !rowItem('download'),
+      'ambiguous local matches expose neither Reveal nor a duplicate Download');
+    await rowCapture('row_ambiguous_menu', ambiguous, { revealVisible: false, downloadVisible: false });
+    await dismissRow(ambiguous);
+
+    // Song 2 has both a verified completed publication and a native local
+    // match. The group retains gesture-first song 3, but the exact clicked
+    // song 2 publication must win over both alternatives.
+    const downloaded = await openSongRow(['3', '2'], '2', 'keyboard', groupedReveal);
+    await reveal('download', downloaded);
+    const local = await openSongRow([localId], localId, 'button', groupedReveal);
+    await reveal('local', local);
+    const mapped = await openSongRow(['6'], '6', 'button', catalogReveal);
+    await reveal('mapped', mapped);
+
+    if (rowProof.fileManager) {
+      const stale = await openSongRow(['2'], '2', 'button', catalogReveal);
+      // The sealed runner changes one byte of the exact download *after*
+      // capturing this already-open menu, before acknowledging the receipt.
+      await rowCapture('row_stale_offer', stale);
+      click(rowItem('reveal'));
+      const failure = await wait(() => !rowMenu() && browsing() &&
+        document.activeElement === stale.anchor && rowError(), 'changed publication is refused');
+      assert(failure === '播放记录或本机文件已更新，请重新打开菜单。',
+        'stale-file warning identifies the changed history/file');
+      await rowCapture('row_stale_rejected', stale, { staleError: failure });
+    }
   }
   async function runRows() {
     await wait(() => browsing() && ['1', '2', '3', '4', '5', '6'].every(id => ready(more(id))),
@@ -199,11 +273,11 @@
     } finally { watchChooser.disconnect(); }
     await rowCapture('row_liked_singleton', single, { chooserMounted });
 
-    const completed = await openSongRow(['2'], '2', 'keyboard',
-      ['play', 'next', 'comments', 'collect', 'copy', 'remove']);
+    const completed = await openSongRow(['2'], '2', 'keyboard', catalogReveal);
     assert(!rowItem('download'), 'completed song no longer exposes Download');
-    await rowCapture('row_completed_menu', completed, { downloadVisible: false });
+    await rowCapture('row_completed_menu', completed, { downloadVisible: false, revealVisible: true });
     await dismissRow(completed);
+    await revealRows();
   }
   try {
     epoch = await wait(async () => {
@@ -220,6 +294,7 @@
     } });
     click(await wait(() => all('.sidebar button').find(node => ready(node) && text(node) === '最近播放'), 'Recently Played sidebar'));
     if (rowProof) {
+      assert(typeof rowProof.fileManager === 'boolean', 'sealed file-manager mode');
       await runRows();
       await emit('complete', { ok: true, stages, row: true });
       return;
@@ -260,7 +335,7 @@
   } catch (error) {
     await emit('failed', { ok: false, step, error: error?.message ?? String(error),
       diagnostics: { selected: selected(), browse: browseIds(), menu: keys(),
-        feedback: feedback(), destinations: destinations(),
+        feedback: feedback(), rowError: rowError(), destinations: destinations(),
         pickerMessage: text(q('.collect-load', modal() ?? null)), facts: epoch ? await facts().catch(() => null) : null },
     });
   }

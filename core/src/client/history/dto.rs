@@ -30,6 +30,8 @@ pub struct HistoryRowMenuInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub song_download: Option<HistorySongDownloadMenu>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_file: Option<HistorySongFileMenu>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_file: Option<HistoryVoiceFileMenu>,
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -38,6 +40,11 @@ pub enum HistorySongDownloadMenu {
     Download,
     CopyrightBlocked,
     Unavailable,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistorySongFileMenu {
+    Reveal { receipt: String },
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

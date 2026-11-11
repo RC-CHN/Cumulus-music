@@ -77,6 +77,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "history_row_menu_info",
             "download_history_row_voice_prepare",
             "history_row_voice_reveal",
+            "history_row_song_reveal",
             "history_command",
             "history_sync_preference",
             "remote_skin_catalog",

@@ -1,8 +1,12 @@
 //! Read-only M556/M622 menu adornments bound to the current native history.
 use super::{
     AccountData, HistoryRowComment, HistoryRowCommentResource, HistoryRowMenuInfo,
-    HistoryRowMenuTarget, HistorySongDownloadMenu, MusicClient, row_menu, song_download,
-    voice_file_menu,
+    HistoryRowMenuTarget, HistorySongDownloadMenu, HistorySongFileMenu, HistoryVoiceFileMenu,
+    MusicClient,
+    file_menu::Candidate,
+    row_menu, song_download,
+    song_file_menu::SongFileTarget,
+    voice_file_menu::{self, VoiceFileObservation},
 };
 use crate::{
     Error, Result,
@@ -19,7 +23,7 @@ struct MenuProjection {
     info: HistoryRowMenuInfo,
     count_target: Option<(ResourceKind, String)>,
     clicked_program: Option<Episode>,
-    clicked_song: Option<String>,
+    clicked_song: Option<SongFileTarget>,
 }
 
 fn public_id(kind: HistoryKind, row: &HistoryRecord) -> Option<String> {
@@ -59,7 +63,7 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
     let selection = row_menu::resolve(snapshot, &target.clicked_id, &target.selected_ids)?;
     let clicked = selection.clicked;
     let has_group = !selection.selected.is_empty();
-    let (song_download, clicked_song) = if snapshot.kind == HistoryKind::Song {
+    let song_download = if snapshot.kind == HistoryKind::Song {
         use song_download::{HistorySongDownloadProjection, HistorySongDownloadSource};
         // Comment and Copy still operate on larger selections; the download
         // branch alone has the bounded song-job limit.
@@ -75,28 +79,28 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
                 } else {
                     HistorySongDownloadMenu::Download
                 };
-                (Some(menu), Some(rows.anchor.id.clone()))
+                Some(menu)
             }
-            Ok(_) | Err(Error::InvalidInput(_)) => {
-                (Some(HistorySongDownloadMenu::Unavailable), None)
-            }
+            Ok(_) | Err(Error::InvalidInput(_)) => Some(HistorySongDownloadMenu::Unavailable),
             Err(error) => return Err(error),
         }
     } else {
-        (None, None)
+        None
     };
     let mut projection = MenuProjection {
         info: HistoryRowMenuInfo {
             comment: None,
             copy_link: None,
             song_download,
+            song_file: None,
             voice_file: None,
         },
         count_target: None,
         clicked_program: (snapshot.kind == HistoryKind::Voice)
             .then(|| voice_file_menu::episode(clicked).ok())
             .flatten(),
-        clicked_song,
+        clicked_song: (snapshot.kind == HistoryKind::Song)
+            .then(|| SongFileTarget::from_record(clicked)),
     };
     let Some(id) = public_id(snapshot.kind, clicked) else {
         return Ok(projection);
@@ -138,7 +142,7 @@ impl MusicClient {
         let history = HistoryService::new(self.session.clone())?;
         let snapshot = history.snapshot_for(&token, target.history_kind)?;
         let mut menu = project(&snapshot, &target)?;
-        let sequence = self.history_voice_menu.begin()?;
+        let sequence = self.history_row_file_menu.begin()?;
         if let Some((kind, id)) = menu.count_target
             && token.uid.is_some()
         {
@@ -153,36 +157,43 @@ impl MusicClient {
                 comment.count = count;
             }
         }
-        if let Some(song) = menu.clicked_song
-            && token.uid.is_some()
-        {
-            let local = self.local.context().await?;
-            let owner = token.clone();
-            let session = self.session.clone();
-            let unavailable = tokio::task::spawn_blocking(move || {
-                song_download::row_hidden(&local.library, &session, &owner, &song)
-            })
-            .await
-            .map_err(|_| Error::State("history song menu inspection stopped"))??;
-            if unavailable {
+        let candidate = if let Some(song) = menu.clicked_song {
+            let observation = self.observe_history_song_file(&token, song).await?;
+            if observation.hides_download {
                 menu.info.song_download = Some(HistorySongDownloadMenu::Unavailable);
             }
-        }
-        let observation = if target.history_kind == HistoryKind::Voice {
-            Some(
-                self.observe_history_voice_file(&token, menu.clicked_program)
-                    .await?,
-            )
+            observation.candidate.map(Candidate::Song)
         } else {
-            None
+            match self
+                .observe_history_voice_file(&token, menu.clicked_program)
+                .await?
+            {
+                VoiceFileObservation::Download => {
+                    menu.info.voice_file = Some(HistoryVoiceFileMenu::Download);
+                    None
+                }
+                VoiceFileObservation::Unavailable => {
+                    menu.info.voice_file = Some(HistoryVoiceFileMenu::Unavailable);
+                    None
+                }
+                VoiceFileObservation::Reveal(file) => Some(Candidate::Voice(file)),
+            }
         };
         // Scope failures are not optional adornment failures. An expired
         // account epoch or a changed displayed history must not publish.
         let revision = target.revision.clone();
-        history.with_matching_revision(&token, target.history_kind, &revision, |_| {
-            menu.info.voice_file =
-                self.history_voice_menu
-                    .publish(sequence, token.clone(), target, observation)?;
+        let kind = target.history_kind;
+        history.with_matching_revision(&token, kind, &revision, |_| {
+            if let Some(receipt) =
+                self.history_row_file_menu
+                    .publish(sequence, token.clone(), target, candidate)?
+            {
+                if kind == HistoryKind::Song {
+                    menu.info.song_file = Some(HistorySongFileMenu::Reveal { receipt });
+                } else {
+                    menu.info.voice_file = Some(HistoryVoiceFileMenu::Reveal { receipt });
+                }
+            }
             Ok(AccountData {
                 epoch: epoch.into(),
                 value: menu.info,

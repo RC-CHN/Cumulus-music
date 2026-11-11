@@ -1,5 +1,5 @@
 //! M622 looks up the clicked voice's completed task, independent of the group.
-use super::{HistoryRowMenuTarget, HistoryVoiceFileMenu, MusicClient, row_menu};
+use super::{HistoryRowMenuTarget, MusicClient, file_menu::Candidate, row_menu};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -9,87 +9,12 @@ use crate::{
     protocol::wire::serialization::js_truthy,
     storage::PlaybackDownloadKind,
 };
-use std::{
-    path::Path,
-    sync::Mutex,
-    time::{Duration, Instant},
-};
-
-const LIFETIME: Duration = Duration::from_secs(180);
-
-#[derive(Default)]
-pub(in crate::client) struct HistoryVoiceMenuHost(Mutex<(u64, Option<Offer>)>);
-
-struct Offer {
-    receipt: String,
-    issued: Instant,
-    token: SessionToken,
-    target: HistoryRowMenuTarget,
-    file: DownloadFileCandidate,
-}
+use std::path::Path;
 
 pub(super) enum VoiceFileObservation {
     Download,
     Reveal(Box<DownloadFileCandidate>),
     Unavailable,
-}
-
-impl HistoryVoiceMenuHost {
-    pub(super) fn begin(&self) -> Result<u64> {
-        let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        state.0 = state
-            .0
-            .checked_add(1)
-            .ok_or(Error::State("history row menu generation exhausted"))?;
-        state.1 = None;
-        Ok(state.0)
-    }
-
-    pub(super) fn publish(
-        &self,
-        sequence: u64,
-        token: SessionToken,
-        target: HistoryRowMenuTarget,
-        observation: Option<VoiceFileObservation>,
-    ) -> Result<Option<HistoryVoiceFileMenu>> {
-        let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        if state.0 != sequence {
-            return Err(Error::StaleResponse);
-        }
-        Ok(observation.map(|observation| match observation {
-            VoiceFileObservation::Download => HistoryVoiceFileMenu::Download,
-            VoiceFileObservation::Unavailable => HistoryVoiceFileMenu::Unavailable,
-            VoiceFileObservation::Reveal(file) => {
-                let receipt = uuid::Uuid::new_v4().simple().to_string();
-                state.1 = Some(Offer {
-                    receipt: receipt.clone(),
-                    issued: Instant::now(),
-                    token,
-                    target,
-                    file: *file,
-                });
-                HistoryVoiceFileMenu::Reveal { receipt }
-            }
-        }))
-    }
-
-    fn take(
-        &self,
-        token: &SessionToken,
-        target: &HistoryRowMenuTarget,
-        receipt: &str,
-    ) -> Result<Offer> {
-        let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        if !state.1.as_ref().is_some_and(|offer| {
-            &offer.token == token
-                && &offer.target == target
-                && offer.receipt == receipt
-                && offer.issued.elapsed() < LIFETIME
-        }) {
-            return Err(Error::QueueChanged);
-        }
-        state.1.take().ok_or(Error::QueueChanged)
-    }
 }
 
 pub(in crate::client) fn episode(row: &HistoryRecord) -> Result<Episode> {
@@ -182,8 +107,11 @@ impl MusicClient {
         let history = HistoryService::new(self.session.clone())?;
         let snapshot = history.snapshot_for(&token, HistoryKind::Voice)?;
         episode(selection(&snapshot, &target)?.clicked)?;
-        let offer = self.history_voice_menu.take(&token, &target, receipt)?;
-        let file = tokio::task::spawn_blocking(move || offer.file.verify().map_err(file_error))
+        let Candidate::Voice(file) = self.history_row_file_menu.take(&token, &target, receipt)?
+        else {
+            return Err(Error::QueueChanged);
+        };
+        let file = tokio::task::spawn_blocking(move || file.verify().map_err(file_error))
             .await
             .map_err(|_| Error::State("history program file validation stopped"))??;
         let reveal = HistoryVoiceFileReveal {

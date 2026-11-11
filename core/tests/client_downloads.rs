@@ -2710,6 +2710,79 @@ async fn history_reuses_completed_download_after_native_offline_verification() {
 }
 
 #[tokio::test]
+async fn history_reveal_rejects_a_second_publication_added_after_the_menu_opens() {
+    let f = Fixture::new();
+    let (task, completed) = f.completed().await;
+    f.client
+        .play_downloads("1", vec![task.clone()], 0)
+        .await
+        .unwrap();
+    f.api.catalog_menu_enabled.store(true, Ordering::Release);
+    let history = f
+        .client
+        .history_page("1", HistoryKind::Song, false)
+        .await
+        .unwrap()
+        .value;
+    let target = HistoryRowMenuTarget {
+        history_kind: HistoryKind::Song,
+        revision: history.revision,
+        clicked_id: "123".into(),
+        selected_ids: vec![],
+    };
+    let offer = async || {
+        let menu = f
+            .client
+            .history_row_menu_info("1", target.clone())
+            .await
+            .unwrap()
+            .value;
+        let Some(HistorySongFileMenu::Reveal { receipt }) = menu.song_file else {
+            panic!("verified download should offer its original file");
+        };
+        receipt
+    };
+    let first = offer().await;
+    let lease = f
+        .client
+        .history_row_song_file_reveal("1", target.clone(), &first)
+        .await
+        .unwrap();
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    assert_eq!(lease.path(), path.canonicalize().unwrap());
+    let pending = offer().await;
+
+    let mut duplicate = f
+        .store
+        .get("1", "download_tasks_v1", &task)
+        .unwrap()
+        .unwrap();
+    let second = "a4a25a7c7e094fa8855cbf2fed026ec1";
+    duplicate["id"] = json!(second);
+    f.store
+        .put("1", "download_tasks_v1", second, &duplicate)
+        .unwrap();
+    assert!(lease.check_current(&f.client).is_err());
+    assert!(
+        f.client
+            .history_row_song_file_reveal("1", target.clone(), &pending)
+            .await
+            .is_err()
+    );
+    let new_menu = f
+        .client
+        .history_row_menu_info("1", target)
+        .await
+        .unwrap()
+        .value;
+    assert!(new_menu.song_file.is_none());
+    assert!(matches!(
+        new_menu.song_download,
+        Some(HistorySongDownloadMenu::Unavailable)
+    ));
+}
+
+#[tokio::test]
 async fn download_categories_filter_before_pagination_and_keep_cloud_audio_with_songs() {
     use cumulus_core::download::service::DownloadOrigin;
     let f = Fixture::new();

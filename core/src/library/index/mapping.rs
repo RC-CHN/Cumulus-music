@@ -48,6 +48,26 @@ impl LocalLibrary {
             .map(|matches| matches.into_iter().map(|(_, item)| item).collect())
     }
 
+    /// History location selects only a unique current mapping. Recheck the
+    /// same visible candidate set under the lock used by mapping writers.
+    pub(crate) fn check_unique_online_file(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song: &str,
+        expected: &crate::library::LibraryItem,
+    ) -> Result<()> {
+        let _lock = self.lock()?;
+        let matches = self.files_for_online_songs(session, token, &[song].into_iter().collect())?;
+        if matches!(matches.as_slice(), [(_, item)] if item.id == expected.id
+            && item.path == expected.path && item.revision == expected.revision)
+        {
+            Ok(())
+        } else {
+            Err(Error::QueueChanged)
+        }
+    }
+
     /// One reverse lookup for the complete native group, not one index scan per song.
     pub(crate) fn matched_online_song_ids(
         &self,

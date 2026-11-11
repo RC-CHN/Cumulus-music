@@ -122,6 +122,13 @@ impl LocalLibrary {
         Self::available_item(&self.load()?, id).ok_or(Error::State("local track is not available"))
     }
 
+    /// Confirm the exact original audio remains a current visible indexed item.
+    pub(crate) fn check_indexed_file(&self, expected: &LibraryItem) -> Result<()> {
+        let _lock = self.lock()?;
+        Self::checked_visible_file(&self.load_with_hidden(true)?, expected)?;
+        Ok(())
+    }
+
     /// Recheck one exact, visible local audio/CUE mapping under the index lock.
     pub(crate) fn check_mapped_file(
         &self,
@@ -131,8 +138,22 @@ impl LocalLibrary {
         expected: &LibraryItem,
     ) -> Result<()> {
         let _lock = self.lock()?;
-        let index = self.load_with_hidden(true)?;
-        let item = Self::available_item(&index, &expected.id).ok_or(Error::QueueChanged)?;
+        let item = Self::checked_visible_file(&self.load_with_hidden(true)?, expected)?;
+        session.with_token(token, |owner| {
+            let raw = self
+                .store
+                .get(owner, super::MAPS, &item.id)?
+                .ok_or(Error::QueueChanged)?;
+            let mapping: super::LocalMapping = serde_json::from_value(raw)?;
+            if mapping.song_id != catalog_id || mapping.revision != item.revision {
+                return Err(Error::QueueChanged);
+            }
+            Ok(())
+        })
+    }
+
+    fn checked_visible_file(index: &Index, expected: &LibraryItem) -> Result<LibraryItem> {
+        let item = Self::available_item(index, &expected.id).ok_or(Error::QueueChanged)?;
         let scoped_path = match &item.revision {
             LocalRevision::File { .. } => &item.path,
             LocalRevision::Cue { sheet, .. } => sheet,
@@ -145,17 +166,7 @@ impl LocalLibrary {
             return Err(Error::QueueChanged);
         }
         Self::check_current(&item)?;
-        session.with_token(token, |owner| {
-            let raw = self
-                .store
-                .get(owner, super::MAPS, &item.id)?
-                .ok_or(Error::QueueChanged)?;
-            let mapping: super::LocalMapping = serde_json::from_value(raw)?;
-            if mapping.song_id != catalog_id || mapping.revision != item.revision {
-                return Err(Error::QueueChanged);
-            }
-            Ok(())
-        })
+        Ok(item)
     }
 
     /// Hide this exact indexed revision from lists without touching the file,

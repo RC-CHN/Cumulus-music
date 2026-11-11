@@ -35,6 +35,8 @@ mod history_row_menu_fixture;
 mod history_song_collect_fixture;
 #[path = "support/history_song_download_fixture.rs"]
 mod history_song_download_fixture;
+#[path = "support/history_song_file_fixture.rs"]
+mod history_song_file_fixture;
 #[path = "support/catalog_live.rs"]
 mod live;
 #[path = "support/ordinary_essential_fixture.rs"]
@@ -174,12 +176,15 @@ fn main() {
         std::env::var("CUMULUS_HISTORY_SONG_DOWNLOAD_PROOF").as_deref() == Ok("1");
     let history_song_row_download =
         std::env::var("CUMULUS_HISTORY_SONG_ROW_DOWNLOAD_PROOF").as_deref() == Ok("1");
+    let history_song_row_reveal =
+        std::env::var("CUMULUS_HISTORY_SONG_ROW_REVEAL_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     assert!(!history_collection || history_chapters);
     assert!(!history_radio_menu || history_collection);
     assert!(!history_voice_row_download || history_download);
     assert!(!history_song_row_collect || history_song_collect);
     assert!(!history_song_row_download || history_song_download);
+    assert!(!history_song_row_reveal || (history_song_row_download && !is_live));
     assert!(
         !history_queue_actions
             || (histories && !is_live && !history_chapters && !interactive && !collections)
@@ -295,6 +300,7 @@ fn main() {
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
         let focus_directory=root.join("focus-webview");
+        let history_file_root=root.clone();
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
@@ -388,6 +394,25 @@ fn main() {
                     let matches=handle.clipboard().read_text().is_ok_and(|text|text==expected);
                     let result=serde_json::json!({"attempt":attempt,"matches":matches});
                     handle.get_webview_window("main").unwrap().eval(format!("window.__historyRowClipboard={result};")).unwrap();
+                });
+                return;
+            }
+            if stage=="history-song-file-fixture" && history_song_row_reveal {
+                assert_eq!(value["action"],"seed");
+                let handle=handle.clone();
+                let session=session.clone();
+                let store=follow_store.clone();
+                let root=history_file_root.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=tauri::async_runtime::spawn_blocking(move || {
+                        history_song_file_fixture::seed(session,store,&root)
+                    }).await.unwrap();
+                    let response=match result {
+                        Ok(local_id)=>serde_json::json!({"action":"seed","localId":local_id}),
+                        Err(error)=>serde_json::json!({"action":"seed","error":error.to_string()}),
+                    };
+                    handle.get_webview_window("main").unwrap()
+                        .eval(format!("window.__historySongFileFixture={response};")).unwrap();
                 });
                 return;
             }

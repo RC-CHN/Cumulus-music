@@ -11,7 +11,7 @@ pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
 pub use cloud::CloudFileReveal;
-pub use history::HistoryVoiceFileReveal;
+pub use history::{HistorySongFileReveal, HistoryVoiceFileReveal};
 pub use player::LyricBountyIntent;
 pub use player::{
     QueueCatalogFileReveal, QueueDownloadFileReveal, QueueLocalFileReveal, QueueVoiceFileReveal,
@@ -150,7 +150,7 @@ pub struct MusicClient {
     listened_books: history::ListenedBooksHost,
     history_sync: Arc<history::HistorySyncHost>,
     history_radio_chapters: history::RadioChaptersHost,
-    history_voice_menu: history::HistoryVoiceMenuHost,
+    history_row_file_menu: history::HistoryRowFileMenuHost,
     audiobook_skip: podcast::AudiobookSkipHost,
     community: community::CommunityHost,
     community_topics: community::topic::TopicHost,
@@ -331,7 +331,7 @@ impl MusicClient {
             listened_books: Default::default(),
             history_sync: Default::default(),
             history_radio_chapters: Default::default(),
-            history_voice_menu: Default::default(),
+            history_row_file_menu: Default::default(),
             audiobook_skip: Default::default(),
             playlist_square: Default::default(),
             community: Default::default(),
