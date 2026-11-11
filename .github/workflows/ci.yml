@@ -758,6 +758,9 @@ jobs:
           name: frontend-dist
           path: frontend/dist
       - name: Build and bind the Windows test probes once
+        env:
+          # Match the Windows Rust and package builders without using all runner cores.
+          CARGO_BUILD_JOBS: '3'
         run: python scripts/ci/windows_webview_probes.py build
       # The package job no longer waits for GUI-only probe linking.
       - name: Bind shared Windows WebView inputs to this CI attempt
@@ -1041,6 +1044,15 @@ jobs:
           python scripts/ci/search_smoke.py --podcast-browse-around --binary .build/target/debug/examples/ux_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-podcast-rank-gestures-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-results-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-v3-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-footer-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-vinyl-origin-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-pc-presentation-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-hot-playback-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --carousel --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-carousel-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --suggestion-focus --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-suggestion-focus-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --filtered-pagination --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-filtered-pagination-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-author-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows WebView regression (playlists)
         if: runner.os == 'Windows' && matrix.shard == 'playlists'
         run: |
@@ -1053,31 +1065,13 @@ jobs:
           python scripts/ci/playlist_cover_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_cover_feedback_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-feedback-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-preview-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-sidebar-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows WebView regression (search-account)
         if: runner.os == 'Windows' && matrix.shard == 'search-account'
         run: |
-          python scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-footer-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-vinyl-origin-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-pc-presentation-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-hot-playback-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --carousel --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-carousel-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --suggestion-focus --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-suggestion-focus-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --filtered-pagination --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-filtered-pagination-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/qr_captcha_focus_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-qr-captcha-focus-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-qr-identity-recovery-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-author-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-drawer-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-polling-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-read-all-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-deletion-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-sidebar-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-bundled-themes-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/remote_skin_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-remote-skins-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-member-welfare-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
@@ -1177,6 +1171,15 @@ jobs:
           python scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_lyrics_smoke.py --waterfall --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-waterfall-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-rankings-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-drawer-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-polling-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-read-all-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-deletion-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-bundled-themes-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/remote_skin_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-remote-skins-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-member-welfare-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows WebView regression (catalog)
         if: runner.os == 'Windows' && matrix.shard == 'catalog'
         run: |
