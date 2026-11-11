@@ -13,8 +13,8 @@ use crate::{
             GuardedPlaylistRemove, GuardedSongLike, LyricBountyPermission, MESSAGE_COUNT_PATH,
             MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PlaybackChorusPermission,
             PlaybackChorusRead, PlayerPodcastResumeRead, PlayerPodcastResumeWrite,
-            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
-            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            PlaylistAddPermission, SearchSongCommentSource, SongCardLikedRead, SongLikePermission,
+            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
             VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
             VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
             VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
@@ -104,7 +104,10 @@ enum RequestBinding<'a> {
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     PlaybackChorus(&'a PlaybackChorusPermission<'a>),
     EffectCatalogue(&'a crate::protocol::api::EffectCataloguePermission<'a>),
-    SearchSongComment(&'a (dyn Fn() -> Result<()> + Send + Sync)),
+    SearchSongComment {
+        source: SearchSongCommentSource,
+        permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
+    },
     SearchSongShare(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
@@ -726,7 +729,11 @@ impl MusicHttpClient {
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
         if let Some(
-            RequestBinding::EffectCatalogue(current) | RequestBinding::SearchSongComment(current),
+            RequestBinding::EffectCatalogue(current)
+            | RequestBinding::SearchSongComment {
+                permission: current,
+                ..
+            },
         ) = binding
         {
             current()?;
@@ -958,7 +965,7 @@ impl MusicHttpClient {
                 }
                 permission()?;
             }
-            if let Some(RequestBinding::SearchSongComment(permission)) = binding {
+            if let Some(RequestBinding::SearchSongComment { source, permission }) = binding {
                 let current = self.credentials.request_credentials(&target)?;
                 if path != COMMENT_INFORMATION_PATH
                     || origin != super::ApiOrigin::Pc
@@ -973,7 +980,7 @@ impl MusicHttpClient {
                 }
                 self.check_account_cookie_scope(
                     &current,
-                    ["/api/w/nuser/account/get", "/api/search/song/list/page"],
+                    ["/api/w/nuser/account/get", source.result_path()],
                 )?;
                 permission()?;
             }
@@ -1975,6 +1982,7 @@ impl Api for MusicHttpClient {
 
     fn request_search_song_comment_information<'a>(
         &'a self,
+        source: SearchSongCommentSource,
         payload: Value,
         revision: Option<&'a str>,
         permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
@@ -1988,7 +1996,7 @@ impl Api for MusicHttpClient {
                     false,
                     Some(revision),
                     Jsk::None,
-                    Some(RequestBinding::SearchSongComment(permission)),
+                    Some(RequestBinding::SearchSongComment { source, permission }),
                 )
                 .await?;
             crate::protocol::api::validate_response(COMMENT_INFORMATION_PATH, response, &[200])

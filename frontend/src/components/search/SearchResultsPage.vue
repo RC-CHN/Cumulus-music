@@ -305,6 +305,7 @@ function showTrackMenu(
   request: TrackMenuRequest,
   section?: SearchSection,
   selection?: TrackMenuSelectionScope,
+  lyricRow?: { item: Extract<SearchItem, { kind: 'song' }>; index: number },
 ) {
   const owner = panel.value;
   const snapshot = view.value;
@@ -371,6 +372,32 @@ function showTrackMenu(
           anchor,
         );
       },
+    };
+  } else if (tab === 'lyrics' && props.account.status === 'authenticated' && lyricRow) {
+    const { item, index } = lyricRow;
+    // Lyrics uses a virtual list of individual TrackRows. The clicked result
+    // ordinal and connected anchor disambiguate repeated occurrences of a song.
+    const anchor =
+      request.event.currentTarget instanceof HTMLElement ? request.event.currentTarget : undefined;
+    const row = anchor?.closest<HTMLElement>('.search-lyric-result');
+    const key = `lyric:${lyricKey(index, item.track.id)}`;
+    songRowComment = {
+      source: 'search',
+      epoch,
+      menu: item.songCommentMenu,
+      live: () =>
+        section?.category === 'lyrics' &&
+        snapshot?.sections.includes(section) === true &&
+        item.track === request.track &&
+        lyricItems.value[index] === item &&
+        lyricWindow.rendered.value.includes(index) &&
+        !!anchor?.isConnected &&
+        row?.dataset.resultKey === key &&
+        row.contains(anchor) &&
+        !!owner?.contains(row) &&
+        !row.closest('[inert]') &&
+        loadGeneration === generation &&
+        current(),
     };
   }
   emit('more', {
@@ -1248,7 +1275,7 @@ onBeforeUnmount(() => {
                     @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
                     @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
                     @like="emit('like', $event)"
-                    @more="showTrackMenu"
+                    @more="(request) => showTrackMenu(request, section, undefined, { item, index })"
                     @artist="emit('artist', $event)"
                     @album="emit('album', $event)"
                   />

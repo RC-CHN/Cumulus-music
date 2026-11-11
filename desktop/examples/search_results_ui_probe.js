@@ -62,6 +62,14 @@
       await emit('complete',{ok:true,voiceLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchLyricCommentProof){
+      const proof=await window.__searchLyricCommentRun({
+        one,wait,button,click,key,fresh,choose,capture,fixture,emit,sleep,assert,ready,
+      });
+      await emit('complete',{ok:true,searchLyricCommentVerified:true,stageCount:count,
+        ...proof,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchSongCommentProof){
       const proof=await window.__searchSongCommentRun({
         one,all,wait,button,click,key,fresh,choose,capture,fixture,emit,sleep,assert,ready,

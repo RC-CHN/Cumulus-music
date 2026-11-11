@@ -216,14 +216,14 @@ async fn result_call(
 pub const READ_PATHS: &[&str] = &[
     "/api/search/pc/result/tab",
     COMPREHENSIVE_PATH,
-    "/api/search/song/list/page",
+    crate::protocol::api::SEARCH_SONG_RESULTS_PATH,
     "/api/v1/search/playlist/get",
     "/api/v1/search/artist/get",
     "/api/v1/search/album/get",
     "/api/v1/search/user/get",
     "/api/search/voice/get",
     "/api/search/voicelist/get",
-    "/api/search/resource/lyric",
+    crate::protocol::api::SEARCH_LYRIC_RESULTS_PATH,
     "/api/search/mlog/get",
 ];
 pub async fn tabs(api: &dyn Api, keyword: &str) -> Result<Value> {

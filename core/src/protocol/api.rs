@@ -16,6 +16,25 @@ pub type PlaybackChorusPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + '
 pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub(crate) const COMMENT_INFORMATION_PATH: &str = "/api/resource/commentInfo/list";
+pub(crate) const SEARCH_SONG_RESULTS_PATH: &str = "/api/search/song/list/page";
+pub(crate) const SEARCH_LYRIC_RESULTS_PATH: &str = "/api/search/resource/lyric";
+
+/// Native source of an observed search row. It never comes from IPC.
+#[derive(Clone, Copy)]
+pub enum SearchSongCommentSource {
+    Songs,
+    Lyrics,
+}
+
+impl SearchSongCommentSource {
+    pub(crate) const fn result_path(self) -> &'static str {
+        match self {
+            Self::Songs => SEARCH_SONG_RESULTS_PATH,
+            Self::Lyrics => SEARCH_LYRIC_RESULTS_PATH,
+        }
+    }
+}
+
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
 pub(crate) const PODCAST_RESUME_WRITE_PATH: &str = "/api/dj/user/setting/resumeplay/update";
@@ -1233,10 +1252,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
-    /// Recheck an already observed Search Song before reading its public count.
+    /// Recheck a song observed in a dedicated song or lyric search result.
     /// Native HTTP implementations also fence the queued request at dispatch.
     fn request_search_song_comment_information<'a>(
         &'a self,
+        _source: SearchSongCommentSource,
         payload: Value,
         revision: Option<&'a str>,
         permission: &'a (dyn Fn() -> Result<()> + Send + Sync),

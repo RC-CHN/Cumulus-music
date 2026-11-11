@@ -1,4 +1,4 @@
-//! Count preparation for one observed catalog row in the Single Song tab.
+//! Count preparation for one observed song in a dedicated song or lyric search tab.
 use super::{MusicClient, SearchCategory, SearchItem, SearchResultView};
 use crate::{
     Error, Result,
@@ -6,7 +6,7 @@ use crate::{
     client::dto::{AccountData, TrackView},
     comments::CommentApi,
     protocol::{
-        api::{Api, identifier},
+        api::{Api, SearchSongCommentSource, identifier},
         wire::serialization::js_truthy,
     },
 };
@@ -42,9 +42,17 @@ pub(super) fn observe(raw: &Value, track: &TrackView) -> Option<String> {
         || track.local
         || track.missing
         || track.voice_id.is_some()
-        || !super::super::mapping::catalog_song_comment_eligible(raw)
-        || raw["songType"].as_f64() == Some(1.0)
-        || [
+        || !public_song_source(raw, &id)
+    {
+        return None;
+    }
+    Some(id)
+}
+
+fn public_song_source(raw: &Value, id: &str) -> bool {
+    super::super::mapping::catalog_song_comment_eligible(raw)
+        && raw["songType"].as_f64() != Some(1.0)
+        && ![
             "fileId",
             "filename",
             "localId",
@@ -56,11 +64,25 @@ pub(super) fn observe(raw: &Value, track: &TrackView) -> Option<String> {
             "cloud_song_id",
             "programId",
             "voiceId",
+            "voice_id",
         ]
         .iter()
         .any(|field| js_truthy(&raw[*field]))
-        || (js_truthy(&raw["onlineTrackId"])
-            && identifier(&raw["onlineTrackId"]).ok().as_deref() != Some(id.as_str()))
+        && (!js_truthy(&raw["onlineTrackId"])
+            || identifier(&raw["onlineTrackId"]).ok().as_deref() == Some(id))
+}
+
+pub(super) fn observe_lyric(resource: &Value, track: &TrackView) -> Option<String> {
+    // M15.Wn spreads the outer row and then its song. A matched excerpt is
+    // never itself a song identity; do not bind an ambiguous or private row.
+    let id = observe(resource.get("song")?, track)?;
+    if !public_song_source(resource, &id)
+        || ["id", "songId", "trackId"].iter().any(|field| {
+            resource
+                .get(field)
+                .filter(|value| !value.is_null())
+                .is_some_and(|value| identifier(value).ok().as_deref() != Some(id.as_str()))
+        })
     {
         return None;
     }
@@ -68,6 +90,7 @@ pub(super) fn observe(raw: &Value, track: &TrackView) -> Option<String> {
 }
 
 struct Page {
+    source: SearchSongCommentSource,
     token: SessionToken,
     api: Weak<dyn Api>,
     credentials: Option<String>,
@@ -99,9 +122,13 @@ impl SearchSongCommentPages {
         let [section] = view.sections.as_mut_slice() else {
             return Ok(());
         };
+        let source = match view.query.category {
+            SearchCategory::Songs => SearchSongCommentSource::Songs,
+            SearchCategory::Lyrics => SearchSongCommentSource::Lyrics,
+            _ => return Ok(()),
+        };
         if token.uid.is_none()
-            || view.query.category != SearchCategory::Songs
-            || section.category != Some(SearchCategory::Songs)
+            || section.category != Some(view.query.category)
             || candidates.len() != section.items.len()
         {
             return Ok(());
@@ -143,6 +170,7 @@ impl SearchSongCommentPages {
                 pages.pop_front();
             }
             pages.push_back(Page {
+                source,
                 token: token.clone(),
                 api,
                 credentials,
@@ -159,14 +187,14 @@ impl SearchSongCommentPages {
         api: &Weak<dyn Api>,
         credentials: Option<&str>,
         receipt: Uuid,
-    ) -> Result<String> {
+    ) -> Result<(SearchSongCommentSource, String)> {
         self.0
             .lock()
             .map_err(|_| Error::LockPoisoned)?
             .iter()
             .find_map(|page| {
                 if page.owns(token, api, credentials) {
-                    page.rows.get(&receipt).cloned()
+                    page.rows.get(&receipt).map(|id| (page.source, id.clone()))
                 } else {
                     None
                 }
@@ -202,12 +230,12 @@ impl MusicClient {
                 .song_comment_pages
                 .require(&token, &weak, credentials.as_deref(), receipt)
         };
-        let id = current()?;
+        let (source, id) = current()?;
         let permission = || current().map(|_| ());
         let comments = CommentApi::new(api.clone());
         let result = tokio::time::timeout(
             COUNT_LIMIT,
-            comments.search_song_count(id, credentials.as_deref(), &permission),
+            comments.search_song_count(source, id, credentials.as_deref(), &permission),
         )
         .await;
         current()?;

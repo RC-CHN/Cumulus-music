@@ -2,7 +2,8 @@ use super::{model, *};
 use crate::{
     Error, Result,
     protocol::api::{
-        Api, COMMENT_INFORMATION_PATH, VinylCommentRead, identifier, validate_response,
+        Api, COMMENT_INFORMATION_PATH, SearchSongCommentSource, VinylCommentRead, identifier,
+        validate_response,
     },
 };
 use serde_json::{Value, json};
@@ -268,6 +269,7 @@ impl CommentApi {
     }
     pub(crate) async fn search_song_count(
         &self,
+        source: SearchSongCommentSource,
         id: String,
         revision: Option<&str>,
         permission: &(dyn Fn() -> Result<()> + Send + Sync),
@@ -276,6 +278,7 @@ impl CommentApi {
         let value = self
             .api
             .request_search_song_comment_information(
+                source,
                 json!({"resourceType":4,"resourceIds":serde_json::to_string(&ids)?}),
                 revision,
                 permission,

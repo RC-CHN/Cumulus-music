@@ -329,9 +329,12 @@ impl MusicClient {
                 let download_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.song_card_download_scope_revision().ok().flatten())
                     .flatten();
-                let comment_credentials = (query.category == SearchCategory::Songs)
-                    .then(|| api.search_privilege_credential_revision().ok())
-                    .flatten();
+                let comment_credentials = matches!(
+                    query.category,
+                    SearchCategory::Songs | SearchCategory::Lyrics
+                )
+                .then(|| api.search_privilege_credential_revision().ok())
+                .flatten();
                 let share_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.search_song_share_credential_revision().ok().flatten())
                     .flatten();
@@ -563,7 +566,11 @@ impl MusicClient {
                         .voice_menu_pages
                         .capture(token, &api, credentials, &mut view)?;
                 }
-                if view.query.category == SearchCategory::Songs {
+                if matches!(
+                    view.query.category,
+                    SearchCategory::Songs | SearchCategory::Lyrics
+                ) {
+                    let songs = view.query.category == SearchCategory::Songs;
                     let login_pending = self.login_pending()?;
                     let comment_revision = if login_pending {
                         None
@@ -588,14 +595,14 @@ impl MusicClient {
                             .as_ref()
                             == Some(before)
                     });
-                    let group = if !self.login_pending()? {
+                    let group = if songs && !self.login_pending()? {
                         group.map(|credentials| {
                             super::queue_drop::GroupAuthority::new(&view.query, &api, credentials)
                         })
                     } else {
                         None
                     };
-                    let download_revision = if self.login_pending()? {
+                    let download_revision = if !songs || self.login_pending()? {
                         None
                     } else {
                         download_credentials.filter(|revision| {
@@ -614,6 +621,9 @@ impl MusicClient {
                             comment_revision,
                             &mut view,
                         )?;
+                        if !songs {
+                            return Ok(());
+                        }
                         self.search
                             .song_shares
                             .capture(token, &api, share_revision, &mut view)?;
@@ -1377,6 +1387,10 @@ pub(super) fn project(
                             super::group_download::RowRights::observe(base, &track.id)
                                 .map(|rights| rights.row(String::new()));
                     }
+                } else if lyrics && let SearchItem::Song { track, .. } = &item {
+                    result
+                        .song_comment_rows
+                        .push(super::song_comment::observe_lyric(resource, track));
                 }
                 section.items.push(item);
             }

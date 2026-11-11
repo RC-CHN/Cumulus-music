@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Notify;
 
 const SEARCH: &str = "/api/search/song/list/page";
+const LYRICS: &str = "/api/search/resource/lyric";
 const COUNT: &str = "/api/resource/commentInfo/list";
 
 #[derive(Default)]
@@ -36,11 +37,28 @@ fn search_reply() -> Value {
     ]}})
 }
 
+fn lyric_reply() -> Value {
+    json!({"code":200,"data":{"totalCount":11,"resources":[
+        {"id":1,"songId":"1","song":{"id":"1","name":"paid","fee":1},"lyrics":"合成行"},
+        {"song":{"id":2,"name":"copyright","privilege":{"st":-100,"pl":0}},"lyric":"合成零评论"},
+        {"song":{"id":3,"name":"wrong thread"}},
+        {"song":{"id":4,"name":"service failure"}},
+        {"song":{"id":5,"name":"special","t":1}},
+        {"song":{"id":6,"name":"outer special"},"songType":1},
+        {"song":{"id":7,"name":"outer local"},"fileId":"private"},
+        {"song":{"id":8,"name":"outer cloud"},"privilege":{"cs":true}},
+        {"song":{"id":9,"name":"outer identity mismatch"},"id":90},
+        {"song":{"id":10,"name":"mixed voice"},"voice_id":90},
+        {"song":{"name":"no nested id"},"id":11}
+    ]}})
+}
+
 impl Api for Wire {
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             match path {
                 SEARCH => Ok(search_reply()),
+                LYRICS => Ok(lyric_reply()),
                 COUNT => {
                     self.counts
                         .lock()
@@ -119,7 +137,21 @@ impl Fixture {
     }
 
     async fn view(&self) -> Value {
-        let result = self.client.search_results("1", query()).await.unwrap();
+        self.view_for(SearchCategory::Songs).await
+    }
+
+    async fn view_for(&self, category: SearchCategory) -> Value {
+        let result = self
+            .client
+            .search_results(
+                "1",
+                SearchResultQuery {
+                    category,
+                    ..query()
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result.epoch, "1");
         serde_json::to_value(result.value).unwrap()
     }
@@ -184,6 +216,54 @@ async fn only_verified_search_song_comments_include_paid_and_copyright_rows() {
     }
 }
 
+#[tokio::test]
+async fn lyric_rows_issue_only_comment_receipts_for_unambiguous_nested_songs() {
+    let fixture = Fixture::new();
+    let view = fixture.view_for(SearchCategory::Lyrics).await;
+    let rows = view["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(rows.len(), 10);
+    assert_eq!(view["unavailableCount"], 1);
+    assert_eq!(rows[0]["kind"], "song");
+    assert_eq!(rows[0]["excerpt"], json!(["合成行"]));
+    assert!(rows.iter().all(|row| {
+        [
+            "queueDropReceipt",
+            "groupDownload",
+            "songShareReceipt",
+            "songPublicLinkAvailable",
+        ]
+        .iter()
+        .all(|field| row.get(*field).is_none())
+    }));
+    assert!(
+        rows[4..]
+            .iter()
+            .all(|row| row["songCommentMenu"] == json!({"kind":"hidden"}))
+    );
+    assert!(fixture.wire.counts.lock().unwrap().is_empty());
+
+    // Reopen a different exact row, including zero and invalid thread fallback.
+    for (index, expected) in [(2, None), (0, Some(36)), (1, Some(0)), (3, None)] {
+        assert_eq!(
+            fixture
+                .client
+                .search_song_row_comment_count("1", receipt(&rows[index]))
+                .await
+                .unwrap()
+                .value,
+            expected
+        );
+    }
+    assert_eq!(
+        *fixture.wire.counts.lock().unwrap(),
+        [3, 1, 2, 4].map(|id| (
+            COUNT.to_owned(),
+            json!({"resourceType":4,"resourceIds":format!("[\"{id}\"]")}),
+            false
+        ))
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn search_comment_rejects_late_credential_and_account_handoffs_and_bounds_optional_wait() {
     let fixture = Fixture::new();
@@ -243,13 +323,27 @@ async fn search_comment_rejects_late_credential_and_account_handoffs_and_bounds_
 #[test]
 fn projection_has_no_search_comment_receipt_without_native_publication() {
     // Guest results use the same projection but never invoke authenticated capture.
-    let (view, _, _) = super::super::results::project(search_reply(), query(), "", false).unwrap();
-    let view = serde_json::to_value(view).unwrap();
-    assert!(
-        view["sections"][0]["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|row| row.get("songCommentMenu").is_none())
-    );
+    for (raw, category) in [
+        (search_reply(), SearchCategory::Songs),
+        (lyric_reply(), SearchCategory::Lyrics),
+    ] {
+        let (view, _, _) = super::super::results::project(
+            raw,
+            SearchResultQuery {
+                category,
+                ..query()
+            },
+            "",
+            false,
+        )
+        .unwrap();
+        let view = serde_json::to_value(view).unwrap();
+        assert!(
+            view["sections"][0]["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row.get("songCommentMenu").is_none())
+        );
+    }
 }
