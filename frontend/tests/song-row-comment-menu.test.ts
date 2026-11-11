@@ -1,15 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  preparePlaylistSongComment,
-  type PlaylistSongCommentScope,
-} from '../src/services/playlistSongComments.ts';
+  prepareSongRowComment,
+  type SongRowCommentClient,
+  type SongRowCommentScope,
+} from '../src/services/songRowCommentMenu.ts';
 
-const eligible = (live = () => true): PlaylistSongCommentScope => ({
+const eligible = (
+  live = () => true,
+  source: SongRowCommentScope['source'] = 'playlist',
+): SongRowCommentScope => ({
+  source,
   epoch: '17',
   menu: { kind: 'eligible', receipt: 'frozen-native-row-receipt' },
   live,
 });
+
+const forbidden = async () => assert.fail('unexpected native comment count read');
+const client = (input: Partial<SongRowCommentClient>): SongRowCommentClient => ({
+  playlistSongRowCommentCount: forbidden,
+  searchSongRowCommentCount: forbidden,
+  ...input,
+});
+
+const preparePlaylistSongComment = (
+  input: Pick<SongRowCommentClient, 'playlistSongRowCommentCount'>,
+  scope: SongRowCommentScope,
+  signal: AbortSignal,
+) => prepareSongRowComment(client(input), scope, signal);
 
 test('menu preparation reads only the exact native playlist row receipt', async () => {
   const args: unknown[][] = [];
@@ -134,4 +152,71 @@ test('a delayed count cannot open the menu after its visit or anchor has changed
     respond({ epoch: '17', value: 43 });
     assert.equal(await result, undefined);
   }
+});
+
+test('a dedicated Search Song reads only its native search receipt', async () => {
+  const args: unknown[][] = [];
+  const core = client({
+    searchSongRowCommentCount: async (...input) => {
+      args.push(input);
+      return { epoch: '17', value: 36 };
+    },
+  });
+  const search = eligible(() => true, 'search');
+  const signal = new AbortController().signal;
+  assert.deepEqual(await prepareSongRowComment(core, search, signal), { count: 36 });
+  for (const menu of [undefined, { kind: 'hidden' } as const]) {
+    assert.equal(await prepareSongRowComment(core, { ...search, menu }, signal), undefined);
+  }
+  assert.deepEqual(args, [['17', 'frozen-native-row-receipt']]);
+});
+
+test('unknown Search count leaves a plain menu; an invalidated result does not open it', async () => {
+  const search = eligible(() => true, 'search');
+  const signal = new AbortController().signal;
+  for (const value of [0, null]) {
+    const core = client({
+      searchSongRowCommentCount: async () => ({ epoch: '17', value }),
+    });
+    assert.deepEqual(await prepareSongRowComment(core, search, signal), { count: null });
+  }
+  const offline = client({
+    searchSongRowCommentCount: async () => {
+      throw new Error('transport down');
+    },
+  });
+  assert.deepEqual(await prepareSongRowComment(offline, search, signal), { count: null });
+
+  for (const code of ['queue_changed', 'snapshot_changed']) {
+    const retired = client({
+      searchSongRowCommentCount: async () => {
+        throw { code, message: 'optional count receipt retired' };
+      },
+    });
+    assert.deepEqual(await prepareSongRowComment(retired, search, signal), { count: null });
+  }
+  for (const code of ['stale', 'profile_changed', 'session_expired']) {
+    const core = client({
+      searchSongRowCommentCount: async () => {
+        throw { code, message: 'old search result' };
+      },
+    });
+    assert.equal(await prepareSongRowComment(core, search, signal), undefined);
+  }
+});
+
+test('a delayed dedicated Search count cannot outlive the row selection', async () => {
+  let currentSelection = true;
+  let respond!: (value: { epoch: string; value: number }) => void;
+  const response = new Promise<{ epoch: string; value: number }>((resolve) => {
+    respond = resolve;
+  });
+  const result = prepareSongRowComment(
+    client({ searchSongRowCommentCount: () => response }),
+    eligible(() => currentSelection, 'search'),
+    new AbortController().signal,
+  );
+  currentSelection = false;
+  respond({ epoch: '17', value: 36 });
+  assert.equal(await result, undefined);
 });

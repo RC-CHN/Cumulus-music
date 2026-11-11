@@ -227,6 +227,7 @@ impl MusicClient {
         };
         // Keep the public presentation flag, never carry candidate rows into the guest reply.
         view.song_share_rows.clear();
+        view.song_comment_rows.clear();
         for section in &mut view.sections {
             let returned = section.items.len();
             section.items.retain_mut(|item| {

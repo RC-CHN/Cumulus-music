@@ -77,6 +77,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "history_page",
             "history_row_menu_info",
             "download_history_row_voice_prepare",
+            "search_song_row_comment_count",
             "search_song_share_prepare",
             "search_song_share_choose",
             "search_song_share_cancel",
@@ -227,6 +228,16 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         &window,
         request(
             "playlist_song_row_comment_count",
+            json!({"epoch":"1","receipt":card_receipt}),
+        ),
+        Err(
+            json!({"code":"snapshot_changed","message":"列表已更新，请刷新后重试","retryable":true}),
+        ),
+    );
+    assert_ipc_response(
+        &window,
+        request(
+            "search_song_row_comment_count",
             json!({"epoch":"1","receipt":card_receipt}),
         ),
         Err(

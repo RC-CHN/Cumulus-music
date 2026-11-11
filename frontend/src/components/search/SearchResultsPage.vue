@@ -323,12 +323,29 @@ function showTrackMenu(
     !!owner?.isConnected &&
     !owner.closest('[inert], .page-leave-active, .search-results-leave-active');
   let searchSongLinks: TrackMenuRequest['searchSongLinks'];
+  let songRowComment: TrackMenuRequest['songRowComment'];
   if (tab === 'songs') {
     songShare.clearFeedback();
     const item =
       section?.category === 'songs' && snapshot?.sections.includes(section)
         ? section.items.find((item) => item.kind === 'song' && item.track === request.track)
         : undefined;
+    const comment = item?.kind === 'song' ? item.songCommentMenu : undefined;
+    if (props.account.status === 'authenticated') {
+      songRowComment = {
+        source: 'search',
+        epoch,
+        menu:
+          selection?.multiple || (!selection && comment?.kind === 'eligible')
+            ? { kind: 'hidden' }
+            : comment,
+        live: () =>
+          item?.kind === 'song' &&
+          loadGeneration === generation &&
+          selection?.live() !== false &&
+          current(),
+      };
+    }
     const receipt = item?.kind === 'song' ? item.songShareReceipt : undefined;
     const publicLink = item && searchSongPublicLink(item);
     const target = receipt ? { receipt, trackId: request.track.id } : undefined;
@@ -361,6 +378,7 @@ function showTrackMenu(
     nextOrigin: 'search',
     searchSinglePlay: props.account.status === 'authenticated' ? current : undefined,
     searchSongLinks,
+    songRowComment,
   });
 }
 function guestSongPublicLink(item: SearchItem) {

@@ -15,7 +15,7 @@ import type { VoiceDetailActionsClient } from './voicePage';
 import type { AudiobookSkipClient } from './audiobookSkip';
 import type { PlayerPodcastResumeClient } from './playerPodcastResume';
 import type { PlaylistClient } from './playlists';
-import type { PlaylistSongCommentClient, PlaylistSongCommentMenu } from './playlistSongComments';
+import type { SongRowCommentClient, SongRowCommentMenu } from './songRowCommentMenu';
 import type { PlaylistCoverClient } from './playlistCover';
 import type { ColdOfflineClient } from './coldOffline';
 import type { DownloadClient, SongDownloadState } from './downloads';
@@ -141,7 +141,7 @@ export interface CoreClient
     PlayerClient,
     VoiceDetailActionsClient,
     PlaylistClient,
-    PlaylistSongCommentClient,
+    SongRowCommentClient,
     ExternalPlaylistImportClient,
     MemberWelfareClient,
     RemoteSkinClient,
@@ -434,7 +434,7 @@ export interface ArtistReference {
   name: string;
 }
 export interface TrackView {
-  playlistSongCommentMenu?: PlaylistSongCommentMenu;
+  playlistSongCommentMenu?: SongRowCommentMenu;
   voiceId?: string;
   id: string;
   name: string;

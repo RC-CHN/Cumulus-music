@@ -77,6 +77,102 @@ def verify_search_song_share(first, complete):
                 songShareQueuePreserved=True)
 
 
+SEARCH_SONG_COMMENT_STAGES = (
+    'search_comment_initial', 'search_comment_count', 'search_comment_thread',
+    'search_comment_zero', 'search_comment_wrong_thread', 'search_comment_transport',
+    'search_comment_type_hidden', 'search_comment_multi_hidden', 'search_comment_stale',
+    'search_comment_reopened',
+)
+
+
+def verify_search_song_comment(root, screenshots):
+    first = root / 'first'
+    read = lambda path: json.loads(path.read_text(encoding='utf-8'))
+    complete = read(first / 'complete.json')
+    expected = [f'ux_{i:02}_{label}' for i, label in enumerate(SEARCH_SONG_COMMENT_STAGES, 1)]
+    assert complete['ok'] and complete['searchSongCommentVerified'] and complete['focusRestored']
+    assert complete['stageCount'] == len(expected)
+    assert [path.stem for path in sorted(first.glob('ux_*.json'))] == expected
+    assert [path.stem for path in sorted(first.glob('ux_*.png'))] == (expected if screenshots else [])
+    rows = [read(first / f'{name}.json') for name in expected]
+    assert [row['label'] for row in rows] == list(SEARCH_SONG_COMMENT_STAGES)
+    initial, exact, page, zero, wrong, transport, hidden, group, stale, reopened = rows
+    assert initial['countCalls'] == 0
+    assert (exact['clicked'], exact['via'], exact['comment']) == ('3', 'keyboard', '查看评论(36)')
+    assert exact['menuKeys'][:3] == ['play', 'next', 'comments']
+    assert (page['clicked'], page['resourceKind'], page['resourceId']) == ('3', 'track', '3')
+    for row, id, gesture in ((zero, '4', 'button'), (wrong, '5', 'context'), (transport, '6', 'keyboard')):
+        assert (row['clicked'], row['via'], row['comment']) == (id, gesture, '查看评论')
+        assert row['menuKeys'][:3] == ['play', 'next', 'comments']
+    assert (hidden['clicked'], hidden['comment']) == ('7', None)
+    assert (group['clicked'], group['selectedIds'], group['comment']) == ('3', ['3', '4'], None)
+    for row in (hidden, group):
+        assert row['menuKeys'][:2] == ['play', 'next'] and 'comments' not in row['menuKeys']
+    assert (stale['clicked'], stale['oldMenuSuppressed'], stale['heldReturned']) == ('8', True, True)
+    assert (reopened['clicked'], reopened['comment'], reopened['newAnchor']) == ('8', '查看评论(51)', True)
+
+    counts = [
+        dict(path='/api/resource/commentInfo/list', args={'resourceType': 4, 'resourceIds': json.dumps([id])},
+             cached=False, thread=thread, count=count, outcome=outcome)
+        for id, thread, count, outcome in (
+            ('3', 'R_SO_4_3', 36, 'count'), ('4', 'R_SO_4_4', 0, 'zero'),
+            ('5', 'R_SO_4_9', 99, 'wrong_thread'), ('6', None, None, 'transport'),
+            ('8', 'R_SO_4_8', 88, 'held'), ('8', 'R_SO_4_8', 51, 'reopened'),
+        )
+    ]
+    fixture = complete['searchSongCommentFixture']
+    badge = [dict(path='/api/resource/commentInfo/list',
+                  args={'resourceType': 4, 'resourceIds': '["91"]'},
+                  cached=False, thread='R_SO_4_91', count=17)]
+    assert fixture['counts'] == counts and fixture['playerBadgeReads'] == badge
+    assert all(row['playerBadge'] == '17' for row in rows)
+    assert fixture['heldStarted'] and fixture['heldReleased'] and fixture['heldReturned']
+    threads = fixture['threads']
+    thread_path = '/api/v1/resource/comments/R_SO_4_3'
+    assert any(call['path'] == thread_path for call in threads)
+    assert all(call['path'] in (thread_path, thread_path.replace('/comments/', '/hotcomments/'))
+               and call['cached'] is False and call['args']['offset'] == 0 for call in threads)
+    assert fixture['results']
+    keywords = [call['args']['keyword'] for call in fixture['results']]
+    assert keywords[0] == '合成评论菜单' and keywords[-1] == '合成评论菜单再查'
+    assert all(call['path'] == '/api/search/song/list/page' and call['args']['offset'] == 0
+               for call in fixture['results'])
+    assert all(key == '合成评论菜单' for key in keywords[:-1]), keywords
+
+    def queue_identity(row):
+        snapshot, queue = row['nativePlayer'], row['nativeQueue']
+        assert snapshot['state'] == 'paused' and snapshot['track']['id'] == '91'
+        assert queue['epoch'] == snapshot['epoch'] and queue['revision'] == snapshot['queueRevision']
+        assert queue['current'] == snapshot['entryId']
+        entries = [(item['entryId'], item['track']['id']) for item in queue['tracks']]
+        assert [id for _, id in entries] == ['91', '92', '3'] and entries[0][0] == queue['current']
+        assert len({entry for entry, _ in entries}) == 3
+        assert all(isinstance(snapshot[key], str) and snapshot[key]
+                   for key in ('epoch', 'entryId', 'playId', 'queueRevision'))
+        return snapshot['epoch'], snapshot['playId'], snapshot['entryId'], snapshot['queueRevision'], entries
+
+    baseline = queue_identity(initial)
+    for row, n, thread_reads, held in zip(
+        [*rows, complete], (0, 1, 1, 2, 3, 4, 4, 4, 5, 6, 6),
+        [[], [], *([threads] * 9)], [False] * 8 + [True] * 3, strict=True,
+    ):
+        receipt = row['searchSongCommentFixture']
+        assert receipt['counts'] == counts[:n] and receipt['threads'] == thread_reads and not receipt['writes']
+        assert receipt['playerBadgeReads'] == badge
+        assert (receipt['heldStarted'], receipt['heldReleased'], receipt['heldReturned']) == (held, held, held)
+        assert queue_identity(row) == baseline
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    assert 'searchSongShareCalls' not in complete
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, stageCount=len(rows),
+                  exactThread=thread_path, countCalls=counts, playerBadgeReads=badge,
+                  staleCountSuppressed=True,
+                  hiddenSongCountReads=0, multiCountReads=0, nativeQueueUnchanged=True,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def drag_playlist_column(output, cancelled, capture):
     """Optional X11 pointer injection; the portable probe always checks keyboard input."""
     import ctypes
@@ -277,6 +373,7 @@ def main():
     mode.add_argument('--artist-top50', choices=('t0', 't1'))
     mode.add_argument('--people-categories', action='store_true')
     mode.add_argument('--search-next', action='store_true')
+    mode.add_argument('--search-song-comment-count', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
     mode.add_argument('--voice-next', action='store_true')
@@ -329,6 +426,10 @@ def main():
     if args.search_next:
         prefix = 'window.__cumulusSearchNextProof = true;\nwindow.__cumulusSearchSongShareProof = true;\n'
         env['CUMULUS_SEARCH_SONG_SHARE_PROOF'] = '1'
+    if args.search_song_comment_count:
+        env['CUMULUS_SEARCH_SONG_COMMENT_PROOF'] = '1'
+        prefix = ('window.__cumulusSearchSongCommentProof = true;\n'
+                  + source.with_name('search_song_comment_ui_probe.js').read_text(encoding='utf-8') + '\n')
     if args.song_waterfall:
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_author:
@@ -412,10 +513,14 @@ def main():
                 if code == 0 and not (root / 'first/failed.json').exists():
                     drag.result()
         else:
-            code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
+            code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots,
+                          acknowledge_receipts=args.search_song_comment_count)
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.search_song_comment_count:
+        verify_search_song_comment(root, args.screenshots)
+        return
     if args.offline_route:
         verify_offline_route(root, args.screenshots)
         return

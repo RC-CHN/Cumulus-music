@@ -56,6 +56,20 @@ pub async fn search_results<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn search_song_row_comment_count<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<AccountData<Option<u64>>, ClientError> {
+    search_window(&window)?;
+    client
+        .search_song_row_comment_count(&epoch, &receipt)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn search_song_share_prepare<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

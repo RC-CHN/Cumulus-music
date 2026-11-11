@@ -22,7 +22,7 @@ import TrackShareDialog from './TrackShareDialog.vue';
 import SearchGroupDownloadPicker from './SearchGroupDownloadPicker.vue';
 import VoiceSongPurchasedQuality from './VoiceSongPurchasedQuality.vue';
 import type { SearchPurchasedQuality } from '../services/search';
-import { preparePlaylistSongComment } from '../services/playlistSongComments';
+import { prepareSongRowComment } from '../services/songRowCommentMenu';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView, ordinaryCatalog: boolean];
@@ -38,7 +38,7 @@ const client = useCore(),
   menu = ref<InstanceType<typeof ActionMenu>>();
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
-const playlistSongCommentCount = ref<number | null>(null);
+const songRowCommentCount = ref<number | null>(null);
 const queueRequest = shallowRef<QueueMenuRequest>();
 type SearchDownloadFeedback = {
   group: SongGroupDownloadRequest;
@@ -135,11 +135,7 @@ const items = computed<MenuItem[]>(() => {
   }
   const input = request.value;
   const track = input?.track;
-  if (
-    !track ||
-    (input?.episode && !input.episode.live()) ||
-    input.playlistSongComment?.live() === false
-  )
+  if (!track || (input?.episode && !input.episode.live()) || input.songRowComment?.live() === false)
     return [];
   const mixedRemoval = input.mixedRemoval;
   const removeMixed = {
@@ -240,12 +236,12 @@ const items = computed<MenuItem[]>(() => {
       disabled: !canPlay || nextDisabled,
       hint: nextHint,
     },
-    ...(!track.local && !selection && input.playlistSongComment?.menu.kind !== 'hidden'
+    ...(!track.local && !selection && input.songRowComment?.menu?.kind !== 'hidden'
       ? [
           {
             key: 'comments',
-            label: playlistSongCommentCount.value
-              ? `查看评论(${playlistSongCommentCount.value})`
+            label: songRowCommentCount.value
+              ? `查看评论(${songRowCommentCount.value})`
               : '查看评论',
             icon: 'comment',
           },
@@ -285,7 +281,7 @@ const items = computed<MenuItem[]>(() => {
 });
 function clear() {
   sequence++;
-  playlistSongCommentCount.value = null;
+  songRowCommentCount.value = null;
   clearTimeout(timer);
   message.value = '';
   failed.value = false;
@@ -324,21 +320,21 @@ watch(
 );
 watch(
   () =>
+    request.value?.songRowComment?.live() ??
     request.value?.episode?.live() ??
     request.value?.searchGroup?.live() ??
-    request.value?.searchSinglePlay?.() ??
-    request.value?.playlistSongComment?.live(),
+    request.value?.searchSinglePlay?.(),
   (live) => {
     if (live === false) close();
   },
 );
 onBeforeUnmount(close);
-async function preparePlaylistMenu(signal: AbortSignal) {
+async function prepareSongMenu(signal: AbortSignal) {
   const input = request.value;
-  const scope = input?.playlistSongComment;
+  const scope = input?.songRowComment;
   if (!input || !scope) return false;
   const attempt = sequence;
-  const prepared = await preparePlaylistSongComment(client, scope, signal);
+  const prepared = await prepareSongRowComment(client, scope, signal);
   if (
     !prepared ||
     signal.aborted ||
@@ -347,7 +343,7 @@ async function preparePlaylistMenu(signal: AbortSignal) {
     !scope.live()
   )
     return false;
-  playlistSongCommentCount.value = prepared.count;
+  songRowCommentCount.value = prepared.count;
   return true;
 }
 async function show(input: TrackMenuRequest, source?: PlaylistView) {
@@ -385,7 +381,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     request.value !== input ||
     (input.episode && !input.episode.live()) ||
     (input.searchGroup && !input.searchGroup.live()) ||
-    input.playlistSongComment?.live() === false ||
+    input.songRowComment?.live() === false ||
     (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
@@ -784,7 +780,7 @@ async function select(key: string) {
     item.separator ||
     (input.episode && !input.episode.live()) ||
     (input.searchGroup && !input.searchGroup.live()) ||
-    input.playlistSongComment?.live() === false ||
+    input.songRowComment?.live() === false ||
     (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
@@ -926,9 +922,7 @@ defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadAct
           : '歌曲操作'
     "
     :items="items"
-    :before-open="
-      request?.playlistSongComment?.menu.kind === 'eligible' ? preparePlaylistMenu : undefined
-    "
+    :before-open="request?.songRowComment?.menu?.kind === 'eligible' ? prepareSongMenu : undefined"
     @select="select"
   />
   <ModalTransition

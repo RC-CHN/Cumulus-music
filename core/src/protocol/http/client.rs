@@ -8,12 +8,13 @@ use crate::{
     lyrics::LyricBountyWrite,
     protocol::{
         api::{
-            Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
-            GuardedPlaylistCreate, GuardedPlaylistRemove, GuardedSongLike, LyricBountyPermission,
-            MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH, MessageReadAllPermission,
-            PlaybackChorusPermission, PlaybackChorusRead, PlayerPodcastResumeRead,
-            PlayerPodcastResumeWrite, PlaylistAddPermission, SongCardLikedRead, SongLikePermission,
-            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            Api, ApiFuture, COMMENT_INFORMATION_PATH, CopyrightNotificationRead,
+            DailyNotificationRead, GuardedPlaylistAdd, GuardedPlaylistCreate,
+            GuardedPlaylistRemove, GuardedSongLike, LyricBountyPermission, MESSAGE_COUNT_PATH,
+            MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PlaybackChorusPermission,
+            PlaybackChorusRead, PlayerPodcastResumeRead, PlayerPodcastResumeWrite,
+            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
+            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
             VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
             VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
             VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
@@ -103,6 +104,7 @@ enum RequestBinding<'a> {
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     PlaybackChorus(&'a PlaybackChorusPermission<'a>),
     EffectCatalogue(&'a crate::protocol::api::EffectCataloguePermission<'a>),
+    SearchSongComment(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     SearchSongShare(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
@@ -723,7 +725,10 @@ impl MusicHttpClient {
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
-        if let Some(RequestBinding::EffectCatalogue(current)) = binding {
+        if let Some(
+            RequestBinding::EffectCatalogue(current) | RequestBinding::SearchSongComment(current),
+        ) = binding
+        {
             current()?;
         }
         if let Some(RequestBinding::PodcastProgress(allowed)) = binding
@@ -951,6 +956,25 @@ impl MusicHttpClient {
                 {
                     return Err(Error::CredentialChanged);
                 }
+                permission()?;
+            }
+            if let Some(RequestBinding::SearchSongComment(permission)) = binding {
+                let current = self.credentials.request_credentials(&target)?;
+                if path != COMMENT_INFORMATION_PATH
+                    || origin != super::ApiOrigin::Pc
+                    || route != WireRoute::Eapi
+                    || self.anonymous_store
+                    || cache
+                    || current.revision != snapshot.revision
+                    || current.device_id != snapshot.device_id
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(
+                    &current,
+                    ["/api/w/nuser/account/get", "/api/search/song/list/page"],
+                )?;
                 permission()?;
             }
             if let Some(RequestBinding::SearchSongShare(permission)) = binding {
@@ -1947,6 +1971,28 @@ impl Api for MusicHttpClient {
 
     fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
         Ok(Some(self.credentials.login_credentials()?.revision))
+    }
+
+    fn request_search_song_comment_information<'a>(
+        &'a self,
+        payload: Value,
+        revision: Option<&'a str>,
+        permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let revision = revision.ok_or(Error::CredentialChanged)?;
+            let response = self
+                .execute(
+                    COMMENT_INFORMATION_PATH,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::SearchSongComment(permission)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(COMMENT_INFORMATION_PATH, response, &[200])
+        })
     }
 
     fn search_song_share_credential_revision(&self) -> Result<Option<String>> {

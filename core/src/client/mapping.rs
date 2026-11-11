@@ -49,6 +49,11 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
     })
 }
 
+pub(super) fn catalog_song_comment_eligible(value: &Value) -> bool {
+    value["t"].as_f64() != Some(1.0)
+        && !crate::protocol::wire::serialization::js_truthy(&value["privilege"]["cs"])
+}
+
 pub(super) fn track(value: &Value) -> Result<TrackView> {
     let artists = value
         .get("ar")
@@ -93,8 +98,7 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
         missing: false,
         local: false,
         playlist_song_comment_menu: None,
-        playlist_song_comment_eligible: value["t"].as_f64() != Some(1.0)
-            && !crate::protocol::wire::serialization::js_truthy(&value["privilege"]["cs"]),
+        playlist_song_comment_eligible: catalog_song_comment_eligible(value),
     })
 }
 

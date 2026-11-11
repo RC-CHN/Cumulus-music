@@ -98,6 +98,8 @@ mod search_mv_fixture;
 mod search_podcast_playback_fixture;
 #[path = "support/search_privilege_fixture.rs"]
 mod search_privilege_fixture;
+#[path = "support/search_song_comment_fixture.rs"]
+mod search_song_comment_fixture;
 #[path = "support/search_voice_menu_fixture.rs"]
 mod search_voice_menu_fixture;
 #[allow(dead_code)]
@@ -259,6 +261,9 @@ impl Api for Library {
     }
 
     fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if search_song_comment_fixture::enabled() {
+            return Ok(Some(search_song_comment_fixture::credential_revision()));
+        }
         Ok((search_fixture::enabled()
             && std::env::var_os("CUMULUS_SEARCH_GROUP_NEXT_PROOF").is_some())
         .then(|| "synthetic-search-group-next".into()))
@@ -933,6 +938,9 @@ impl Api for Library {
                 return fixture::Library::default().request(path, args, false).await;
             }
             if let Some(result) = search_voice_menu_fixture::response(path, &args, cached).await {
+                return result;
+            }
+            if let Some(result) = search_song_comment_fixture::response(path, &args, cached).await {
                 return result;
             }
             if let Some(result) = search_fixture::response(path, &args) {
@@ -2006,6 +2014,14 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__libraryFixtureAck={report};")).unwrap();
                 return;
             }
+            if search_song_comment_fixture::enabled() && stage=="search-song-comment-control" {
+                let sequence=value["sequence"].as_u64().unwrap();
+                search_song_comment_fixture::control(value["action"].as_str().unwrap());
+                let response=json!({"sequence":sequence,"report":search_song_comment_fixture::report()});
+                handle.get_webview_window("main").unwrap()
+                    .eval(format!("window.__searchSongCommentAck={response};")).unwrap();
+                return;
+            }
             if playlist_song_comment_fixture::enabled() && stage=="playlist-song-comment-control" {
                 let sequence=value["sequence"].as_u64().unwrap();
                 playlist_song_comment_fixture::control(value["action"].as_str().unwrap());
@@ -2139,6 +2155,7 @@ fn main() {
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
             if playlist_song_comment_fixture::enabled() { value["playlistSongCommentFixture"] = playlist_song_comment_fixture::report(); }
+            if search_song_comment_fixture::enabled() { value["searchSongCommentFixture"] = search_song_comment_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if download_liked_fixture::enabled() { value["syntheticDownloadLiked"] = download_liked_fixture::report(&proof_store); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
@@ -2178,14 +2195,14 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || zone_fm_preview_fixture::enabled() {
+                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || zone_fm_preview_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
+                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {

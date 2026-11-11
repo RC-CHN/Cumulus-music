@@ -1,7 +1,9 @@
 use super::{model, *};
 use crate::{
     Error, Result,
-    protocol::api::{Api, VinylCommentRead, identifier, validate_response},
+    protocol::api::{
+        Api, COMMENT_INFORMATION_PATH, VinylCommentRead, identifier, validate_response,
+    },
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -228,12 +230,16 @@ impl CommentApi {
         let value = self
             .api
             .call(
-                "/api/resource/commentInfo/list",
+                COMMENT_INFORMATION_PATH,
                 json!({"resourceType":resource_type,"resourceIds":serde_json::to_string(&ids)?}),
                 false,
                 &[200],
             )
             .await?;
+        Self::validate_information(kind, &ids, &value)
+    }
+
+    fn validate_information(kind: ResourceKind, ids: &[String], value: &Value) -> Result<Value> {
         let rows = value["data"]
             .as_array()
             .ok_or(Error::Response("comment information missing"))?;
@@ -244,7 +250,7 @@ impl CommentApi {
             if row["threadId"]
                 != (CommentResource {
                     kind,
-                    id,
+                    id: id.clone(),
                     owner: None,
                 })
                 .thread()?
@@ -260,6 +266,28 @@ impl CommentApi {
         let rows = self.information(kind, &[id]).await?;
         Self::count_from(&rows)
     }
+    pub(crate) async fn search_song_count(
+        &self,
+        id: String,
+        revision: Option<&str>,
+        permission: &(dyn Fn() -> Result<()> + Send + Sync),
+    ) -> Result<u64> {
+        let ids = [identifier(&json!(id))?];
+        let value = self
+            .api
+            .request_search_song_comment_information(
+                json!({"resourceType":4,"resourceIds":serde_json::to_string(&ids)?}),
+                revision,
+                permission,
+            )
+            .await?;
+        Self::count_from(&Self::validate_information(
+            ResourceKind::Track,
+            &ids,
+            &value,
+        )?)
+    }
+
     pub(crate) async fn downloaded_voice_count(&self, id: String) -> Result<u64> {
         // M622 uses the episode's offline ID with the legacy track wire
         // discriminator. A song thread with the same ID is still unrelated.

@@ -21,6 +21,8 @@ pub use queue_drop::{SearchDropRow, SearchNextRight};
 mod reason;
 mod results;
 pub use reason::{ReasonTarget, SearchReasonPage};
+mod song_comment;
+pub use song_comment::SearchSongCommentMenu;
 mod song_share;
 pub use song_share::SearchSongShareTarget;
 mod track_hint;

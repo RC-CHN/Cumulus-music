@@ -9,7 +9,7 @@ import type {
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
 import type { SongGroupDownloadPrepare } from './search';
-import type { PlaylistSongCommentScope } from './playlistSongComments';
+import type { SongRowCommentScope } from './songRowCommentMenu';
 
 export type TrackPlayGesture = 'double_click';
 export interface TrackPendingToggle {
@@ -56,7 +56,7 @@ export interface TrackMenuRequest {
     openShare: (anchor: HTMLElement | undefined) => void;
     copyLink: () => string | undefined;
   };
-  playlistSongComment?: PlaylistSongCommentScope;
+  songRowComment?: SongRowCommentScope;
   searchGroup?: {
     epoch: string;
     download?: import('./search').SearchGroupDownloadSelection;

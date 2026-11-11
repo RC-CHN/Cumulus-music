@@ -399,6 +399,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 search::search_results,
                 search::search_group_download,
                 search::open_search_group_purchased_quality_guide,
+                search::search_song_row_comment_count,
                 search::search_song_share_prepare,
                 search::search_song_share_choose,
                 search::search_song_share_cancel,

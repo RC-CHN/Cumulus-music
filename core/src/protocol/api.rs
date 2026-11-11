@@ -15,6 +15,7 @@ pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaybackChorusPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
+pub(crate) const COMMENT_INFORMATION_PATH: &str = "/api/resource/commentInfo/list";
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
 pub(crate) const PODCAST_RESUME_WRITE_PATH: &str = "/api/dj/user/setting/resumeplay/update";
@@ -1230,6 +1231,24 @@ pub trait Api: Send + Sync + std::any::Any {
     /// Profile revision used to fence native search privilege receipts.
     fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    /// Recheck an already observed Search Song before reading its public count.
+    /// Native HTTP implementations also fence the queued request at dispatch.
+    fn request_search_song_comment_information<'a>(
+        &'a self,
+        payload: Value,
+        revision: Option<&'a str>,
+        permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            permission()?;
+            if self.search_privilege_credential_revision()?.as_deref() != revision {
+                return Err(Error::CredentialChanged);
+            }
+            self.call(COMMENT_INFORMATION_PATH, payload, false, &[200])
+                .await
+        })
     }
 
     /// Optional exact PC account scope for an ordinary Song share privilege read.

@@ -4,6 +4,7 @@ import type { AlbumCard, ArtistCard, CatalogVideoCard } from './catalog';
 import type { EpisodeView, PodcastCard } from './podcast';
 import type { FollowUser } from './collections';
 import type { SearchTextPart } from './searchMatch';
+import type { SongRowCommentMenu } from './songRowCommentMenu';
 import type {
   HistoryRowShareChoice,
   HistoryRowShareOutcome,
@@ -69,6 +70,7 @@ export type SearchItem =
       excerpt: string[];
       queueDropReceipt?: string;
       songShareReceipt?: string;
+      songCommentMenu?: SongRowCommentMenu;
       songPublicLinkAvailable?: boolean;
       groupNextRight?: 'playable' | 'copyright_blocked';
       groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };

@@ -6235,13 +6235,14 @@ function showVisibleTrackActions(request: TrackMenuRequest, selection?: TrackMen
   const route = page.value;
   const displayed = playlistTrackSearch.value.tracks;
   const commentMenu = request.track.playlistSongCommentMenu;
-  const playlistSongComment: TrackMenuRequest['playlistSongComment'] =
+  const songRowComment: TrackMenuRequest['songRowComment'] =
     route.kind === 'playlist' &&
     !route.zonePlaylistReceipt &&
     playlist.id === route.id &&
     commentMenu &&
     displayed.includes(request.track)
       ? {
+          source: 'playlist',
           epoch,
           menu:
             selection?.multiple ||
@@ -6266,7 +6267,7 @@ function showVisibleTrackActions(request: TrackMenuRequest, selection?: TrackMen
   trackActions.value?.show(
     {
       ...request,
-      playlistSongComment,
+      songRowComment,
       mixedLocal: membership?.hasMembers,
       mixedRemoval: mixedRemovalMenu([request.track]),
       ...(membership && localRevision

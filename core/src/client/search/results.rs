@@ -23,6 +23,8 @@ pub enum SearchItem {
         group_next_right: Option<super::SearchNextRight>,
         #[serde(rename = "groupDownload", skip_serializing_if = "Option::is_none")]
         group_download: Option<super::SearchGroupDownloadRow>,
+        #[serde(rename = "songCommentMenu", skip_serializing_if = "Option::is_none")]
+        song_comment_menu: Option<Box<super::SearchSongCommentMenu>>,
         #[serde(rename = "songShareReceipt", skip_serializing_if = "Option::is_none")]
         song_share_receipt: Option<String>,
         #[serde(
@@ -241,6 +243,8 @@ pub struct SearchResultView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_layout: Option<SearchPreviewLayout>,
     #[serde(skip)]
+    pub(super) song_comment_rows: Vec<Option<String>>,
+    #[serde(skip)]
     pub(super) song_share_rows: Vec<Option<super::song_share::Song>>,
 }
 impl MusicClient {
@@ -324,6 +328,9 @@ impl MusicClient {
                 };
                 let download_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.song_card_download_scope_revision().ok().flatten())
+                    .flatten();
+                let comment_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.search_privilege_credential_revision().ok())
                     .flatten();
                 let share_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.search_song_share_credential_revision().ok().flatten())
@@ -557,7 +564,13 @@ impl MusicClient {
                         .capture(token, &api, credentials, &mut view)?;
                 }
                 if view.query.category == SearchCategory::Songs {
-                    let share_revision = if self.login_pending()? {
+                    let login_pending = self.login_pending()?;
+                    let comment_revision = if login_pending {
+                        None
+                    } else {
+                        comment_credentials
+                    };
+                    let share_revision = if login_pending {
                         None
                     } else {
                         share_credentials.filter(|before| {
@@ -595,6 +608,12 @@ impl MusicClient {
                     };
                     self.session.require_api(token, &api)?;
                     self.session.with_token(token, |_| {
+                        self.search.song_comment_pages.capture(
+                            token,
+                            &api,
+                            comment_revision,
+                            &mut view,
+                        )?;
                         self.search
                             .song_shares
                             .capture(token, &api, share_revision, &mut view)?;
@@ -870,6 +889,7 @@ fn item(
                 queue_drop_receipt: None,
                 group_next_right: None,
                 group_download: None,
+                song_comment_menu: None,
                 song_share_receipt: None,
                 song_public_link_available: false,
                 mv_id,
@@ -1067,6 +1087,7 @@ impl SearchResultView {
             tabs: None,
             hot_explanation: None,
             preview_layout: None,
+            song_comment_rows: vec![],
             song_share_rows: vec![],
         }
     }
@@ -1336,6 +1357,9 @@ pub(super) fn project(
                         ..
                     } = &mut item
                 {
+                    result
+                        .song_comment_rows
+                        .push(super::song_comment::observe(base, track));
                     let public_song = super::song_share::Song::observe(base, track);
                     *song_public_link_available = public_song.is_some();
                     result.song_share_rows.push(public_song);
