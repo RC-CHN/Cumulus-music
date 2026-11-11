@@ -23,7 +23,68 @@ def kinds(rows):
     return [row['kind'] for row in rows]
 
 
-def verify(root, mode, fixture):
+def verify_directory_setup(root, output, labels, stages, complete):
+    saved_root = str(root / 'media')
+    epoch = stages['settings']['current']['epoch']
+    audits = {label: stages[label]['directoryAudit'] for label in (
+        'directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled',
+    )}
+    for audit in audits.values():
+        assert audit['epoch'] == epoch and audit['migration'] is None
+        assert audit['activeCount'] == audit['completedCount'] == 0
+
+    confirmation = audits['directory_confirm']
+    first_preview = {'epoch': epoch, 'root': saved_root, 'result': {
+        'epoch': epoch, 'target': saved_root, 'revision': None, 'decision': 'ready', 'moveExisting': False,
+    }}
+    assert confirmation['nativeDirectory'] is None and confirmation['path'] == '未设置'
+    assert confirmation['chooserCalls'] == [epoch] and confirmation['pickerResults'] == [saved_root]
+    assert confirmation['previewCalls'] == [first_preview] and confirmation['changeCalls'] == []
+    assert not confirmation['focus']
+    assert confirmation['confirmation'] == {
+        'title': '更改下载目录', 'message': f'将下载目录更改为 {saved_root}。是否继续？',
+        'action': '继续更改', 'ownsFocus': True,
+    }
+    change = {'epoch': epoch, 'command': {
+        'kind': 'change_directory', 'root': saved_root, 'revision': None,
+    }, 'result': {'epoch': epoch, 'accepted': [], 'failed': [], 'operationId': None}}
+    saved = audits['directory_saved']
+    native = saved['nativeDirectory']
+    assert native['root'] == saved_root and isinstance(native['revision'], str) and native['revision']
+    assert saved['path'] == saved_root and saved['focus'] and saved['confirmation'] is None
+    assert saved['chooserCalls'] == [epoch] and saved['pickerResults'] == [saved_root]
+    assert saved['previewCalls'] == [first_preview] and saved['changeCalls'] == [change]
+
+    same = audits['directory_same']
+    same_preview = {'epoch': epoch, 'root': saved_root, 'result': {
+        'epoch': epoch, 'target': saved_root, 'revision': native['revision'],
+        'decision': 'same_directory', 'moveExisting': True,
+    }}
+    assert same['nativeDirectory'] == native and same['path'] == saved_root and not same['focus']
+    assert same['chooserCalls'] == [epoch] * 2 and same['pickerResults'] == [saved_root] * 2
+    assert same['previewCalls'] == [first_preview, same_preview] and same['changeCalls'] == [change]
+    assert same['confirmation'] == {
+        'title': '更改下载目录', 'message': '选择了同样的目录，请重新选择。',
+        'action': '重新选择', 'ownsFocus': True,
+    }
+
+    repick = audits['directory_repick_cancelled']
+    assert repick['nativeDirectory'] == native and repick['path'] == saved_root
+    assert repick['focus'] and repick['confirmation'] is None
+    assert repick['chooserCalls'] == complete['directoryChooserCalls'] == [epoch] * 3
+    assert repick['pickerResults'] == complete['directoryPickerResults'] == [saved_root, saved_root, None]
+    assert repick['previewCalls'] == complete['directoryPreviewCalls'] == [first_preview, same_preview]
+    assert repick['changeCalls'] == complete['directoryChangeCalls'] == [change]
+    assert complete['directoryRepickCancelled'] and not complete['directoryChooserCancelled']
+    assert complete['nativeDirectory'] == native and complete['settingsDirectoryPath'] == saved_root
+    for label in ('directory_confirm', 'directory_same'):
+        number = labels.index(label) + 1
+        sample, = read(output / f'paint-ux_{number:02}_{label}.json')['samples']
+        assert sample['region'] == 'download-directory-confirmation' and sample['ok']
+        assert sample['nearColorPixels'] >= 3
+
+
+def verify(root, mode, fixture, directory_setup=False):
     output = root / 'first'
     locale = read(output / 'locale.json')
     assert locale['numeric'] == 'C' and locale['messages'] not in ('C', 'POSIX')
@@ -33,12 +94,15 @@ def verify(root, mode, fixture):
         'playlist': ('picker', 'uncertain', 'transferred'),
         'directory': ('directory', 'settings'),
     }[mode]
+    if directory_setup:
+        tail += ('directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled')
     labels = (*BASE, *tail)
     stages = {}
     assert sorted(path.stem for path in output.glob('ux_*.json')) == [
         f'ux_{index:02}_{label}' for index, label in enumerate(labels, 1)
     ]
     assert complete['ok'] and complete['mode'] == mode and complete['stageCount'] == len(labels)
+    assert complete['directorySetup'] is directory_setup
     assert complete['realAccountWrites'] == complete['realMusicRequests'] == 0
     assert not complete['legacyWrites']
     for index, label in enumerate(labels, 1):
@@ -116,9 +180,15 @@ def verify(root, mode, fixture):
         assert stages['directory']['dom']['notice'].startswith('请先设置下载目录')
         settings = stages['settings']['dom']
         assert settings['settings'] and settings['settingsFocus'] and settings['settingsDirectoryAction']
-        assert settings['settingsDirectoryPath'] == complete['settingsDirectoryPath'] == '未设置'
-        assert complete['directoryChooserCalls'] == [stages['settings']['current']['epoch']]
-        assert complete['directoryChooserCancelled'] and complete['directoryPreviewCalls'] == []
+        assert settings['settingsDirectoryPath'] == '未设置'
+        if directory_setup:
+            verify_directory_setup(root, output, labels, stages, complete)
+        else:
+            assert complete['settingsDirectoryPath'] == '未设置' and complete['nativeDirectory'] is None
+            assert complete['directoryChooserCalls'] == [stages['settings']['current']['epoch']]
+            assert complete['directoryPickerResults'] == [None]
+            assert complete['directoryChooserCancelled'] and not complete['directoryRepickCancelled']
+            assert not complete['directoryPreviewCalls'] and not complete['directoryChangeCalls']
         assert not settings['ordinary'] and complete['tasks'] == []
         sample, = read(output / 'paint-ux_08_settings.json')['samples']
         assert sample['region'] == 'download-settings-heading' and sample['ok'] and sample['nearColorPixels'] >= 3
@@ -126,8 +196,9 @@ def verify(root, mode, fixture):
         assert not any((root / 'media').rglob('*'))
         digest = None
     else:
-        assert not complete['directoryChooserCalls'] and not complete['directoryPreviewCalls']
-        assert not complete['directoryChooserCancelled']
+        assert not complete['directoryChooserCalls'] and not complete['directoryPickerResults']
+        assert not complete['directoryPreviewCalls'] and not complete['directoryChangeCalls']
+        assert not complete['directoryChooserCancelled'] and not complete['directoryRepickCancelled']
         assert started['result'] == 'started' and started['startedCount'] == 1
         assert stages['transferred']['dom']['status'] == 'complete'
         task, = complete['tasks']
@@ -143,7 +214,8 @@ def verify(root, mode, fixture):
         digest = hashlib.sha256(file.read_bytes()).hexdigest()
     return {'ok': True, 'actualLinuxWebView': True, 'mode': mode, 'stageCount': len(labels),
             'screenshots': len(labels), 'guardedPlaylistWrites': int(mode == 'playlist'),
-            'nativeTransfers': int(mode != 'directory'), 'publishedSha256': digest}
+            'nativeTransfers': int(mode != 'directory'), 'publishedSha256': digest,
+            'directorySetup': directory_setup, 'nativeDirectoryWrites': int(directory_setup)}
 
 
 def main():
@@ -152,7 +224,11 @@ def main():
     parser.add_argument('--frontend-dist', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--case', choices=('liked', 'playlist', 'directory'), required=True)
+    parser.add_argument('--directory-setup', action='store_true',
+                        help='select, preview and explicitly save a folder in the directory case')
     args = parser.parse_args()
+    if args.directory_setup and args.case != 'directory':
+        parser.error('--directory-setup requires --case directory')
     require_xvfb()
     repo = Path(__file__).resolve().parents[2]
     root = args.root.resolve()
@@ -179,6 +255,7 @@ def main():
     source = root / 'current-song-download.js'
     source.write_text(f'window.__currentSongDownloadMode={json.dumps(args.case)};\n'
                       f'window.__currentSongDownloadDirectory={json.dumps(str(media))};\n'
+                      f'window.__currentSongDownloadSetupDirectory={json.dumps(args.directory_setup)};\n'
                       + probe.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(source)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
@@ -186,7 +263,7 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert result == 0, f'WebView probe exited {result}'
-    report = verify(root, args.case, repo / 'core/tests/fixtures/stereo-pcm-source.flac')
+    report = verify(root, args.case, repo / 'core/tests/fixtures/stereo-pcm-source.flac', args.directory_setup)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

@@ -2,6 +2,7 @@
 (async () => {
   const mode = window.__currentSongDownloadMode;
   const directory = window.__currentSongDownloadDirectory;
+  const directorySetup = window.__currentSongDownloadSetupDirectory === true;
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
   const emit = (stage, fields = {}) =>
     invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...fields } });
@@ -14,6 +15,7 @@
   const picker = () => modal('[data-search-group-download-picker]');
   const download = () => modal('.download-dialog');
   const downloadSettings = () => one('section[aria-labelledby="settings-download"]');
+  const directoryConfirmation = () => modal('.settings-confirm');
   const settingsDirectoryPath = () =>
     one('[data-download-directory-path]', downloadSettings() ?? null)?.textContent.trim() ?? null;
   const notice = () => one('.player-download-notice', bar());
@@ -42,8 +44,8 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let epoch, checkpoint = 0, last, incumbent;
   const actions = [], legacyWrites = [];
-  const directoryChooserCalls = [], directoryPreviewCalls = [];
-  let cancelNativeChooser, directoryChooserCancelled = false;
+  const directoryChooserCalls = [], directoryPickerResults = [], directoryPreviewCalls = [], directoryChangeCalls = [];
+  let resolveNativeChooser, directoryChooserCancelled = false, directoryRepickCancelled = false;
   const preferences = { quality: 'standard', tags: false, cover: false, lyrics: false, container: 'audio' };
   const expectedTiers = ['hires', 'lossless', 'exhigh', 'standard'];
 
@@ -72,19 +74,25 @@
   async function capture(label) {
     await wait(() => !one('dialog.modal-enter-active,dialog.modal-leave-active'), 'settled dialog');
     let paint = {};
-    if (label === 'settings') {
+    const confirmStage = label === 'directory_confirm' || label === 'directory_same';
+    if (label === 'settings' || confirmStage) {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      assert(renderedSettings(), 'settings still visible after paint frames');
-      const heading = one('#settings-download', downloadSettings());
+      assert(confirmStage ? directoryConfirmation() : renderedSettings(), 'settings still visible after paint frames');
+      const heading = confirmStage ? one('h2', directoryConfirmation()) : one('#settings-download', downloadSettings());
       const text = document.createRange();
       text.selectNodeContents(heading);
+      // Sample only the first two characters of the longer confirmation title.
+      if (confirmStage) text.setEnd(heading.firstChild, 2);
       const rect = text.getBoundingClientRect();
       paint = {
         screenX, screenY, ratio: devicePixelRatio,
-        paintRegions: [{ name: 'download-settings-heading', left: rect.left, top: rect.top,
+        paintRegions: [{ name: confirmStage ? 'download-directory-confirmation' : 'download-settings-heading', left: rect.left, top: rect.top,
           width: rect.width, height: rect.height, color: getComputedStyle(heading).color, present: true }],
       };
     }
+    const directoryStages = ['directory_confirm', 'directory_saved', 'directory_same', 'directory_repick_cancelled'];
+    const directoryEvidence = directoryStages.includes(label)
+      ? { directoryAudit: await directoryAudit() } : {};
     const [player, queue] = await Promise.all([nativePlayer(), nativeQueue()]);
     const current = { epoch: player.epoch, playId: player.playId, entryId: player.entryId,
       trackId: player.track?.id, state: player.state, position: player.position, kind: player.resourceKind,
@@ -92,7 +100,7 @@
       queue: queue.tracks.map((row) => [row.entryId, row.track.id]) };
     if (incumbent) assert(JSON.stringify(current) === JSON.stringify(incumbent), 'purchase flow preserves paused player and queue');
     const id = `ux_${String(++checkpoint).padStart(2, '0')}_${label}`;
-    await emit(id, { mode, current, visible: document.visibilityState === 'visible', ...paint,
+    await emit(id, { mode, current, visible: document.visibilityState === 'visible', ...paint, ...directoryEvidence,
       dom: { quality: !!quality(), ordinary: !!download(), picker: !!picker(),
         status: badge()?.dataset.downloadState, focus: document.activeElement === badge(),
         settings: label === 'settings' && renderedSettings(),
@@ -137,6 +145,29 @@
     return invoke('downloads', { epoch, query: { tab, category: tab === 'active' ? 'all' : 'song',
       keyword: '', sort: 'completed', descending: true, offset: 0, limit: 10 } });
   }
+  async function directoryAudit() {
+    const saved = await sessionTaskRows('completed');
+    const confirmation = directoryConfirmation();
+    return {
+      epoch: saved.epoch,
+      nativeDirectory: saved.directory,
+      migration: saved.migration,
+      activeCount: saved.activeCount,
+      completedCount: saved.completedCount,
+      path: settingsDirectoryPath(),
+      focus: document.activeElement === byText('更改目录', downloadSettings() ?? null),
+      confirmation: confirmation ? {
+        title: one('h2', confirmation)?.textContent.trim(),
+        message: one('p', confirmation)?.textContent.trim(),
+        action: one('.primary', confirmation)?.textContent.trim(),
+        ownsFocus: confirmation.contains(document.activeElement),
+      } : null,
+      chooserCalls: [...directoryChooserCalls],
+      pickerResults: [...directoryPickerResults],
+      previewCalls: structuredClone(directoryPreviewCalls),
+      changeCalls: structuredClone(directoryChangeCalls),
+    };
+  }
   function observeCore() {
     const provides = one('#app').__vue_app__._context.provides;
     const client = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
@@ -148,15 +179,24 @@
       const preview = client.downloadDirectoryPreview;
       assert(typeof client.pickDownloadDirectory === 'function' && typeof preview === 'function',
         'typed native directory selection and preview adapters are installed');
-      // Intercept only the system picker handoff. The actual Settings component
-      // invokes the typed adapter and consumes a delayed native Cancel result.
+      // Replace only the OS picker result. Preview, confirmation and setting
+      // persistence continue through the actual typed desktop IPC.
       client.pickDownloadDirectory = (owner) => {
         directoryChooserCalls.push(owner);
-        return new Promise((resolve) => { cancelNativeChooser = () => resolve(null); });
+        return new Promise((resolve) => {
+          resolveNativeChooser = (path) => {
+            directoryPickerResults.push(path);
+            resolveNativeChooser = undefined;
+            resolve(path);
+          };
+        });
       };
-      client.downloadDirectoryPreview = (...args) => {
-        directoryPreviewCalls.push(args[0]);
-        return preview.apply(client, args);
+      client.downloadDirectoryPreview = async (owner, root) => {
+        const record = { epoch: owner, root };
+        directoryPreviewCalls.push(record);
+        const result = await preview.call(client, owner, root);
+        record.result = result;
+        return result;
       };
     }
     client.playerCurrentSongDownload = async (owner, target, action) => {
@@ -182,10 +222,53 @@
       await guide.call(client, owner, target, offer);
       current.result = 'opened';
     };
-    client.downloadCommand = async (...args) => {
-      legacyWrites.push(args[1]?.kind);
-      return oldDownload.apply(client, args);
+    client.downloadCommand = async (owner, command) => {
+      if (mode === 'directory' && directorySetup && command?.kind === 'change_directory') {
+        const record = { epoch: owner, command: structuredClone(command) };
+        directoryChangeCalls.push(record);
+        const result = await oldDownload.call(client, owner, command);
+        record.result = result;
+        return result;
+      }
+      legacyWrites.push(command?.kind);
+      return oldDownload.call(client, owner, command);
     };
+  }
+
+  async function applyDirectorySetup(edit) {
+    resolveNativeChooser(directory);
+    await wait(() => enabled(byText('继续更改', directoryConfirmation() ?? null)),
+      'ready native preview opens a confirmation without committing');
+    assert(directoryPreviewCalls.length === 1 && directoryPreviewCalls[0].result?.decision === 'ready' &&
+      directoryChangeCalls.length === 0 && settingsDirectoryPath() === '未设置',
+      'selecting a folder only previews');
+    await capture('directory_confirm');
+    await click(() => byText('继续更改', directoryConfirmation() ?? null), 'explicitly save the initial directory');
+    await wait(() => !directoryConfirmation() && !edit.disabled && document.activeElement === edit &&
+      settingsDirectoryPath() === directory && downloadSettings()?.textContent.includes('下载目录已更改。'),
+      'saved native directory is rendered inline and returns focus');
+    assert(directoryChangeCalls.length === 1 && directoryChangeCalls[0].result?.epoch === epoch,
+      'exactly one same-account initial directory command completed');
+    await capture('directory_saved');
+
+    await click(() => edit, 'pick the current directory again');
+    await wait(() => directoryChooserCalls.length === 2 && resolveNativeChooser, 'second native picker request');
+    resolveNativeChooser(directory);
+    await wait(() => enabled(byText('重新选择', directoryConfirmation() ?? null)),
+      'the same directory receives only a repick action');
+    assert(directoryPreviewCalls.length === 2 && directoryPreviewCalls[1].result?.decision === 'same_directory' &&
+      directoryChangeCalls.length === 1, 'same directory is rejected before changing it');
+    await capture('directory_same');
+    await click(() => byText('重新选择', directoryConfirmation() ?? null), 'explicitly request a replacement folder');
+    await wait(() => directoryChooserCalls.length === 3 && !directoryConfirmation() && resolveNativeChooser,
+      'repick waits for the confirmation to close');
+    resolveNativeChooser(null);
+    await wait(() => !edit.disabled && document.activeElement === edit && !one('dialog[open]'),
+      'cancelling the replacement restores the directory button');
+    directoryRepickCancelled = true;
+    assert(directoryPreviewCalls.length === 2 && directoryChangeCalls.length === 1 &&
+      settingsDirectoryPath() === directory, 'replacement cancellation preserves the saved directory');
+    await capture('directory_repick_cancelled');
   }
 
   try {
@@ -270,17 +353,20 @@
       const edit = byText('更改目录', downloadSettings());
       assert(settingsDirectoryPath() === '未设置', 'current empty directory is shown inline');
       await click(() => edit, 'open system directory picker directly from Settings');
-      await wait(() => directoryChooserCalls.length === 1 && edit.disabled && cancelNativeChooser,
+      await wait(() => directoryChooserCalls.length === 1 && edit.disabled && resolveNativeChooser,
         'one native chooser call, pending control disabled');
       assert(directoryChooserCalls[0] === epoch && !one('dialog[open]'),
         'exact account goes directly to native picker without another Settings dialog');
       edit.click();
-      cancelNativeChooser();
-      await wait(() => !edit.disabled && document.activeElement === edit && !one('dialog[open]'),
-        'native Cancel restores exact directory button focus');
-      directoryChooserCancelled = true;
-      assert(directoryChooserCalls.length === 1 && !directoryPreviewCalls.length && !legacyWrites.length &&
-        settingsDirectoryPath() === '未设置', 'cancel never previews or commits, preserving the inline path');
+      if (directorySetup) await applyDirectorySetup(edit);
+      else {
+        resolveNativeChooser(null);
+        await wait(() => !edit.disabled && document.activeElement === edit && !one('dialog[open]'),
+          'native Cancel restores exact directory button focus');
+        directoryChooserCancelled = true;
+        assert(directoryChooserCalls.length === 1 && !directoryPreviewCalls.length && !legacyWrites.length &&
+          settingsDirectoryPath() === '未设置', 'cancel never previews or commits, preserving the inline path');
+      }
     } else {
       await wait(async () => badge()?.dataset.downloadState === 'complete' &&
         (await sessionTaskRows('completed')).tasks.some((row) => row.track.id === '2' && row.status === 'complete'),
@@ -294,12 +380,14 @@
     assert(!active.tasks.length && legacyWrites.length === 0, 'no ordinary download write from paid source');
     const task = ({ id, track, status, source, requestedQuality, actualQuality }) =>
       ({ id, trackId: track.id, status, source, requestedQuality, actualQuality });
-    await emit('complete', { ok: true, mode, stageCount: checkpoint, realAccountWrites: 0,
+    await emit('complete', { ok: true, mode, directorySetup, stageCount: checkpoint, realAccountWrites: 0,
       realMusicRequests: 0, actions, legacyWrites, tasks: complete.tasks.map(task),
-      directoryChooserCalls, directoryPreviewCalls, directoryChooserCancelled,
+      directoryChooserCalls, directoryPickerResults, directoryPreviewCalls, directoryChangeCalls,
+      directoryChooserCancelled, directoryRepickCancelled, nativeDirectory: complete.directory,
       settingsDirectoryPath: settingsDirectoryPath() });
   } catch (error) {
     await emit('failed', { ok: false, mode, stageCount: checkpoint, last, error: String(error),
-      stack: error.stack, actions, legacyWrites, directoryChooserCalls, directoryPreviewCalls, active: document.activeElement?.outerHTML.slice(0, 300) });
+      stack: error.stack, actions, legacyWrites, directoryChooserCalls, directoryPickerResults,
+      directoryPreviewCalls, directoryChangeCalls, active: document.activeElement?.outerHTML.slice(0, 300) });
   }
 })();
