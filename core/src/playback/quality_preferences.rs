@@ -83,13 +83,44 @@ fn current(value: Option<Value>, saved: Option<Value>) -> Result<QualityPreferen
     }
 }
 impl QualityPreferences {
+    pub(crate) fn clamp_member_default(
+        tx: &mut StateTransaction<'_>,
+        owner: &str,
+        ceiling: Quality,
+    ) -> Result<()> {
+        let current = match Self::read_in(tx, owner) {
+            Ok(preferences) => preferences,
+            Err(Error::Json(_)) => return Ok(()), // Preserve the damaged record.
+            Err(error) => return Err(error),
+        };
+        let preferred = current
+            .trial
+            .as_ref()
+            .map_or(current.quality, |trial| trial.previous);
+        if preferred.bitrate() <= ceiling.bitrate() {
+            return Ok(());
+        }
+        let mut next = Self::fresh(ceiling);
+        if let Some(mut trial) = current.trial {
+            // This local cap cannot revoke a separately authorized active
+            // trial. Its ordinary preference upon expiry still obeys M/116.
+            trial.previous = ceiling;
+            next.quality = current.quality;
+            next.trial = Some(trial);
+        }
+        // A persisted binding is kept byte-for-byte apart from its default
+        // fallback; this cannot create, revive or extend a trial authorization.
+        Self::write_in(tx, owner, &next)
+    }
+
     pub fn read(store: &StateStore, owner: &str) -> Result<Self> {
-        store.transaction(|tx| {
-            current(
-                tx.get(owner, KIND, "current")?,
-                tx.get(owner, KIND, "saved")?,
-            )
-        })
+        store.transaction(|tx| Self::read_in(tx, owner))
+    }
+    fn read_in(tx: &StateTransaction<'_>, owner: &str) -> Result<Self> {
+        current(
+            tx.get(owner, KIND, "current")?,
+            tx.get(owner, KIND, "saved")?,
+        )
     }
     pub fn replace(
         store: &StateStore,
@@ -114,10 +145,7 @@ impl QualityPreferences {
         expected: &str,
         next: &Self,
     ) -> Result<()> {
-        let previous = current(
-            tx.get(owner, KIND, "current")?,
-            tx.get(owner, KIND, "saved")?,
-        )?;
+        let previous = Self::read_in(tx, owner)?;
         if previous.revision != expected {
             return Err(Error::State("listening quality settings changed"));
         }
@@ -132,8 +160,11 @@ impl QualityPreferences {
                 &trial.operation,
             )?;
         }
+        Self::write_in(tx, owner, next)
+    }
+    fn write_in(tx: &mut StateTransaction<'_>, owner: &str, value: &Self) -> Result<()> {
         tx.put(owner, KIND, "saved", &json!(true))?;
-        tx.put(owner, KIND, "current", &serde_json::to_value(next)?)
+        tx.put(owner, KIND, "current", &serde_json::to_value(value)?)
     }
     pub(crate) fn fresh_trial(quality: Quality, trial: QualityTrialBinding) -> Self {
         Self {
@@ -148,10 +179,7 @@ impl QualityPreferences {
             return Ok(false);
         };
         store.transaction(|tx| {
-            let latest = current(
-                tx.get(owner, KIND, "current")?,
-                tx.get(owner, KIND, "saved")?,
-            )?;
+            let latest = Self::read_in(tx, owner)?;
             if latest != *expected {
                 return Ok(false);
             }
@@ -198,5 +226,43 @@ impl QualityPreferences {
             tx.put(owner, KIND, "current", &serde_json::to_value(&next)?)?;
             Ok(next)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::playback::quality::QualityRight;
+
+    #[test]
+    fn member_cap_preserves_a_trial_binding_and_only_caps_its_ordinary_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = StateStore::open(directory.path()).unwrap();
+        let old = QualityPreferences::fresh_trial(
+            Quality::Vivid,
+            QualityTrialBinding {
+                operation: uuid::Uuid::new_v4().simple().to_string(),
+                right: QualityRight::Vivid,
+                previous: Quality::Sky,
+            },
+        );
+        let low = QualityPreferences::replace(&store, "2", "initial", Quality::Higher).unwrap();
+        store
+            .transaction(|tx| QualityPreferences::write_in(tx, "1", &old))
+            .unwrap();
+        store
+            .transaction(|tx| {
+                QualityPreferences::clamp_member_default(tx, "1", Quality::JyEffect)?;
+                QualityPreferences::clamp_member_default(tx, "2", Quality::ExHigh)
+            })
+            .unwrap();
+        let next = QualityPreferences::read(&store, "1").unwrap();
+        assert_ne!(next.revision, old.revision);
+        assert_eq!(next.quality, Quality::Vivid);
+        let old = old.trial.unwrap();
+        let next = next.trial.unwrap();
+        assert_eq!((next.operation, next.right), (old.operation, old.right));
+        assert_eq!(next.previous, Quality::JyEffect);
+        assert_eq!(QualityPreferences::read(&store, "2").unwrap(), low);
     }
 }

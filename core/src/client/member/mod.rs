@@ -40,7 +40,10 @@ impl MusicClient {
 
     /// Native shell only: the worker waits for a verified authenticated account.
     pub async fn start_membership_lifecycle(&self) -> Result<MembershipLifecycle> {
-        MembershipLifecycle::start(self.session.clone(), self.membership_manager().await?)
+        let manager = self.membership_manager().await?;
+        self.session
+            .enable_membership_default_ceiling(self.auth.context.clone());
+        MembershipLifecycle::start(self.session.clone(), manager)
     }
 
     fn member_token(&self, epoch: &str) -> Result<SessionToken> {

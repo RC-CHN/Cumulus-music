@@ -2,6 +2,8 @@ use super::*;
 use cumulus_core::{
     account::{profiles::ProfileRegistry, session::MembershipObservation},
     client::MusicClient,
+    download::service::{DownloadOptions, OutputContainer},
+    playback::quality_preferences::QualityPreferences,
     protocol::http::ApiOrigin,
 };
 use std::time::Duration;
@@ -51,6 +53,163 @@ fn calls(api: &ScriptApi, uid: &str, count: usize) {
             call.path == PATH && call.payload == json!({"userId":uid}) && !call.cache
         })
     );
+}
+
+fn set_download_default(store: &StateStore, owner: &str, quality: Quality) -> DownloadOptions {
+    let options = DownloadOptions {
+        quality,
+        tags: false,
+        cover: true,
+        lyrics: true,
+        container: OutputContainer::Ncm,
+    };
+    store
+        .put(
+            owner,
+            "download_preferences_v1",
+            "options",
+            &serde_json::to_value(&options).unwrap(),
+        )
+        .unwrap();
+    options
+}
+
+fn download_default(store: &StateStore, owner: &str) -> DownloadOptions {
+    serde_json::from_value(
+        store
+            .get(owner, "download_preferences_v1", "options")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap()
+}
+
+#[tokio::test(start_paused = true)]
+async fn verified_member_downgrade_clamps_only_saved_defaults_in_the_current_owner() {
+    let api = Arc::new(ScriptApi::new([
+        rights(1, NOW, NOW + 5_000, NOW + 1_000),
+        rights(1, NOW + 2_000, NOW + 5_000, 0),
+        rights(1, NOW + 6_000, 0, 0),
+    ]));
+    let (root, account, client) = client(api.clone());
+    let store = ProfileRegistry::open(root.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let high = QualityPreferences::replace(&store, "1", "initial", Quality::Vivid).unwrap();
+    let mut downloads = set_download_default(&store, "1", Quality::Sky);
+    let guest =
+        QualityPreferences::replace(&store, "local-guest", "initial", Quality::Higher).unwrap();
+    let other = QualityPreferences::replace(&store, "2", "initial", Quality::HiRes).unwrap();
+    let other_downloads = set_download_default(&store, "2", Quality::JyMaster);
+    let mut observed = client.subscribe_membership_observations().unwrap();
+    let host = client.start_membership_lifecycle().await.unwrap();
+
+    // An unsigned account does not read membership or act like a free member.
+    wait(1_000).await;
+    calls(&api, "1", 0);
+    assert_eq!(QualityPreferences::read(&store, "1").unwrap(), high);
+    adopt(&account, api.clone(), 1);
+    observation(&mut observed).await;
+    calls(&api, "1", 1);
+    assert_eq!(QualityPreferences::read(&store, "1").unwrap(), high);
+    assert_eq!(download_default(&store, "1"), downloads);
+
+    let mut previous = high;
+    for (advance, count, ceiling) in [(2_000, 2, Quality::JyEffect), (4_000, 3, Quality::ExHigh)] {
+        wait(advance).await;
+        observation(&mut observed).await;
+        calls(&api, "1", count);
+        let next = QualityPreferences::read(&store, "1").unwrap();
+        assert_eq!(next.quality, ceiling);
+        assert_ne!(next.revision, previous.revision);
+        downloads.quality = ceiling;
+        assert_eq!(download_default(&store, "1"), downloads);
+        previous = next;
+    }
+    assert_eq!(
+        QualityPreferences::read(&store, "local-guest").unwrap(),
+        guest
+    );
+    assert_eq!(QualityPreferences::read(&store, "2").unwrap(), other);
+    assert_eq!(download_default(&store, "2"), other_downloads);
+    assert!(
+        store
+            .get("local-guest", "download_preferences_v1", "options")
+            .unwrap()
+            .is_none()
+    );
+    drop(host);
+}
+
+#[tokio::test(start_paused = true)]
+async fn wrong_owner_and_failed_membership_reads_never_clamp_local_settings() {
+    for reply in [
+        rights(2, NOW, 0, 0),
+        Reply::Ready(Err(Error::Transport("fixture".into()))),
+    ] {
+        let api = Arc::new(ScriptApi::new([reply]));
+        let (root, account, client) = client(api.clone());
+        let store = ProfileRegistry::open(root.path(), ApiOrigin::Pc)
+            .unwrap()
+            .store();
+        let listen = QualityPreferences::replace(&store, "1", "initial", Quality::Vivid).unwrap();
+        let options = set_download_default(&store, "1", Quality::Lossless);
+        let host = client.start_membership_lifecycle().await.unwrap();
+        adopt(&account, api.clone(), 1);
+        api.wait_for_calls(1).await;
+        wait(60_000).await;
+        calls(&api, "1", 1);
+        assert_eq!(QualityPreferences::read(&store, "1").unwrap(), listen);
+        assert_eq!(download_default(&store, "1"), options);
+        drop(host);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_download_default_write_cannot_publish_partial_member_preferences() {
+    let api = Arc::new(ScriptApi::new([
+        rights(1, NOW, 0, 0),
+        rights(1, NOW + 1, 0, 0),
+    ]));
+    let (root, account, client) = client(api.clone());
+    let store = ProfileRegistry::open(root.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let listen = QualityPreferences::replace(&store, "1", "initial", Quality::HiRes).unwrap();
+    let mut options = set_download_default(&store, "1", Quality::Lossless);
+    let database = rusqlite::Connection::open(root.path().join("core.sqlite3")).unwrap();
+    database
+        .execute_batch(
+            "CREATE TRIGGER reject_quality_default BEFORE INSERT ON state
+         WHEN NEW.owner='1' AND NEW.kind='download_preferences_v1' AND NEW.key='options'
+         BEGIN SELECT RAISE(ABORT, 'synthetic local write failure'); END;",
+        )
+        .unwrap();
+    let mut observed = client.subscribe_membership_observations().unwrap();
+    let host = client.start_membership_lifecycle().await.unwrap();
+    adopt(&account, api.clone(), 1);
+    api.wait_for_calls(1).await;
+    wait(1_000).await;
+    calls(&api, "1", 1);
+    assert!(!observed.has_changed().unwrap());
+    assert!(store.get("1", "membership", "current").unwrap().is_none());
+    assert_eq!(QualityPreferences::read(&store, "1").unwrap(), listen);
+    assert_eq!(download_default(&store, "1"), options);
+
+    database
+        .execute_batch("DROP TRIGGER reject_quality_default")
+        .unwrap();
+    client.member_rights("1", true).await.unwrap();
+    observation(&mut observed).await;
+    calls(&api, "1", 2);
+    assert!(store.get("1", "membership", "current").unwrap().is_some());
+    assert_eq!(
+        QualityPreferences::read(&store, "1").unwrap().quality,
+        Quality::ExHigh
+    );
+    options.quality = Quality::ExHigh;
+    assert_eq!(download_default(&store, "1"), options);
+    drop(host);
 }
 
 #[tokio::test(start_paused = true)]
@@ -286,6 +445,8 @@ async fn credential_rotation_during_native_read_discards_before_persistence_or_o
     let root = tempfile::tempdir().unwrap();
     let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
     let store = registry.store();
+    let listen = QualityPreferences::replace(&store, "1", "initial", Quality::Vivid).unwrap();
+    let options = set_download_default(&store, "1", Quality::Sky);
     let account = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
     account
         .adopt(api.clone(), json!({"userId":1}), &account.token().unwrap())
@@ -303,5 +464,7 @@ async fn credential_rotation_during_native_read_discards_before_persistence_or_o
     calls(&api.script, "1", 1);
     assert!(!observed.has_changed().unwrap());
     assert!(store.get("1", "membership", "current").unwrap().is_none());
+    assert_eq!(QualityPreferences::read(&store, "1").unwrap(), listen);
+    assert_eq!(download_default(&store, "1"), options);
     drop(host);
 }

@@ -215,14 +215,18 @@ impl MembershipManager {
             credentials.as_deref(),
             commit,
             tuple,
-            |uid| {
+            |uid, ceiling| {
                 let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-                self.store.put(
-                    uid,
-                    "membership",
-                    "current",
-                    &serde_json::to_value(&candidate.record)?,
-                )?;
+                self.store.transaction(|tx| {
+                    tx.put(uid, "membership", "current", &serde_json::to_value(&candidate.record)?)?;
+                    if let Some(ceiling) = ceiling {
+                        crate::playback::quality_preferences::QualityPreferences::clamp_member_default(
+                            tx, uid, ceiling,
+                        )?;
+                        crate::download::preferences::clamp_member_default(tx, uid, ceiling)?;
+                    }
+                    Ok(())
+                })?;
                 *state = Some(candidate);
                 Ok(())
             },

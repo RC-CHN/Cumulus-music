@@ -34,8 +34,10 @@ def verify_download_quality(output, result, screenshots):
         assert len(list(output.glob('ux_*.png'))) == len(stages)
     reports = [value['downloadQualityFixture'] for value in values]
     assert [report['membershipReads'] for report in reports] == [1, 2, 3, 3, 3, 3]
-    assert [report['savedQuality'] for report in reports] == ['vivid'] * 3 + ['lossless'] * 3
-    assert all(value['retained'] for value in values[:3])
+    assert [report['savedQuality'] for report in reports] == ['vivid', 'vivid', 'jyeffect'] + ['lossless'] * 3
+    assert all(value['retained'] for value in values[:2])
+    assert values[2]['clamped'] == 'jyeffect'
+    assert [row['name'] for row in values[2]['rows'] if row['checked']] == ['高清臻音']
     assert values[1]['message']
     assert [row['name'] for row in values[2]['rows'] if not row['disabled']] == [
         '高清臻音', 'Hi-Res', '无损', '极高', '标准',

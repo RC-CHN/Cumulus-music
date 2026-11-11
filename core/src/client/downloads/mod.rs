@@ -44,7 +44,7 @@ pub use voice_quality::{VoiceDownloadConfirmation, VoiceDownloadPreparation};
 
 pub(in crate::client) use crate::download::service::GuardedSongBatch;
 
-const PREFERENCES: &str = "download_preferences_v1";
+use crate::download::preferences::KIND as PREFERENCES;
 
 // A download's typed origin owns its namespace. Raw metadata remains intact in
 // the task record, but cannot turn a Song/Cloud download into an episode while

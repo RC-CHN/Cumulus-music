@@ -1412,6 +1412,7 @@ async fn default_download_quality_is_current_account_preference_not_media_permis
     assert_eq!(access(&unavailable, "vivid"), None);
     let mut edited = unavailable.options.clone();
     edited.tags = !edited.tags;
+    let edited_tags = edited.tags;
     save(unavailable.revision.clone(), edited.clone())
         .await
         .unwrap();
@@ -1435,6 +1436,8 @@ async fn default_download_quality_is_current_account_preference_not_media_permis
     .expect("native account startup did not commit membership");
     drop(lifecycle);
     let member = read();
+    assert_eq!(member.options.quality, Quality::JyEffect);
+    assert_eq!(member.options.tags, edited_tags);
     assert_eq!(access(&member, "lossless").as_deref(), Some("allowed"));
     assert_eq!(access(&member, "jyeffect").as_deref(), Some("allowed"));
     assert_eq!(

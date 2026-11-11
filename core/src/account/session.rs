@@ -8,8 +8,11 @@ mod remove_guide;
 use super::{artist_onboarding::ArtistLogin, identity::VerifiedAccount, login_policy::LoginNotice};
 use crate::{
     Error, Result,
-    membership::MembershipCommit,
-    protocol::api::{Api, identifier},
+    membership::{MembershipCommit, Quality, membership_default_ceiling},
+    protocol::{
+        api::{Api, identifier},
+        context::RequestContext,
+    },
     storage::{StateStore, StateTransaction},
 };
 use remove_guide::ClassicRemoveGuide;
@@ -17,7 +20,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     future::Future,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard, OnceLock},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,6 +125,7 @@ pub struct AccountSession {
     state: Mutex<SessionState>,
     store: Option<Arc<StateStore>>,
     policy: policy::PolicyHost,
+    membership_default_context: OnceLock<Option<Arc<RequestContext>>>,
     pub(crate) podcast_resume: crate::podcast::resume::Observations,
     pub(super) legacy_renewal_running: std::sync::atomic::AtomicBool,
 }
@@ -160,6 +164,7 @@ impl AccountSession {
             }),
             store,
             policy: Default::default(),
+            membership_default_context: OnceLock::new(),
             podcast_resume: Default::default(),
             legacy_renewal_running: Default::default(),
         }
@@ -199,6 +204,12 @@ impl AccountSession {
         Ok(self.lock()?.membership_commits.subscribe())
     }
 
+    /// Install the native PC M/116 default policy before the lifecycle reads.
+    /// A host without a PC config still knows the SVIP, Vinyl and free branches.
+    pub(crate) fn enable_membership_default_ceiling(&self, context: Option<Arc<RequestContext>>) {
+        let _ = self.membership_default_context.get_or_init(|| context);
+    }
+
     pub(crate) fn commit_membership<T>(
         &self,
         token: &SessionToken,
@@ -206,11 +217,12 @@ impl AccountSession {
         credentials: Option<&str>,
         commit: MembershipCommit,
         tuple: ([bool; 5], String),
-        persist: impl FnOnce(&str) -> Result<T>,
+        persist: impl FnOnce(&str, Option<Quality>) -> Result<T>,
     ) -> Result<T> {
         let mut state = self.lock()?;
         state.require(token)?;
-        if !Arc::ptr_eq(&state.api, api)
+        if state.status != SessionStatus::Authenticated
+            || !Arc::ptr_eq(&state.api, api)
             || api.membership_credential_revision()?.as_deref() != credentials
         {
             return Err(Error::StaleResponse);
@@ -223,7 +235,11 @@ impl AccountSession {
             return Err(Error::StaleResponse);
         }
         let uid = state.uid.as_deref().ok_or(Error::StaleResponse)?;
-        let value = persist(uid)?;
+        let ceiling = self
+            .membership_default_context
+            .get()
+            .and_then(|context| membership_default_ceiling(&commit, context.as_deref()));
+        let value = persist(uid, ceiling)?;
         // Publishing the deadline is separate from the UI rights tuple. A
         // shifted expiry can require rearming without changing any active flag.
         if let Some(old) = state

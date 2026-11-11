@@ -109,8 +109,8 @@
     click(retry);
     await wait(() => readSettled() && !button('重试', dialog()) && !choices()[4]?.disabled, 'membership recovery');
     assertChoices(true);
-    assert(retainedVivid(), 'membership recovery alone leaves stored preference untouched');
-    await capture('membership_recovered', { retained: true });
+    assert(choices()[2].checked && !retainedVivid(), 'verified Vinyl read clamps the saved default before returning');
+    await capture('membership_recovered', { clamped: 'jyeffect' });
 
     click(choices()[4].radio);
     await closeSettings(origin, true);

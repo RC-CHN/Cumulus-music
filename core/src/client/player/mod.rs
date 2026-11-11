@@ -90,6 +90,7 @@ pub use voice_songs::{
 };
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
+pub(super) use crate::membership::music_package_hires;
 pub use crate::playback::controller::QueueMoreTipAction;
 use crate::{
     Error, Result,
@@ -111,7 +112,6 @@ pub use intelligence::{IntelligenceCommand, IntelligenceEligibility, Intelligenc
 pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use power::PlaybackPowerView;
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
-pub(super) use quality::config::music_package_hires;
 pub use quality::{
     QualityChoiceView, QualityDetailsView, QualityMenuPresentation, QualityTrialCommand,
     QualityTrialOutcome, QualityTrialView,

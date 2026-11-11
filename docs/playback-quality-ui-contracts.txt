@@ -22,6 +22,9 @@ Rust controller/quality.rs 独立管理音质切换；quality_preferences.rs 保
 隔离的偏好。初始标准、revision=initial；保存/显式修复产生不重复 UUID CAS 标识。
 读取/保存都校验当前账号代次；损坏偏好不会阻止普通歌曲播放，也不会静默覆盖原记录。
 “重置音质偏好”把原始损坏值和保存标记在本地事务中归档后重置，保留其它设置。
+原生会员状态读取成功时另按 M/116 调整超限的后续默认播放/下载档位。
+当前授权、音源和队列不变；具体层级、匿名与试用边界见
+membership-quality-defaults-contracts.txt。
 
 手动选择先请求 /api/song/enhance/player/url/v1 并确认 code/url/md5，不打断旧音频；
 授权失败保持旧播放、位置及偏好。授权成功后在同一个 SQLite 事务内检查旧偏好 revision

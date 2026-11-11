@@ -1,12 +1,12 @@
 //! Recovered M/247 configuration center policy for the playback quality menu.
 use super::view::QualityMenuPresentation;
 use crate::{
+    membership::music_package_hires,
     playback::quality::QualityExperiments,
     protocol::{context::RequestContext, pc_experiments::PcExperimentGroups},
 };
 use serde_json::Value;
 
-const MUSIC_PACKAGE_HIRES: &str = "preload#musicPackageCanUseHiresAndLoseless";
 const AUDIO_POPOVER_TRACK_SIZE: &str = "preload#isShowAudioPopoverTrackSize";
 
 pub(super) struct QualityConfiguration {
@@ -31,14 +31,6 @@ fn hide_track_size(data: Option<&Value>) -> bool {
     data.and_then(|data| data.get(AUDIO_POPOVER_TRACK_SIZE))
         .and_then(Value::as_bool)
         .unwrap_or(true)
-}
-
-pub(in crate::client) fn music_package_hires(data: Option<&Value>) -> Option<bool> {
-    match data.and_then(|data| data.get(MUSIC_PACKAGE_HIRES)) {
-        // M/247 merges verified remote settings over its built-in PC defaults.
-        None => Some(true),
-        Some(value) => value.as_bool(),
-    }
 }
 
 // TrackSoundQuality.tsx and M/34.m: the new layout and Vivid entry
@@ -69,7 +61,7 @@ pub(super) fn read(context: Option<&RequestContext>) -> QualityConfiguration {
 mod tests {
     use super::*;
     use crate::{
-        membership::Quality,
+        membership::{MUSIC_PACKAGE_HIRES, Quality},
         playback::quality::{QualityAccess, QualityPolicy, QualityPrivilege, QualitySubscriber},
         protocol::{
             api::ApiFuture,

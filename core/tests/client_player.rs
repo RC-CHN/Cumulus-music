@@ -769,6 +769,80 @@ async fn quality_menu_target_and_preference_revision_are_checked_before_requesti
 }
 
 #[tokio::test]
+async fn member_ceiling_updates_the_next_song_without_reloading_the_paused_source() {
+    use cumulus_core::playback::{
+        controller::PlaybackStatus, quality_preferences::QualityPreferences,
+    };
+    use std::time::Duration;
+
+    let device = Arc::new(support::Device::default());
+    let (directory, api, _session, client, _) = fixture_with_device(device.clone());
+    let registry = ProfileRegistry::open(directory.path(), ApiOrigin::Pc).unwrap();
+    let old_default =
+        QualityPreferences::replace(&registry.store(), "9", "initial", Quality::Vivid).unwrap();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["1".into(), "2".into()],
+                index: 0,
+                quality: Quality::Vivid,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Seek { seconds: 10.0 })
+        .await
+        .unwrap();
+    let loads = device.state.lock().unwrap().loads;
+    let url_reads = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.ends_with("/player/url/v1"))
+            .count()
+    };
+    let authorization = url_reads();
+    let mut observations = client.subscribe_membership_observations().unwrap();
+    let lifecycle = client.start_membership_lifecycle().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), observations.changed())
+        .await
+        .unwrap()
+        .unwrap();
+
+    let current = client.player_snapshot("1").await.unwrap();
+    assert_eq!(current.quality_preferences.quality, Quality::JyEffect);
+    assert_ne!(
+        current.quality_preferences.revision.as_deref(),
+        Some(old_default.revision.as_str())
+    );
+    assert_eq!(current.play_id, paused.play_id);
+    assert_eq!(current.entry_id, paused.entry_id);
+    assert_eq!(current.queue_revision, paused.queue_revision);
+    assert_eq!(current.state, PlaybackStatus::Paused);
+    assert_eq!(current.position, paused.position);
+    assert_eq!(current.requested_quality.as_deref(), Some("vivid"));
+    assert_eq!(current.actual_quality.as_deref(), Some("standard"));
+    assert_eq!(device.state.lock().unwrap().loads, loads);
+    assert_eq!(url_reads(), authorization);
+
+    let next = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(next.track.unwrap().id, "2");
+    assert_eq!(next.requested_quality.as_deref(), Some("jyeffect"));
+    assert_eq!(next.actual_quality.as_deref(), Some("standard"));
+    assert_eq!(device.state.lock().unwrap().loads, loads + 1);
+    assert_eq!(url_reads(), authorization + 1);
+    drop(lifecycle);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn rejecting_an_old_quality_menu_does_not_cancel_a_newer_pending_song_selection() {
     let (_dir, api, _session, client, _) = fixture();
     let first = client.play_selection("1", songs("1")).await.unwrap();

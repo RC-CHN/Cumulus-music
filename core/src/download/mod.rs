@@ -8,3 +8,4 @@ pub mod transfer;
 
 pub(crate) mod file_identity;
 pub(crate) mod playback;
+pub(crate) mod preferences;
