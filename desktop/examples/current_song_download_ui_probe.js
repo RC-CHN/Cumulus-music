@@ -13,6 +13,7 @@
   const quality = () => modal('[data-voice-purchased-download]');
   const picker = () => modal('[data-search-group-download-picker]');
   const download = () => modal('.download-dialog');
+  const downloadSettings = () => one('section[aria-labelledby="settings-download"]');
   const notice = () => one('.player-download-notice', bar());
   const byLabel = (label, root) => one(`[aria-label="${label}"]`, root);
   const byText = (text, root) => all('button', root).find((node) => node.textContent.trim() === text);
@@ -60,6 +61,9 @@
     await emit(id, { mode, current, visible: document.visibilityState === 'visible',
       dom: { quality: !!quality(), ordinary: !!download(), picker: !!picker(),
         status: badge()?.dataset.downloadState, focus: document.activeElement === badge(),
+        settings: !!downloadSettings()?.getClientRects().length,
+        settingsFocus: document.activeElement === one('#settings-download', downloadSettings() ?? null),
+        settingsDirectoryAction: enabled(byText('更改目录', downloadSettings() ?? null)),
         tiers: all('[data-voice-purchased-quality]', quality() ?? null).map((row) => row.value),
         selected: one('[data-voice-purchased-quality]:checked', quality() ?? null)?.value ?? null,
         destinations: all('[data-playlist-id]', picker() ?? null).map((row) => row.dataset.playlistId),
@@ -209,13 +213,18 @@
       await wait(() => notice()?.textContent.includes('请先设置下载目录') && !quality(), 'directory missing, no admission');
       await capture('directory');
       await click(() => byText('设置目录', notice()), 'explicit handoff to directory settings');
+      await wait(() => document.activeElement === one('#settings-download', downloadSettings() ?? null) &&
+        enabled(byText('更改目录', downloadSettings() ?? null)) && !download(),
+      'settings download section opened and focused');
+      await capture('settings');
+      const edit = byText('更改目录', downloadSettings());
+      await click(() => edit, 'open the directory form directly from Settings');
       await wait(() => download() && one('h2', download())?.textContent.trim() === '音质与下载',
-        'existing settings opened only on explicit action');
+        'existing native directory configuration opened');
       const input = one('[aria-label="下载目录"]', download());
       assert(input && !input.value, 'missing directory remains unconfigured');
-      await capture('settings');
       await click(() => byLabel('关闭下载对话框', download()), 'leave settings without selecting directory');
-      await wait(() => !download(), 'settings closes');
+      await wait(() => !download() && document.activeElement === edit, 'configuration closes back to Settings');
     } else {
       await wait(async () => badge()?.dataset.downloadState === 'complete' &&
         (await sessionTaskRows('completed')).tasks.some((row) => row.track.id === '2' && row.status === 'complete'),

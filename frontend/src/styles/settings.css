@@ -99,6 +99,11 @@
 .settings-section-content > p:first-child {
   margin-top: 4px;
 }
+.settings-download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .settings-options {
   border: 0;
   padding: 0;

@@ -58,6 +58,7 @@ const emit = defineEmits<{
   accounts: [];
   quickLoginEnabled: [];
   downloads: [];
+  configureDownload: [];
   accountDetail: [kind: AccountDetailKind];
   blacklistProfile: [id: string];
   blacklistUpdated: [id: string, result: ProfileBlacklistResult];
@@ -562,8 +563,11 @@ function accept(op: SettingsOperation) {
       <section class="settings-section" aria-labelledby="settings-download">
         <h2 id="settings-download" tabindex="-1">下载</h2>
         <div class="settings-section-content">
-          <p class="settings-note">下载目录、音质、格式和歌词选项可在下载管理中调整。</p>
-          <button class="secondary" @click="emit('downloads')">打开下载管理</button>
+          <p class="settings-note">设置下载目录、音质、格式和歌词选项。</p>
+          <div class="settings-download-actions">
+            <button class="secondary" @click="emit('configureDownload')">更改目录</button>
+            <button class="secondary" @click="emit('downloads')">打开下载管理</button>
+          </div>
         </div>
       </section>
       <PlaybackCache />

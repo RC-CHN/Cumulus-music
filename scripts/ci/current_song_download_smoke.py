@@ -114,7 +114,9 @@ def verify(root, mode, fixture):
     if mode == 'directory':
         assert started['result'] == 'directory_required'
         assert stages['directory']['dom']['notice'].startswith('请先设置下载目录')
-        assert stages['settings']['dom']['ordinary'] and complete['tasks'] == []
+        settings = stages['settings']['dom']
+        assert settings['settings'] and settings['settingsFocus'] and settings['settingsDirectoryAction']
+        assert not settings['ordinary'] and complete['tasks'] == []
         assert not set(MUTATIONS).intersection(kinds(native))
         assert not any((root / 'media').rglob('*'))
         digest = None
