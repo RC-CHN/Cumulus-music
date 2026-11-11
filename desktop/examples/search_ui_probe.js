@@ -57,6 +57,11 @@
   const checks = [], activationReads = [];
   let activationSubmissions = 0;
   const guestLoginIpc = [];
+  const guestTypingGesture = () => ({
+    inputFocused: document.activeElement === input(),
+    inputHovered: input()?.matches(":hover") === true,
+    pointedSuggestion: one(".search-suggestion-pointed")?.getAttribute("title") ?? null,
+  });
   const nativeFetch = window.fetch;
   window.fetch = async function (url, options) {
     const match = String(url).endsWith("/search_discovery");
@@ -214,7 +219,24 @@
       assert(document.body.textContent.includes("可以直接在顶栏搜索"), "welcome acknowledges guest access");
       await capture("guest_search_ready");
       await suggestions(keyword);
-      await capture("guest_search_suggestions");
+      // Enter intentionally activates a pointer-selected suggestion. A hosted
+      // desktop can open this new popover underneath its idle physical cursor.
+      // Put that cursor on the input to exercise the separate typing gesture.
+      const bounds = input().getBoundingClientRect();
+      assert(hit(input()), "guest typing input is pointer reachable");
+      window.__searchPointerAck = false;
+      await emit("search-pointer", {
+        x: bounds.left + bounds.width / 2,
+        y: bounds.top + bounds.height / 2,
+      });
+      const ownsTypedEnter = () => {
+        const gesture = guestTypingGesture();
+        return window.__searchPointerAck && gesture.inputFocused && gesture.inputHovered &&
+          gesture.pointedSuggestion === null && input().value === keyword;
+      };
+      await wait(ownsTypedEnter, "native pointer parked on the focused guest search input");
+      await capture("guest_search_suggestions", { guestTypingGesture: guestTypingGesture() });
+      assert(ownsTypedEnter(), "guest typed Enter still has no active pointer suggestion");
       key(input(), "Enter");
       await wait(() => heading() === keyword && rows().length, "guest comprehensive results");
       assert(button("登录后播放和收藏"), "sign-in available without blocking the results");
@@ -1436,6 +1458,7 @@
       message: String(error),
       text: panel()?.textContent,
       focus: document.activeElement?.outerHTML.slice(0, 400),
+      ...(window.__cumulusGuestSearchProof ? { guestTypingGesture: guestTypingGesture() } : {}),
     });
     await sleep(750);
     await emit("failed", {

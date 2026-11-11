@@ -122,6 +122,9 @@ def verify_guest_search(root, capture):
     def stage(name):
         return json.loads((directory / f'{name}.json').read_text(encoding='utf-8'))
 
+    suggestions = stage('ux_02_guest_search_suggestions')
+    assert suggestions['guestTypingGesture'] == dict(
+        inputFocused=True, inputHovered=True, pointedSuggestion=None)
     comprehensive = stage('ux_03_guest_search_results')
     menu = stage('ux_04_guest_search_songs')
     copied = stage('ux_05_guest_search_share_copy')
