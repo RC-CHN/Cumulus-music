@@ -1,4 +1,4 @@
-Cumulus 桌面交付证据（更新于 2026-11-10）
+Cumulus 桌面交付证据（更新于 2026-11-12）
 
 产品范围与复现入口
   目标是 Linux x86_64、Windows x86_64，见 AGENTS.md；本轮没有 macOS
@@ -19,6 +19,23 @@ Cumulus 桌面交付证据（更新于 2026-11-10）
   - 安装发行：只接受目标提交的 GitHub CI gate、该次运行及 attempt 的
     Linux/Windows 产物和清单，以及后续唯一空发布标记的独立 CI 和 CD。开发可执行
     文件、可运行探针、另一提交的成功包均不能当作候选发行。
+
+搜索主名称高亮候选 ce8d802a139af665c31b247e16108ce90dda085d
+  - 固定工具链严格 Clippy、四项 Rust 高亮测试（含 33 条官方对照向量）、
+    1114 项前端测试、类型及构建通过。真实 WebKitGTK 分别通过主名称六态、
+    内联译名六态、单曲连续加载五态。主名称验证与纠错重查第一页的流程分开。
+  - `cargo build -p cumulus-desktop --features custom-protocol --locked
+    --bin cumulus --example main_flow_ui_probe` 生成同一源码的正式程序与探针。
+    正式程序 SHA-256 为 `f7270fa079b08fdf8ba58c88dd40c2ed3bcd7a8978ce2c4b1d57bf6afed41413`。
+    在无外部网络、de_DE.utf8、私有 Xvfb 的真实窗口中，文件选择器导入合成
+    FLAC，原生时钟从 1.132541 到 2.331759 秒，暂停保持；私有 PipeWire
+    监控的 RMS 从播放 1702.681 到暂停 0。没有验证实体设备输出。
+  - `main_flow_https_smoke.py --screenshots --hard-network-cut` 的同源探针
+    通过 18 态和 17 张截图：隔离账号、播放与暂停、歌单编辑、下载、重开恢复，
+    并在关闭回环接口、确认新旧 TCP 都不可用后离线播放。使用签名合成服务和 libmpv，无真实请求
+    或真实写入。Linux 正式程序、主流程、高亮报告分别见
+    `.build/ui-proof/phase315-search-primary-marks/` 下 `linux-production/`、
+    `linux-main-flow/` 和 `linux-primary-r2/`，不能替代 Windows 或发行证据。
 
 已发布的 0.2.0-rc.2
   - https://github.com/RC-CHN/Cumulus-music/releases/tag/v0.2.0-rc.2 是预发布。
