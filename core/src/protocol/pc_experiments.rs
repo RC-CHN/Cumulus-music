@@ -2,7 +2,7 @@
 //! This module does not perform requests, exposure reports or native setting writes.
 
 use crate::{Error, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -62,6 +62,18 @@ pub fn assignment_arguments() -> Value {
         .collect::<Vec<_>>()
         .join(",");
     json!({ "expNames": names })
+}
+
+/// Finite presentation of the PC playback-bar entrance. It is not an
+/// applied effect, native permission, or catalogue routing decision.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PcEffectMinibarEntry {
+    #[default]
+    Legacy,
+    Hidden,
+    Always,
+    ActiveOnly,
 }
 
 /// A group-only, bounded projection. No experiment log, clientConfig or
@@ -141,12 +153,31 @@ impl PcExperimentGroups {
         self.group(SKIP) == Some("t1")
     }
 
+    fn minibar_new_assigned(&self) -> bool {
+        self.group("PH-PC-minibarNew") == Some("t1")
+            || (self.group("PH-PC-minibarNew") == Some("c")
+                && self.group("PH-PC-minibarNewLike") == Some("t1"))
+    }
+
     /// M/34.i: on PC the new effect page also requires the new playback bar.
     pub fn effect_catalogue_new_assigned(&self) -> bool {
-        self.group("PH-PC-yinxiaogaiban2") == Some("t1")
-            && (self.group("PH-PC-minibarNew") == Some("t1")
-                || (self.group("PH-PC-minibarNew") == Some("c")
-                    && self.group("PH-PC-minibarNewLike") == Some("t1")))
+        self.minibar_new_assigned() && self.group("PH-PC-yinxiaogaiban2") == Some("t1")
+    }
+
+    /// M/473 selects M/83 or M/395 using M/34.f. M/395 then uses the
+    /// separate M/34.h predicate for each yxrk cohort.
+    pub fn effect_minibar_entry(&self) -> PcEffectMinibarEntry {
+        if !self.minibar_new_assigned() {
+            return PcEffectMinibarEntry::Legacy;
+        }
+        if self.effect_catalogue_new_assigned() {
+            match self.group("PH-PC-yxrk") {
+                Some("t1") => return PcEffectMinibarEntry::Always,
+                Some("t2") => return PcEffectMinibarEntry::ActiveOnly,
+                _ => {}
+            }
+        }
+        PcEffectMinibarEntry::Hidden
     }
 }
 

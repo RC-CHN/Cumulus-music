@@ -1,6 +1,6 @@
 //! Sealed signed PC catalogue reads and presentation ownership.
 use super::*;
-use cumulus_core::protocol::pc_experiments::PcExperimentGroups;
+use cumulus_core::protocol::pc_experiments::{PcEffectMinibarEntry, PcExperimentGroups};
 
 const PROMOTE: &str = "/api/usertool/sound/mobile/promote";
 const ALL: &str = "/api/usertool/sound/mobile/all";
@@ -8,6 +8,7 @@ const MODERN: &str = "/api/usertool/sound/queryAllSound";
 const EFFECT: &str = "PH-PC-yinxiaogaiban2";
 const MINIBAR: &str = "PH-PC-minibarNew";
 const LIKE: &str = "PH-PC-minibarNewLike";
+const TAG: &str = "PH-PC-yxrk";
 
 fn assignment(flags: &[(&str, &str)]) -> Value {
     json!({"code":200,"data":flags.iter().map(|(name, group)| json!({"expName":name,"expGroupName":group})).collect::<Vec<_>>()})
@@ -64,6 +65,62 @@ fn complete_audio_page_truth_table() {
             }
         }
     }
+}
+
+#[test]
+fn minibar_tag_follows_the_recovered_entry_precedence() {
+    use PcEffectMinibarEntry::{ActiveOnly, Always, Hidden, Legacy};
+
+    let cases: &[(&[(&str, &str)], PcEffectMinibarEntry)] = &[
+        (&[], Legacy),
+        (&[(EFFECT, "t1"), (TAG, "t1")], Legacy),
+        (
+            &[(MINIBAR, "c"), (LIKE, "c"), (EFFECT, "t1"), (TAG, "t2")],
+            Legacy,
+        ),
+        (&[(MINIBAR, "t1"), (TAG, "t1")], Hidden),
+        (&[(MINIBAR, "t1"), (EFFECT, "t1")], Hidden),
+        (&[(MINIBAR, "t1"), (EFFECT, "t1"), (TAG, "c")], Hidden),
+        (&[(MINIBAR, "t1"), (EFFECT, "t1"), (TAG, "unknown")], Hidden),
+        (&[(MINIBAR, "t1"), (EFFECT, "t1"), (TAG, "t1")], Always),
+        (
+            &[(MINIBAR, "c"), (LIKE, "t1"), (EFFECT, "t1"), (TAG, "t2")],
+            ActiveOnly,
+        ),
+    ];
+    for &(flags, expected) in cases {
+        let groups = PcExperimentGroups::refreshed(&assignment(flags)).unwrap();
+        assert_eq!(groups.effect_minibar_entry(), expected, "{flags:?}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn changing_the_minibar_tag_preserves_catalogue_revision_and_uses_only_assignment() {
+    let f = Fixture::new(
+        true,
+        [
+            assignment(&[(MINIBAR, "t1"), (EFFECT, "t1"), (TAG, "t1")]).into(),
+            assignment(&[(MINIBAR, "t1"), (EFFECT, "t1"), (TAG, "t2")]).into(),
+        ],
+    );
+    let before = f.client.pc_presentation().unwrap();
+    assert_eq!(before.effect_minibar_entry, PcEffectMinibarEntry::Legacy);
+    let first = f.client.refresh_pc_presentation().await.unwrap();
+    tokio::time::advance(Duration::from_millis(1)).await;
+    let second = f.client.refresh_pc_presentation().await.unwrap();
+    assert_eq!(first.effect_minibar_entry, PcEffectMinibarEntry::Always);
+    assert_eq!(
+        second.effect_minibar_entry,
+        PcEffectMinibarEntry::ActiveOnly
+    );
+    assert_ne!(first.revision, second.revision);
+    assert!(first.effect_catalogue_new && second.effect_catalogue_new);
+    assert_eq!(
+        first.effect_catalogue_revision,
+        second.effect_catalogue_revision
+    );
+    assert_eq!(f.paths(), [ASSIGNMENT_PATH, ASSIGNMENT_PATH]);
+    assert_batch(&f.http);
 }
 
 #[tokio::test]

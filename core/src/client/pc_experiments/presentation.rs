@@ -4,7 +4,11 @@ use crate::{
     Error, Result,
     account::SessionToken,
     playback::controller::SongSpeedObservation,
-    protocol::{api::Api, http::MusicHttpClient, pc_experiments::PcExperimentGroups},
+    protocol::{
+        api::Api,
+        http::MusicHttpClient,
+        pc_experiments::{PcEffectMinibarEntry, PcExperimentGroups},
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -24,6 +28,9 @@ pub(super) struct Flags {
     pub(super) song_speed: Option<bool>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(super) effect_catalogue_new: bool,
+    // Older presentation caches have no independent minibar decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) effect_minibar_entry: Option<PcEffectMinibarEntry>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(super) podcast_purchases_compact: bool,
     // A previous profile cache is not evidence for this newly bound action.
@@ -33,6 +40,7 @@ pub(super) struct Flags {
 
 impl Flags {
     pub(super) fn project(groups: &PcExperimentGroups) -> Self {
+        let minibar_entry = groups.effect_minibar_entry();
         Self {
             search_v3: groups.group("PH-PC-searchHot") == Some("t1"),
             search_footer: groups.group("PH-PC-search-result") == Some("t1"),
@@ -40,6 +48,8 @@ impl Flags {
             search_dense: groups.group("PH-PC-searchPageEfficiency") == Some("t1"),
             song_speed: song_speed_cohort(groups),
             effect_catalogue_new: groups.effect_catalogue_new_assigned(),
+            effect_minibar_entry: (minibar_entry != PcEffectMinibarEntry::Legacy)
+                .then_some(minibar_entry),
             podcast_purchases_compact: groups.group("PH-PC-listPage-showMore") == Some("t1"),
             podcast_resume: groups.group(crate::podcast::resume::EXPERIMENT) == Some("t1"),
         }
@@ -76,6 +86,7 @@ pub struct PcPresentationView {
     pub guest_search_ready: bool,
     pub effect_catalogue_revision: String,
     pub effect_catalogue_new: bool,
+    pub effect_minibar_entry: PcEffectMinibarEntry,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub podcast_purchases_compact: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -98,6 +109,15 @@ impl PcPresentationView {
             search_dense: flags.search_dense,
             guest_search_ready,
             effect_catalogue_new: flags.effect_catalogue_new,
+            effect_minibar_entry: flags.effect_minibar_entry.unwrap_or(
+                if flags.effect_catalogue_new {
+                    // An old cached modern catalogue implies the modern minibar
+                    // but does not establish a yxrk cohort.
+                    PcEffectMinibarEntry::Hidden
+                } else {
+                    PcEffectMinibarEntry::Legacy
+                },
+            ),
             podcast_purchases_compact: token.uid.is_some() && flags.podcast_purchases_compact,
             podcast_resume: token.uid.is_some() && flags.podcast_resume,
         }
@@ -164,6 +184,7 @@ impl Default for PresentationHost {
             guest_search_ready: false,
             effect_catalogue_revision: "0".into(),
             effect_catalogue_new: false,
+            effect_minibar_entry: PcEffectMinibarEntry::Legacy,
             podcast_purchases_compact: false,
             podcast_resume: false,
         };
