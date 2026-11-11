@@ -2225,6 +2225,21 @@ function togetherPromptFallback() {
     : null;
 }
 const externalSelection = computed(() => together.view.value?.externalSelection);
+function togetherRecordReturnFocus() {
+  if (!togetherLeaveRecord.value || togetherRoomLoss.value || externalSelection.value?.blocked)
+    return null;
+  const active = document.activeElement;
+  // The room's manual confirmation is removed when End succeeds. Body is
+  // connected but not a useful return target. Keep any surviving control.
+  if (
+    active instanceof HTMLElement &&
+    active !== document.body &&
+    active !== document.documentElement &&
+    active.isConnected
+  )
+    return null;
+  return togetherPromptFallback() ?? document.querySelector<HTMLElement>('.settings-button');
+}
 const togetherFiltered = ref(false);
 watch(
   () => externalSelection.value?.id,
@@ -8788,7 +8803,10 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
-  <ModalTransition :fallback-focus="togetherPromptFallback">
+  <ModalTransition
+    :fallback-focus="togetherPromptFallback"
+    :return-focus="togetherRecordReturnFocus"
+  >
     <TogetherRoomLossDialog
       v-if="togetherRoomLoss"
       :key="togetherRoomLoss.reportId"
