@@ -18,6 +18,9 @@ const emit = defineEmits<{ close: []; started: []; manage: [tab: 'active' | 'com
 const { view, busy, error } = props.model;
 const dialog = ref<HTMLDialogElement>(),
   root = ref(view.value?.directory?.root ?? '');
+const historyQualityOnly = computed(
+  () => props.target.kind === 'voice' && !!props.target.history && !!view.value?.directory?.root,
+);
 const options = ref({ ...(view.value?.options ?? defaultDownloadOptions) });
 if (props.target.kind === 'voice')
   Object.assign(options.value, { container: 'audio', lyrics: false });
@@ -28,6 +31,13 @@ let dialogOpen = true;
 const voiceIsCurrent = props.model.captureVisit();
 const originalVoiceTarget = props.target.kind === 'voice' ? props.target : undefined;
 const voicePlan = shallowRef<VoiceDownloadPreparation>();
+const skippedVoiceCount = computed(() => {
+  const admitted = voicePlan.value?.admittedCount;
+  const target = props.target;
+  return target.kind === 'voice' && target.history && admitted !== undefined
+    ? Math.max(0, target.history.ids.length - admitted)
+    : 0;
+});
 const loadingVoice = ref(false);
 const voicePreparationError = ref('');
 const voiceSubmitted = ref(false);
@@ -43,6 +53,7 @@ async function prepareVoice() {
       target.purchased,
       target.liked,
       target.pagedLiked,
+      target.history,
     );
     if (!dialogOpen || !voiceIsCurrent() || props.target !== target || staleVoice.value) {
       if (plan) void props.model.discardVoice(plan);
@@ -51,9 +62,11 @@ async function prepareVoice() {
     voicePlan.value = plan;
     const first = plan?.choices[0];
     if (plan?.state === 'ready' && plan.receipt && first) options.value.quality = first.quality;
-    else if (plan?.state !== 'restricted') voicePreparationError.value = '暂未获得可选下载音质';
+    else if (plan?.state !== 'restricted' && plan?.state !== 'already_available')
+      voicePreparationError.value = '暂未获得可选下载音质';
   } catch (value) {
-    if (dialogOpen && voiceIsCurrent()) voicePreparationError.value = failure(value).message;
+    if (dialogOpen && voiceIsCurrent() && props.target === target && !staleVoice.value)
+      voicePreparationError.value = failure(value).message;
   } finally {
     if (dialogOpen) loadingVoice.value = false;
   }
@@ -157,7 +170,9 @@ const title = computed(() =>
     : props.target.kind === 'restart'
       ? '从头下载'
       : props.target.kind === 'voice'
-        ? `下载 ${props.target.tracks.length} 个单集`
+        ? historyQualityOnly.value
+          ? '选择下载音质'
+          : `下载 ${props.target.tracks.length} 个单集`
         : props.target.kind === 'cloud'
           ? `下载 ${props.target.tracks.length} 首云盘原文件`
           : props.target.kind === 'start'
@@ -269,6 +284,10 @@ async function save() {
   localError.value = '';
   admissionNotice.value = '';
   admissionTab.value = undefined;
+  if (historyQualityOnly.value) {
+    if (!blocked.value) await confirmVoice(true);
+    return;
+  }
   if (!root.value.trim()) {
     localError.value = '请选择下载目录';
     return;
@@ -298,8 +317,10 @@ async function save() {
     return;
   }
   const currentDirectory = view.value?.directory;
+  const onlyConfigureChanges =
+    target.kind === 'start' || (target.kind === 'voice' && target.history !== undefined);
   if (
-    props.target.kind !== 'start' ||
+    !onlyConfigureChanges ||
     currentDirectory?.root !== root.value.trim() ||
     currentDirectory.path_type !== pathType.value ||
     currentDirectory.file_type !== fileType.value
@@ -326,16 +347,7 @@ async function save() {
     return;
   }
   if (props.target.kind === 'voice') {
-    const plan = voicePlan.value;
-    const choice = plan?.choices.find((choice) => choice.quality === options.value.quality);
-    if (!plan?.receipt || !choice || !voiceIsCurrent() || staleVoice.value) return;
-    await perform({
-      kind: 'confirm_voice',
-      receipt: plan.receipt,
-      quality: choice.quality,
-      tags: options.value.tags,
-      cover: options.value.cover,
-    });
+    await confirmVoice();
     return;
   }
   if (props.target.kind === 'start') {
@@ -352,6 +364,20 @@ async function save() {
       revision: quality.value.revision,
       options: { ...options.value },
     });
+}
+async function confirmVoice(useSavedOptions = false) {
+  const plan = voicePlan.value;
+  const choice = plan?.choices.find((choice) => choice.quality === options.value.quality);
+  if (!plan?.receipt || !choice || !voiceIsCurrent() || staleVoice.value) return;
+  await perform({
+    kind: 'confirm_voice',
+    receipt: plan.receipt,
+    quality: choice.quality,
+    tags: useSavedOptions ? (view.value?.options.tags ?? options.value.tags) : options.value.tags,
+    cover: useSavedOptions
+      ? (view.value?.options.cover ?? options.value.cover)
+      : options.value.cover,
+  });
 }
 async function fileAction() {
   if (!task.value || !confirmation.value || blocked.value || task.value.cleanupPending) return;
@@ -378,6 +404,7 @@ async function fileAction() {
       'download-settings-dialog': ['start', 'settings', 'cloud', 'voice', 'voice_song'].includes(
         target.kind,
       ),
+      'history-voice-quality-dialog': historyQualityOnly,
     }"
     aria-labelledby="download-dialog-title"
     @cancel.prevent="close"
@@ -434,10 +461,25 @@ async function fileAction() {
           <p v-else-if="voicePlan?.state === 'restricted'" class="muted" role="status">
             当前节目不支持普通下载。
           </p>
+          <p v-else-if="voicePlan?.state === 'already_available'" class="muted" role="status">
+            所选节目已有下载记录或匹配的本地文件，无需重复下载。
+          </p>
           <div v-else-if="voicePreparationError" class="error-state" role="alert">
             {{ voicePreparationError }}
             <button type="button" class="text-button" @click="prepareVoice">重试</button>
           </div>
+          <p
+            v-if="
+              !loadingVoice &&
+              !staleVoice &&
+              voicePlan?.state !== 'already_available' &&
+              skippedVoiceCount
+            "
+            class="muted"
+            role="status"
+          >
+            已跳过 {{ skippedVoiceCount }} 个已有下载记录或匹配本地文件的单集。
+          </p>
         </template>
         <fieldset :disabled="blocked">
           <p
@@ -451,7 +493,10 @@ async function fileAction() {
             {{ target.message }}
           </p>
           <p
-            v-if="target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'"
+            v-if="
+              !historyQualityOnly &&
+              (target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice')
+            "
             class="download-selection ellipsis"
             :title="target.tracks.map((t) => t.name).join('、')"
           >
@@ -473,6 +518,7 @@ async function fileAction() {
             v-model="options"
             :voice="target.kind === 'voice'"
             :voice-choices="voicePlan?.choices"
+            :voice-quality-only="historyQualityOnly"
             :settings="target.kind === 'settings'"
             :quality-settings="quality"
           />
@@ -484,63 +530,67 @@ async function fileAction() {
           >
             刷新下载音质
           </button>
-          <label
-            >下载目录
-            <div class="download-path">
-              <input
-                v-model="root"
-                aria-label="下载目录"
-                placeholder="选择保存音乐的文件夹"
-                required
-              /><button type="button" class="text-button" @click="choose('root')">选择目录</button>
-            </div></label
-          >
-          <div class="download-naming">
+          <template v-if="!historyQualityOnly">
             <label
-              >文件夹组织<select v-model.number="pathType" aria-label="文件夹组织">
-                <option :value="0">全部放在下载目录</option>
-                <option :value="1">按歌手</option>
-                <option :value="2">按歌手 / 专辑</option>
-              </select></label
-            ><label
-              >文件命名<select v-model.number="fileType" aria-label="文件命名">
-                <option :value="1">歌曲名</option>
-                <option :value="0">歌手 - 歌曲名</option>
-                <option :value="2">歌曲名 - 歌手</option>
-              </select></label
+              >下载目录
+              <div class="download-path">
+                <input
+                  v-model="root"
+                  aria-label="下载目录"
+                  placeholder="选择保存音乐的文件夹"
+                  required
+                /><button type="button" class="text-button" @click="choose('root')">
+                  选择目录
+                </button>
+              </div></label
             >
-          </div>
-          <div
-            v-if="
-              target.kind === 'settings' && view?.directory && root.trim() !== view.directory.root
-            "
-            class="download-directory-choice"
-          >
-            <label class="private-checkbox"
-              ><input
-                v-model="directoryMode"
-                type="radio"
-                value="future"
-                name="directory-mode"
-              />仅新建下载使用此目录</label
+            <div class="download-naming">
+              <label
+                >文件夹组织<select v-model.number="pathType" aria-label="文件夹组织">
+                  <option :value="0">全部放在下载目录</option>
+                  <option :value="1">按歌手</option>
+                  <option :value="2">按歌手 / 专辑</option>
+                </select></label
+              ><label
+                >文件命名<select v-model.number="fileType" aria-label="文件命名">
+                  <option :value="1">歌曲名</option>
+                  <option :value="0">歌手 - 歌曲名</option>
+                  <option :value="2">歌曲名 - 歌手</option>
+                </select></label
+              >
+            </div>
+            <div
+              v-if="
+                target.kind === 'settings' && view?.directory && root.trim() !== view.directory.root
+              "
+              class="download-directory-choice"
             >
-            <label class="private-checkbox"
-              ><input
-                v-model="directoryMode"
-                type="radio"
-                value="migrate"
-                name="directory-mode"
-              />同时迁移原目录中的下载任务与文件</label
-            >
+              <label class="private-checkbox"
+                ><input
+                  v-model="directoryMode"
+                  type="radio"
+                  value="future"
+                  name="directory-mode"
+                />仅新建下载使用此目录</label
+              >
+              <label class="private-checkbox"
+                ><input
+                  v-model="directoryMode"
+                  type="radio"
+                  value="migrate"
+                  name="directory-mode"
+                />同时迁移原目录中的下载任务与文件</label
+              >
+              <p class="muted">
+                迁移会暂时暂停下载，完成后恢复原任务状态。发生冲突时保留进度，可继续或撤销；已有同名文件不会被覆盖。
+              </p>
+            </div>
             <p class="muted">
-              迁移会暂时暂停下载，完成后恢复原任务状态。发生冲突时保留进度，可继续或撤销；已有同名文件不会被覆盖。
+              {{
+                target.kind === 'cloud' ? '命名设置对新任务生效。' : '音质和命名设置对新任务生效。'
+              }}已存在的同名文件会保留，需要在任务中处理冲突。
             </p>
-          </div>
-          <p class="muted">
-            {{
-              target.kind === 'cloud' ? '命名设置对新任务生效。' : '音质和命名设置对新任务生效。'
-            }}已存在的同名文件会保留，需要在任务中处理冲突。
-          </p>
+          </template>
         </fieldset>
       </div>
       <footer>
@@ -555,18 +605,20 @@ async function fileAction() {
         </button>
         <button type="button" class="text-button" :disabled="busy || choosing" @click="close">
           取消</button
-        ><button class="primary" :disabled="blocked || !root.trim()">
+        ><button class="primary" :disabled="blocked || (!historyQualityOnly && !root.trim())">
           {{
             busy
               ? '正在处理…'
-              : target.kind === 'start' ||
-                  target.kind === 'cloud' ||
-                  target.kind === 'voice' ||
-                  target.kind === 'voice_song'
-                ? '开始下载'
-                : directoryMode === 'migrate' && view?.directory?.root !== root.trim()
-                  ? '保存并迁移'
-                  : '保存设置'
+              : historyQualityOnly
+                ? '确定'
+                : target.kind === 'start' ||
+                    target.kind === 'cloud' ||
+                    target.kind === 'voice' ||
+                    target.kind === 'voice_song'
+                  ? '开始下载'
+                  : directoryMode === 'migrate' && view?.directory?.root !== root.trim()
+                    ? '保存并迁移'
+                    : '保存设置'
           }}
         </button>
       </footer>

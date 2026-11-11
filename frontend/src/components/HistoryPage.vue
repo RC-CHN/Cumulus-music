@@ -29,6 +29,7 @@ import {
   type HistoryRadioKind,
   type HistoryRadioMenuAction,
   type HistoryResource,
+  type HistorySelectionScope,
 } from '../services/history';
 import { normalizeKeyword } from '../services/keyword';
 import type { MenuItem } from '../services/menu';
@@ -56,6 +57,7 @@ const emit = defineEmits<{
   batch: [kind: HistoryQueueKind];
   leaveBatch: [];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
+  downloadVoices: [target: HistorySelectionScope];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
   login: [];
@@ -342,6 +344,20 @@ async function runQueueAction(action: HistoryQueueAction) {
     batchError.value = issue.message;
   }
 }
+function downloadSelectedVoices() {
+  const snapshot = page.value;
+  const ids = selectedBatch.value;
+  if (
+    !props.batchMode ||
+    kind.value !== 'voice' ||
+    snapshot?.kind !== 'voice' ||
+    loading.value ||
+    busy.value ||
+    !ids.length
+  )
+    return;
+  emit('downloadVoices', { revision: snapshot.revision, ids: [...ids] });
+}
 function chooseHeader(key: string) {
   const snapshot = page.value;
   if (
@@ -489,6 +505,15 @@ function keyboard(event: KeyboardEvent) {
         @click="runQueueAction({ kind: 'add', ids: selectedBatch })"
       >
         <Icon name="plus" />添加到播放列表
+      </button>
+      <button
+        v-if="batchMode && kind === 'voice'"
+        type="button"
+        class="secondary history-download-selected"
+        :disabled="loading || busy || !selectedBatch.length"
+        @click="downloadSelectedVoices"
+      >
+        <Icon name="download" />下载
       </button>
       <label class="history-search"
         ><Icon name="search" /><input

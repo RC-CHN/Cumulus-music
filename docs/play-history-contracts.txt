@@ -526,8 +526,8 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   「批量操作」进入 /historyPlaylist/batch/track 或 /historyPlaylist/batch/voice，
   从零选择；Back 返回原分类，复用同一账号已读取的列表，不额外刷新历史。
   Cumulus 普通歌曲和声音表不再显示批量勾选栏，
-  已迁移的选中播放、加队列和删除在独立批量视图中。官方批量下载和收藏、歌曲页头
-  「收藏全部」仍是独立业务，未在此菜单接入；清空保留 Cumulus 已有确认和恢复日志。
+  选中播放、加队列、声音下载和删除在独立批量视图中。歌曲批量下载、歌曲批量收藏和
+  歌曲页头「收藏全部」仍需分别迁移；清空保留 Cumulus 已有确认和恢复日志。
 - Add All 的载荷 resource 是空对象；M622 按 listType 生成 track／voice，
   完整列表放在 from.listData。M3085:215–219、243–252、290–311、431–456、
   564–585 取全量列表，不使用 selectedData、搜索匹配或当前虚拟切窗。
@@ -596,3 +596,34 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   `[5,6,2,4,3,7]`，继续保留该暂停实例和位置。独立 Rust 用例核对同曲
   续播、随机、标灰节目和过期票据。证据 `.build/ui-proof/phase280-history-batch/`；
   所有音源及历史写测试均合成，Windows、真实账号和实体输出尚未在此增量验证。
+
+最近播放声音批量「下载」
+- HistoryPlayBatchVoice.tsx:43–64,81–94,119–165 从合并历史列表按原顺序过滤选区，
+  以首条为 resource、全组选区为 from.selectedData；Action.download / ResourceType.voice /
+  Scene.history。没有选择时按钮禁用，不以点击顺序决定任务顺序。历史歌曲在官方是
+  ResourceType.track / Scene.playlist，有另一套音质和歌单入口，本实现没有复用为歌曲批量下载。
+- M3085:3709–3735,3806–3838 先拦匿名，再过滤已有下载及本地文件。
+  Cumulus 检查当前账号下载账本和带当前文件指纹的本机匹配；未知对应关系的本地文件不推测。
+  已有非取消任务（含失败、暂停、已完成但文件失踪）留给下载管理处理，防止重复建档。
+  整组选区已具备时不读权限或音质、不返回确认票据；部分跳过时弹窗显示数量。
+- 过滤后只剩一条时，M3085:3885–3904 / M71:110–134 先签名读取
+  /api/dj/voices/download/check {voiceIdsStr:[节目 ID]}；明确允许后按 M334:181–201
+  读取 /api/dj/program/song/musics {ids:[节目 ID]}，按码率归档并展示返回大小。
+  多条按 M754:98–132,566–585 给普通／较高／极高三档（128／192／320 kbit/s），
+  不逐条预读，默认普通。已有下载目录时按官方显示紧凑的「选择下载音质」，沿用已保存的
+  下载目录和标签偏好；未设置目录时用 Cumulus 的目录设置表单。付费提示未移植到此入口，
+  禁止普通下载时只告知不可确认。关闭弹窗不建任务。
+- Tauri `download_history_voice_prepare` 只接受账号代次和 {revision, ids}，原生从 VOICE
+  快照取节目，拒绝不存在、重复、逆序、跨账号或过期选区。提交用一次性票据与已提供档位；
+  任务创建先读 /api/dj/program/detail {id}，核对当前节目和 mainSong.id，之后在同一 SQLite
+  事务中复核历史快照和已有任务。历史在一个任务入账后变化时保留已受理任务，未入账项明确
+  失败；不会用新列表代替旧选择。下载 worker 重新读节目详情和普通权限，使用主媒体 ID 调用
+  /api/song/enhance/download/url/v1 {id,level,immerseType:"c51"}。完成文件沿用既有普通音频
+  校验、发布和离线登记；不改历史、队列或收藏，不尝试支付。
+- Rust 用例见 core/tests/podcast_download/history.rs：反序和未知 ID、无网络多选准备、
+  取消或快照失效、详情请求悬挂时修改历史、已有节目跳过、按原顺序绑定最新媒体并完成文件。
+  43 项历史／节目下载 Rust 测试、严格 Clippy 和 1,081 项前端测试通过。桌面验收
+  scripts/ci/history_download_smoke.py 在隔离 Linux WebView 通过六态，保存六张截图，
+  两份完成文件逐字节等于合成 MP3；取消、受限与重复不建任务。报告为
+  .build/ui-proof/phase293-history-voice-compact/audit.json。Windows CI 接入同一合成夹具，
+  本地实窗结果不代表 Windows 或真实账号实测。

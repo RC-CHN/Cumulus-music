@@ -3,6 +3,7 @@ mod collect;
 mod commands;
 mod comments;
 mod dto;
+mod history_voice;
 mod jobs;
 pub(in crate::client) mod purchased;
 mod quality;

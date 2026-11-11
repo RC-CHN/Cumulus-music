@@ -4,6 +4,14 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Selected row identities from the ordered, account-bound history view.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistorySelectionScope {
+    pub revision: String,
+    pub ids: Vec<String>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryPage {

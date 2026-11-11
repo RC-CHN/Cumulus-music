@@ -1,7 +1,10 @@
 //! Ordinary episode quality selection (M/3085, M/71, M/754 and M/334).
 use super::{Context, DownloadFailure, DownloadResult, Host, MusicClient};
 use crate::client::{
-    dto::{PodcastLikedPageTarget, PodcastLikedProgramTarget, PodcastPurchasedTarget},
+    dto::{
+        HistorySelectionScope, PodcastLikedPageTarget, PodcastLikedProgramTarget,
+        PodcastPurchasedTarget,
+    },
     podcast::{
         liked_menu::{liked_playable_program, lock_liked_download_voice},
         liked_page::LikedPageAdmissionLease,
@@ -54,6 +57,7 @@ pub enum VoiceDownloadPreparationState {
     Ready,
     Restricted,
     Unavailable,
+    AlreadyAvailable,
 }
 
 #[derive(Serialize)]
@@ -62,6 +66,8 @@ pub struct VoiceDownloadPreparation {
     pub state: VoiceDownloadPreparationState,
     pub receipt: Option<String>,
     pub choices: Vec<VoiceDownloadChoice>,
+    #[serde(rename = "admittedCount", skip_serializing_if = "Option::is_none")]
+    pub admitted_count: Option<usize>,
 }
 
 #[derive(Default)]
@@ -83,12 +89,20 @@ struct Plan {
 enum VoiceScope {
     Legacy(LegacyVoiceScope),
     LikedPage(PodcastLikedPageTarget),
+    History(HistorySelectionScope),
 }
 impl VoiceScope {
     fn id(&self, client: &MusicClient, token: &SessionToken) -> Result<String> {
         match self {
             Self::Legacy(source) => source.id(&client.session, token),
             Self::LikedPage(target) => client.liked_page_download_id(token, target),
+            Self::History(_) => Err(Error::InvalidInput("history requires ordered voice rows")),
+        }
+    }
+    fn check(&self, client: &MusicClient, token: &SessionToken) -> Result<()> {
+        match self {
+            Self::History(target) => client.verify_history_voice_download(token, target),
+            _ => self.id(client, token).map(|_| ()),
         }
     }
 }
@@ -274,6 +288,15 @@ impl MusicClient {
             .await
     }
 
+    pub async fn download_history_voice_prepare(
+        &self,
+        epoch: &str,
+        target: HistorySelectionScope,
+    ) -> Result<VoiceDownloadPreparation> {
+        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::History(target)))
+            .await
+    }
+
     async fn prepare_voice_quality(
         &self,
         epoch: &str,
@@ -285,7 +308,14 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         self.session.with_token(&token, |_| Ok(()))?;
+        let history_rows = match &scope {
+            Some(VoiceScope::History(target)) => {
+                Some(self.history_voice_download_rows(&token, target, MAX_SELECTION)?)
+            }
+            _ => None,
+        };
         let voices = match &scope {
+            Some(VoiceScope::History(_)) => Vec::new(),
             Some(source) => vec![source.id(self, &token)?],
             None => voice_ids(voices)?,
         };
@@ -301,11 +331,21 @@ impl MusicClient {
             state.plan = None;
             state.attempt
         };
+        let voices = if let Some(rows) = history_rows {
+            let voices = self.filter_history_voice_downloads(epoch, rows).await?;
+            self.session.require_api(&token, &api)?;
+            check_attempt(host, attempt)?;
+            scope.as_ref().expect("history scope").check(self, &token)?;
+            voices
+        } else {
+            voices
+        };
         let mut presentation = VoiceDownloadPreparation {
             epoch: epoch.into(),
             state: VoiceDownloadPreparationState::Unavailable,
             receipt: None,
             choices: Vec::new(),
+            admitted_count: matches!(scope, Some(VoiceScope::History(_))).then_some(voices.len()),
         };
         if let [id] = voices.as_slice() {
             let expected = &token;
@@ -320,7 +360,7 @@ impl MusicClient {
                     self.session.require_api(expected, &api)?;
                     check_attempt(host, attempt)?;
                     if let Some(source) = source {
-                        source.id(self, expected)?;
+                        source.check(self, expected)?;
                     }
                     if rights.allowed.as_slice() != [id.as_str()] {
                         return Ok(None);
@@ -337,6 +377,8 @@ impl MusicClient {
                 Some(choices) => presentation.choices = choices,
                 None => presentation.state = VoiceDownloadPreparationState::Restricted,
             }
+        } else if voices.is_empty() {
+            presentation.state = VoiceDownloadPreparationState::AlreadyAvailable;
         } else {
             presentation.choices = batch_choices();
         }
@@ -347,7 +389,7 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         if let Some(source) = &scope {
-            source.id(self, &token)?;
+            source.check(self, &token)?;
         }
         if !presentation.choices.is_empty() {
             let receipt = uuid::Uuid::new_v4().simple().to_string();
@@ -396,7 +438,7 @@ impl MusicClient {
                 .ok_or(Error::StaleResponse)?;
             context.session.require_api(&plan.token, &plan.api)?;
             if let Some(source) = &plan.scope {
-                source.id(self, &plan.token)?;
+                source.check(self, &plan.token)?;
             }
             if !plan.qualities.contains(&confirmation.quality) {
                 return Err(Error::InvalidInput(
@@ -416,8 +458,22 @@ impl MusicClient {
             epoch: plan.token.generation.to_string(),
             ..Default::default()
         };
-        for id in plan.voices {
+        let mut voices = plan.voices.into_iter();
+        while let Some(id) = voices.next() {
             context.session.require_api(&plan.token, &plan.api)?;
+            let history = match &plan.scope {
+                Some(VoiceScope::History(target)) => Some(target),
+                _ => None,
+            };
+            if let Some(target) = history
+                && let Err(err) = self.verify_history_voice_download(&plan.token, target)
+            {
+                if !matches!(err, Error::QueueChanged) || result.accepted.is_empty() {
+                    return Err(err);
+                }
+                retired_history_voices(&mut result, id, voices);
+                break;
+            }
             let voice = json!(id);
             let task = match &plan.scope {
                 Some(VoiceScope::LikedPage(target)) => {
@@ -439,6 +495,13 @@ impl MusicClient {
                         })
                         .await
                 }
+                Some(VoiceScope::History(target)) => {
+                    let source = super::history_voice::HistoryVoiceAdmission { target, voice: &id };
+                    context
+                        .service
+                        .create_visit_scoped_voice_default(&voice, options.clone(), &source)
+                        .await
+                }
                 None => {
                     context
                         .service
@@ -449,6 +512,20 @@ impl MusicClient {
             match task {
                 Ok(task) => result.accepted.push(task.id),
                 Err(Error::StaleResponse) => return Err(Error::StaleResponse),
+                Err(Error::QueueChanged) if history.is_some() => {
+                    let target = history.expect("checked history scope");
+                    match self.verify_history_voice_download(&plan.token, target) {
+                        Err(Error::QueueChanged) if !result.accepted.is_empty() => {
+                            retired_history_voices(&mut result, id, voices);
+                            break;
+                        }
+                        Err(error) => return Err(error),
+                        Ok(()) => result.failed.push(DownloadFailure {
+                            id,
+                            message: "该节目已不可用，未创建下载",
+                        }),
+                    }
+                }
                 Err(Error::QueueChanged) if plan.scope.is_some() => {
                     return Err(Error::QueueChanged);
                 }
@@ -462,4 +539,19 @@ impl MusicClient {
         context.guard()?;
         Ok(result)
     }
+}
+
+fn retired_history_voices(
+    result: &mut DownloadResult,
+    current: String,
+    remaining: impl Iterator<Item = String>,
+) {
+    result.failed.extend(
+        std::iter::once(current)
+            .chain(remaining)
+            .map(|id| DownloadFailure {
+                id,
+                message: "播放记录已更新，未创建该节目下载",
+            }),
+    );
 }

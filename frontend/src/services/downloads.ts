@@ -159,9 +159,10 @@ export interface VoiceDownloadChoice {
 }
 export interface VoiceDownloadPreparation {
   epoch: string;
-  state: 'ready' | 'restricted' | 'unavailable';
+  state: 'ready' | 'restricted' | 'unavailable' | 'already_available';
   receipt: string | null;
   choices: VoiceDownloadChoice[];
+  admittedCount?: number;
 }
 export type DownloadSkipReason =
   | 'downloaded'
@@ -256,6 +257,10 @@ export interface DownloadClient {
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadVoicePrepare(epoch: string, voiceIds: string[]): Promise<VoiceDownloadPreparation>;
+  downloadHistoryVoicePrepare(
+    epoch: string,
+    target: import('./history').HistorySelectionScope,
+  ): Promise<VoiceDownloadPreparation>;
   downloadPurchasedVoicePrepare(
     epoch: string,
     target: import('./podcast').PodcastPurchasedTarget,
@@ -283,6 +288,7 @@ export type DownloadDialogTarget =
       purchased?: import('./podcast').PodcastPurchasedTarget;
       liked?: import('./podcast').PodcastLikedProgramTarget;
       pagedLiked?: import('./podcast').PodcastLikedPageTarget;
+      history?: import('./history').HistorySelectionScope;
       live?: () => boolean;
     }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }

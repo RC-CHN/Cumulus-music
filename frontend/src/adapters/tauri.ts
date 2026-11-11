@@ -555,6 +555,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_quality_preferences', { epoch, refresh }),
     downloadVoicePrepare: (epoch, voiceIds) =>
       invoke('download_voice_prepare', { epoch, voiceIds }),
+    downloadHistoryVoicePrepare: (epoch, target) =>
+      invoke('download_history_voice_prepare', { epoch, target }),
     downloadPurchasedVoicePrepare: (epoch, target) =>
       invoke('download_purchased_voice_prepare', { epoch, target }),
     downloadLikedVoicePrepare: (epoch, target) =>

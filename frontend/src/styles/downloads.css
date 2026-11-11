@@ -80,6 +80,9 @@
   flex-shrink: 0;
   overflow-wrap: anywhere;
 }
+.history-voice-quality-dialog[open] {
+  width: min(440px, calc(100vw - 48px));
+}
 .download-directory-choice .private-checkbox {
   align-items: flex-start;
   line-height: 1.7;

@@ -166,6 +166,7 @@ import type {
   HistoryRadioKind,
   HistoryRadioMenuAction,
   HistoryResource,
+  HistorySelectionScope,
 } from './services/history';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
@@ -741,6 +742,47 @@ async function selectHistoryBatch(
     };
   });
   return !!result && routeCurrent();
+}
+function openHistoryVoiceDownload(target: HistorySelectionScope) {
+  const route = music.page.value;
+  const snapshot = recent.page.value;
+  const owner = music.account.value.epoch;
+  if (
+    downloadDialog.value ||
+    route.kind !== 'history' ||
+    route.scope !== 'voice' ||
+    route.batch !== true ||
+    snapshot?.kind !== 'voice' ||
+    snapshot.revision !== target.revision ||
+    recent.loading.value ||
+    recent.busy.value ||
+    !target.ids.length
+  )
+    return;
+  const wanted = new Set(target.ids);
+  if (wanted.size !== target.ids.length) return;
+  const tracks = snapshot.entries.flatMap((entry) => {
+    const resource = entry.resource;
+    return wanted.has(entry.id) && resource.kind === 'voice' && resource.voice.id === entry.id
+      ? [{ id: entry.id, name: resource.voice.name }]
+      : [];
+  });
+  if (tracks.length !== target.ids.length || tracks.some((track, i) => track.id !== target.ids[i]))
+    return;
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  downloadDialog.value = {
+    kind: 'voice',
+    tracks,
+    history: { revision: snapshot.revision, ids: tracks.map((track) => track.id) },
+    live: () =>
+      music.page.value === route &&
+      recent.page.value === snapshot &&
+      music.account.value.epoch === owner &&
+      signedIn.value,
+  };
 }
 function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
   const route = music.page.value;
@@ -6278,6 +6320,7 @@ onUnmounted(() => {
                 @batch="music.navigate({ kind: 'history', scope: $event, batch: true })"
                 @leave-batch="music.back()"
                 @play="playHistory"
+                @download-voices="openHistoryVoiceDownload"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"
                 @chapter="playHistoryChapter"

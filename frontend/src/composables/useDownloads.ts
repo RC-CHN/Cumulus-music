@@ -189,18 +189,21 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     purchased?: import('../services/podcast.ts').PodcastPurchasedTarget,
     liked?: import('../services/podcast.ts').PodcastLikedProgramTarget,
     pagedLiked?: import('../services/podcast.ts').PodcastLikedPageTarget,
+    history?: import('../services/history.ts').HistorySelectionScope,
   ) {
     if (!epoch) return;
     const captured = epoch,
       current = captureVisit();
     try {
-      const plan = pagedLiked
-        ? await core.downloadLikedPageVoicePrepare(captured, pagedLiked)
-        : purchased
-          ? await core.downloadPurchasedVoicePrepare(captured, purchased)
-          : liked
-            ? await core.downloadLikedVoicePrepare(captured, liked)
-            : await core.downloadVoicePrepare(captured, [...voiceIds]);
+      const plan = history
+        ? await core.downloadHistoryVoicePrepare(captured, history)
+        : pagedLiked
+          ? await core.downloadLikedPageVoicePrepare(captured, pagedLiked)
+          : purchased
+            ? await core.downloadPurchasedVoicePrepare(captured, purchased)
+            : liked
+              ? await core.downloadLikedVoicePrepare(captured, liked)
+              : await core.downloadVoicePrepare(captured, [...voiceIds]);
       if (plan.epoch !== captured) return;
       if (current()) return plan;
       void discardVoice(plan);

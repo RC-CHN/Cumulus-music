@@ -25,6 +25,8 @@ mod comment_read_fixture;
 mod fixture;
 #[path = "support/follow_new_song_fixture.rs"]
 mod follow_new_song_fixture;
+#[path = "support/history_download_fixture.rs"]
+mod history_download_fixture;
 #[path = "support/history_fixture.rs"]
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
@@ -152,6 +154,7 @@ fn main() {
     let history_radio_menu =
         std::env::var("CUMULUS_HISTORY_RADIO_MENU_PROOF").as_deref() == Ok("1");
     let history_header = std::env::var("CUMULUS_HISTORY_HEADER_PROOF").as_deref() == Ok("1");
+    let history_download = std::env::var("CUMULUS_HISTORY_DOWNLOAD_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     assert!(!history_collection || history_chapters);
     assert!(!history_radio_menu || history_collection);
@@ -159,7 +162,16 @@ fn main() {
         !history_header
             || (histories && !is_live && !history_chapters && !interactive && !collections)
     );
-    let history_capture = history_chapters || history_header;
+    assert!(
+        !history_download
+            || (histories
+                && !history_chapters
+                && !history_header
+                && !is_live
+                && !interactive
+                && !collections)
+    );
+    let history_capture = history_chapters || history_header || history_download;
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
     let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
@@ -196,10 +208,12 @@ fn main() {
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
         let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone(),follow_offline_head));
-        let history_fixture=Arc::new(if history_radio_menu { history_fixture::Library::with_radio_menu() }
+        let mut history_fixture=if history_radio_menu { history_fixture::Library::with_radio_menu() }
             else if history_collection { history_fixture::Library::with_collections() }
             else if history_chapters { history_fixture::Library::with_chapters() }
-            else { history_fixture::Library::default() });
+            else { history_fixture::Library::default() };
+        if history_download {history_fixture.downloads=Some(Arc::new(history_download_fixture::Fixture::default()));}
+        let history_fixture=Arc::new(history_fixture);
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
@@ -209,6 +223,7 @@ fn main() {
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
+        let client=if let Some(media)=&history_fixture.downloads {client.with_download_backend(media.clone())}else{client};
         let client=if relay_publication {client.with_relay_publication()}else{client};
         let offline_dir=root.join("follow-offline");
         let follow_file=offline_dir.join("published-head.wav");
@@ -362,6 +377,7 @@ fn main() {
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
             let comment_reads=catalog_fixture.comment_reads.load(std::sync::atomic::Ordering::SeqCst);
             let history_chapter_report=history_chapters.then(||history_fixture.chapter_report());
+            let history_download_report=history_fixture.downloads.as_ref().map(|fixture|fixture.report());
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -381,6 +397,7 @@ fn main() {
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
                 if let Some(report)=history_chapter_report {value["historyChapterCalls"]=report;}
+                if let Some(report)=history_download_report {value["historyDownloadCalls"]=report;}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
@@ -447,7 +464,11 @@ fn main() {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             if history_capture {
-                assert!(!history_header || script.is_some(), "history header proof requires an external script");
+                assert!(!(history_header || history_download) || script.is_some(), "history header/download proof requires an external script");
+                if history_download {
+                    let directory=PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").unwrap()).join("media");
+                    view.eval(format!("window.__historyProofDownloadRoot={};",serde_json::to_string(&directory).unwrap())).unwrap();
+                }
                 let source=script.as_deref().unwrap_or(if history_collection {
                     include_str!("history_radio_collection_ui_probe.js")
                 } else { include_str!("history_radio_chapter_ui_probe.js") });

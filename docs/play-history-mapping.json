@@ -195,7 +195,7 @@
       "desktopEvidence": ".build/ui-proof/history-header-2026-11-11/audit.json: 10 actual Linux WebView states/screenshots, 300 ordered songs appended, 100-episode empty-queue selection, and read/write separation. Existing history page: 31 states.",
       "boundaries": [
         "Ordinary queue; exact native snapshot and authorization; unavailable source head never guesses another start",
-        "Existing clear confirmation retained; batch downloads and favorite actions are outside this increment"
+        "Existing clear confirmation retained; download and favorite actions are separate from the header"
       ]
     },
     {
@@ -225,6 +225,36 @@
         "An already active native decoder continues only for the exact admitted media",
         "Unregistered download-map discovery and official same-recording substitutions not covered",
         "No real account writes, Windows WebView or physical audio output proof"
+      ]
+    },
+    {
+      "feature": "Download selected episodes from the recent voice batch view",
+      "official": [
+        "HistoryPlayBatchVoice.tsx:43–64,81–94,119–165",
+        "M3085:3709–3735,3806–3838,3885–3904,4010–4018",
+        "M71:110–134; M334:181–201; M754:98–132,347–360,566–585"
+      ],
+      "rust": [
+        "core/src/client/history/batch_scope.rs",
+        "core/src/client/downloads/history_voice.rs",
+        "core/src/client/downloads/voice_quality.rs",
+        "core/src/download/service/voice.rs"
+      ],
+      "ui": [
+        "desktop/src/downloads.rs download_history_voice_prepare",
+        "frontend/src/components/HistoryPage.vue batch voice Download",
+        "frontend/src/App.vue openHistoryVoiceDownload",
+        "frontend/src/components/DownloadDialog.vue"
+      ],
+      "tests": [
+        "core/tests/podcast_download/history.rs",
+        "scripts/ci/history_download_smoke.py and desktop/examples/history_download_ui_probe.js"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase293-history-voice-compact/audit.json: 6 actual Linux WebView states and PNGs, two plain MP3 publications, no synthetic history writes; Windows pending",
+      "boundaries": [
+        "History song download, favorites and paid episode checkout are separate",
+        "Existing tasks remain managed by the downloads ledger; local matching requires a verified association",
+        "No live account or real payment in the test"
       ]
     }
   ],

@@ -220,47 +220,54 @@ impl HistoryService {
         })
     }
     fn snapshot_for_owner(&self, owner: &str, kind: HistoryKind) -> Result<HistorySnapshot> {
-        self.store.transaction(|tx| {
-            let local = local(tx, owner, kind)?;
-            let remote: Option<RemoteHistory> = tx
-                .get(owner, NAMESPACE, &remote_key(kind))?
-                .map(serde_json::from_value)
-                .transpose()?;
-            if let Some(remote) = &remote {
-                if remote.kind != kind
-                    || remote.records.len() > 50_000
-                    || remote
-                        .records
-                        .iter()
-                        .any(|r| r.origin != RecordOrigin::Remote)
-                {
-                    return Err(Error::State("invalid remote history snapshot"));
-                }
-                for row in &remote.records {
-                    row.validate(kind)?;
-                }
+        self.store
+            .transaction(|tx| Self::snapshot_in(tx, owner, kind))
+    }
+    /// Use the same history receipt inside another native transaction.
+    pub(crate) fn snapshot_in(
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        kind: HistoryKind,
+    ) -> Result<HistorySnapshot> {
+        let local = local(tx, owner, kind)?;
+        let remote: Option<RemoteHistory> = tx
+            .get(owner, NAMESPACE, &remote_key(kind))?
+            .map(serde_json::from_value)
+            .transpose()?;
+        if let Some(remote) = &remote {
+            if remote.kind != kind
+                || remote.records.len() > 50_000
+                || remote
+                    .records
+                    .iter()
+                    .any(|r| r.origin != RecordOrigin::Remote)
+            {
+                return Err(Error::State("invalid remote history snapshot"));
             }
-            let sync_enabled = enabled(tx, owner)?;
-            let entries = merge_records(
-                &local,
-                if sync_enabled {
-                    remote
-                        .as_ref()
-                        .map(|r| r.records.as_slice())
-                        .unwrap_or_default()
-                } else {
-                    &[]
-                },
-            );
-            let revision = revision(kind, sync_enabled, &local, &remote)?;
-            Ok(HistorySnapshot {
-                kind,
-                revision,
-                sync_enabled,
-                local,
-                remote,
-                entries,
-            })
+            for row in &remote.records {
+                row.validate(kind)?;
+            }
+        }
+        let sync_enabled = enabled(tx, owner)?;
+        let entries = merge_records(
+            &local,
+            if sync_enabled {
+                remote
+                    .as_ref()
+                    .map(|r| r.records.as_slice())
+                    .unwrap_or_default()
+            } else {
+                &[]
+            },
+        );
+        let revision = revision(kind, sync_enabled, &local, &remote)?;
+        Ok(HistorySnapshot {
+            kind,
+            revision,
+            sync_enabled,
+            local,
+            remote,
+            entries,
         })
     }
     pub fn set_sync_for(&self, token: &SessionToken, desired: bool) -> Result<()> {

@@ -1,3 +1,5 @@
+#[path = "podcast_download/history.rs"]
+mod history;
 #[path = "podcast_download/purchased.rs"]
 mod purchased;
 #[path = "podcast_download/quality.rs"]

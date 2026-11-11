@@ -1,3 +1,4 @@
+mod batch_scope;
 mod dto;
 mod radio_chapter;
 mod radio_collection;

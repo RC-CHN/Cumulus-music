@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
-        Mutex,
+        Arc, Mutex,
         atomic::{AtomicU8, AtomicUsize, Ordering},
     },
 };
@@ -23,6 +23,7 @@ pub struct Library {
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
     pub reads: AtomicUsize,
     pub writes: AtomicUsize,
+    pub downloads: Option<Arc<super::history_download_fixture::Fixture>>,
 }
 impl Library {
     pub fn with_chapters() -> Self {
@@ -313,6 +314,13 @@ fn resource(kind: &str, id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self
+                .downloads
+                .as_ref()
+                .and_then(|fixture| fixture.response(path, &args, cache))
+            {
+                return result;
+            }
             if let Some(result) = self.chapter_response(path, &args, cache) {
                 return result;
             }

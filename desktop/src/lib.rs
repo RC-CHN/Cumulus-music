@@ -651,6 +651,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::download_collect_liked,
                 downloads::download_collect_cancel,
                 downloads::download_voice_prepare,
+                downloads::download_history_voice_prepare,
                 downloads::download_purchased_voice_prepare,
                 downloads::download_liked_voice_prepare,
                 downloads::download_liked_page_voice_prepare,
