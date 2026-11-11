@@ -2804,6 +2804,46 @@ jobs:
               exit 2
               ;;
           esac
+      - name: Verify guarded current-song purchased downloads
+        if: matrix.shard == 'download-lyrics'
+        id: current_song_download
+        timeout-minutes: 10
+        run: |
+          prove_current_song_download() {
+            sh scripts/ci/loopback_only.sh --synthetic-online env GDK_BACKEND=x11 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+              LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+              xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
+              /usr/bin/python3 -B scripts/ci/current_song_download_smoke.py \
+              --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
+          }
+          # Keep literal roots so the existing guarded diagnostics archive can
+          # find each failed case. Collect all three results before failing.
+          result=0
+          prove_current_song_download --root .build/ci-current-song-download-liked-linux --case liked || result=1
+          prove_current_song_download --root .build/ci-current-song-download-playlist-linux --case playlist || result=1
+          prove_current_song_download --root .build/ci-current-song-download-directory-linux --case directory || result=1
+          exit "$result"
+      - name: Preserve Linux current-song download screenshots and receipts
+        if: matrix.shard == 'download-lyrics' && steps.current_song_download.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: proof-linux-current-song-download-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .build/ci-current-song-download-liked-linux/audit.json
+            .build/ci-current-song-download-liked-linux/first/complete.json
+            .build/ci-current-song-download-liked-linux/first/ux_*.json
+            .build/ci-current-song-download-liked-linux/first/ux_*.png
+            .build/ci-current-song-download-playlist-linux/audit.json
+            .build/ci-current-song-download-playlist-linux/first/complete.json
+            .build/ci-current-song-download-playlist-linux/first/ux_*.json
+            .build/ci-current-song-download-playlist-linux/first/ux_*.png
+            .build/ci-current-song-download-directory-linux/audit.json
+            .build/ci-current-song-download-directory-linux/first/complete.json
+            .build/ci-current-song-download-directory-linux/first/ux_*.json
+            .build/ci-current-song-download-directory-linux/first/ux_*.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Measure Linux WebView disk after smoke
         if: ${{ !cancelled() }}
         run: df -h .
