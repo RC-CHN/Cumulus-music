@@ -67,7 +67,13 @@ def main():
         assert locale['numeric'] == 'C' and locale['messages'] != 'C' and locale['characters'] != 'C'
         rows = sorted(output.glob('ux_*.json'))
         assert [path.stem[6:] for path in rows] == expected
-        assert all(json.loads(path.read_text(encoding='utf-8'))['documentContained'] for path in rows)
+        for path in rows:
+            row = json.loads(path.read_text(encoding='utf-8'))
+            assert row['documentContained']
+            if row['panel'] is not None:
+                panel, anchor = row['panel'], row['anchor']
+                assert abs(panel['width'] - 218) < 1 and abs(panel['right'] - anchor['right']) < 1
+                assert abs(panel['top'] - (anchor['top'] - 246)) < 1
         if args.screenshots:
             assert len(list(output.glob('ux_*.png'))) == len(rows)
         captures.extend(str(path.relative_to(root)) for path in rows)

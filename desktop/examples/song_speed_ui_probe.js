@@ -3,8 +3,10 @@
   const one = (query) => document.querySelector(query);
   const catalogRow = () => one('.track-row[data-track-id="2"]');
   const bar = () => one('.playerbar');
-  const trigger = () => one('.song-speed-trigger');
-  const popup = () => one('.song-speed-panel');
+  const trigger = () => bar()?.querySelector('.player-track-actions [aria-label="当前歌曲更多操作"]');
+  const menu = () => one('.song-action-menu:not([inert])');
+  const speedEntry = () => menu()?.querySelector('[data-menu-key="song-speed"]');
+  const popup = () => one('.song-speed-panel.is-menu:not([inert])');
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const invoke = (...args) =>
     (window.__CUMULUS_PROOF_INVOKE__ ?? window.__TAURI_INTERNALS__.invoke)(...args);
@@ -46,16 +48,36 @@
   async function capture(label) {
     const r = popup()?.getBoundingClientRect();
     const focus = document.activeElement;
+    const anchor = trigger()?.getBoundingClientRect();
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       player: await native(),
       panel: r ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width } : null,
+      anchor: anchor ? { right: anchor.right, top: anchor.top } : null,
       documentContained: !r || (r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
       focus: focus === trigger() ? 'trigger' : focus === custom() ? 'custom' : focus === range() ? 'range' : 'other',
     });
   }
   async function open() {
+    await wait(() => trigger() && one('.song-speed-control.is-menu'), 'ready More-owned song speed');
     click(trigger());
-    await wait(() => popup(), 'open song speed panel');
+    await wait(() => speedEntry(), 'signed song speed item in current-song More');
+    assert(!one('.song-speed-trigger'), 'no duplicate inline song speed trigger');
+    const rate = (await native()).speed;
+    assert(speedEntry().textContent.trim() === (rate === 1 ? '播放倍速' : `播放倍速：${rate}X`),
+      'More labels the confirmed rate');
+    click(speedEntry());
+    await wait(() => {
+      const node = popup();
+      return node && !menu() && node.contains(document.activeElement) &&
+        !node.matches('.menu-enter-active,.menu-enter-from') &&
+        !node.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+    }, 'anchored song speed panel replaces More and focuses a choice');
+    const panel = popup().getBoundingClientRect();
+    const anchor = trigger().getBoundingClientRect();
+    assert(Math.abs(panel.width - 218) < 1 && Math.abs(panel.right - anchor.right) < 1 &&
+      Math.abs(panel.top - (anchor.top - 246)) < 1, 'official More placement');
+    assert(document.activeElement.getAttribute('aria-pressed') === 'true',
+      'the current choice receives focus on open');
   }
   async function chooseSlider(value) {
     const input = range();
@@ -89,6 +111,14 @@
     click(pauseButton());
     await wait(() => bar().dataset.state === 'paused' && trigger() && !trigger().disabled, 'real paused state');
     await open();
+    if (!window.__songSpeedReopen) {
+      const anchor = trigger();
+      anchor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      anchor.focus({ preventScroll: true });
+      await wait(() => !popup() && document.activeElement === anchor,
+        'outside pointer closes the panel without moving focus elsewhere');
+      await open();
+    }
     const rows = [...popup().querySelectorAll('button')].map((row) => row.textContent.trim());
     assert(rows.slice(1).join('/') === '2.0/1.5/1.0（正常）/0.7/0.5', 'official preset order');
     if (window.__songSpeedReopen) {
@@ -123,7 +153,11 @@
     await cohort('c');
     await observe('cohort off keeps remembered choice on the same play', 1, (view) =>
       view.playId === playId && view.songSpeed?.enabled === false && view.songSpeed?.customTenths === 13);
-    await wait(() => !trigger(), 'control cohort hides song panel');
+    click(trigger());
+    await wait(() => menu() && !speedEntry() && !popup() && !one('.song-speed-trigger'),
+      'control cohort omits the speed entry from More');
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => !menu() && document.activeElement === trigger(), 'control menu restores focus');
     let rejected = false;
     try { await invoke('player_action', { epoch, action: stale }); } catch (error) {
       rejected = error?.code === 'stale';
@@ -149,7 +183,8 @@
     await observe('voice rate unaffected by c', 1.5, (view) => view.playId === voice.playId && !view.songSpeed);
     await cohort('t1');
     await observe('voice rate unaffected by t1', 1.5, (view) => view.playId === voice.playId && !view.songSpeed);
-    await wait(() => !trigger() && one('.speed-control [aria-label="播放速度"]'), 'voice menu remains separate');
+    await wait(() => !trigger() && !popup() && one('.speed-control [aria-label="播放速度"]'),
+      'voice menu remains separate and closes the retired song panel');
     await capture('voice_separate');
     await emit('complete', { ok: true, stageCount: count, ratios, staleRejected: true, voiceRate: 1.5,
       catalogIdentity: { matchedSong: '2', playedVoice: voice.track.voiceId, backingSong: voice.track.id,
