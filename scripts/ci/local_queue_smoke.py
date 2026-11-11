@@ -1,6 +1,7 @@
 """Verify the local-library add-all action with real WebView, files and null audio."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 from motion_smoke import launch
@@ -38,7 +39,9 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'local queue UI exit {code}'
     started = json.loads((run / 'local_queue_started.json').read_text(encoding='utf-8'))
-    assert started == {'stage': 'local_queue_started', 'queue': 1, 'cue': True}
+    assert started['stage'] == 'local_queue_started' and started['queue'] == 1 and started['cue'] is True
+    assert started['pausePosition'] is None or math.isfinite(started['pausePosition'])
+    assert math.isfinite(started['settledPosition'])
     complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['retainedPlayback'] and complete['realMusicRequests'] == 0
     assert complete['folderTree'] is True and complete['groupMenu'] is True and complete['trackMenu'] is True

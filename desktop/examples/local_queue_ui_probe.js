@@ -15,6 +15,33 @@
     }
     throw Error(label);
   }
+  const transport = ({ playId, entryId, state, position }) => ({ playId, entryId, state, position });
+  async function pauseAndSettle(epoch) {
+    const receipt = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    assert(receipt.state === 'paused' && receipt.playId && receipt.entryId,
+      'Pause acknowledged by the original native entry: ' + JSON.stringify(transport(receipt)));
+    let lastPosition;
+    let unchangedSince = performance.now();
+    const settled = await wait(async () => {
+      const view = await invoke('player_snapshot', { epoch });
+      assert(view.playId === receipt.playId && view.entryId === receipt.entryId && view.state === 'paused',
+        'native identity/state changed after Pause: ' + JSON.stringify([transport(receipt), transport(view)]));
+      if (view.nativeSeeking || !Number.isFinite(view.position) || view.position !== lastPosition) {
+        lastPosition = view.nativeSeeking ? undefined : view.position;
+        unchangedSince = performance.now();
+        return false;
+      }
+      // Span at least two 200ms player polls: the command's initial sample
+      // may precede a final native clock update even after Pause is accepted.
+      return performance.now() - unchangedSince >= 450 && view;
+    }, 'native paused clock settles before editing the queue');
+    return { receipt, settled };
+  }
+  function assertRetainedPause(before, after, label) {
+    assert(after.playId === before.playId && after.entryId === before.entryId &&
+      after.state === 'paused' && Number.isFinite(after.position) && Math.abs(after.position - before.position) < .05,
+      label + ': ' + JSON.stringify([transport(before), transport(after)]));
+  }
   function click(item) {
     assert(item && !item.disabled, 'missing or disabled control');
     item.focus({ preventScroll: true });
@@ -136,9 +163,11 @@
     await filter('夜行 · 下篇', 1);
     await add();
     await wait(() => one('.playerbar [aria-label="暂停"]') && Number(one('[aria-label="播放进度"]')?.value) > 0.1, 'empty queue starts native CUE');
-    const before = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
-    assert(before.queueLen === 1 && before.timeline.mode === 'cue', 'one local item playing');
-    await emit('local_queue_started', { queue: before.queueLen, cue: true });
+    const { receipt, settled: before } = await pauseAndSettle(epoch);
+    assert(before.queueLen === 1 && before.timeline.mode === 'cue', 'one local CUE item paused');
+    await emit('local_queue_started', {
+      queue: before.queueLen, cue: true, pausePosition: receipt.position, settledPosition: before.position,
+    });
     await filter('夜行', 2);
     await add();
     await filter('雨声', 1);
@@ -148,8 +177,7 @@
     const names = queue.tracks.map((entry) => entry.track.name);
     assert(names.join(',') === '夜行 · 下篇,雨声,夜行 · 上篇', 'insert after the current song, preserve prior suffix');
     assert(queue.tracks.every((entry) => entry.track.local), 'all rows retain offline identity');
-    assert(after.playId === before.playId && after.entryId === before.entryId &&
-      after.state === before.state && Math.abs(after.position - before.position) < 0.05, 'retain paused playback');
+    assertRetainedPause(before, after, 'retain paused playback');
     click(button('文件夹'));
     await wait(() => toggle() && trackRows().length === 5, 'folder groups for context action');
     if (!nested()) click(toggle());
@@ -164,8 +192,7 @@
     await wait(async () => (await invoke('player_queue', { epoch })).tracks
       .map(entry => entry.track.name).join(',') === '夜行 · 下篇,Bonus Track,雨声,夜行 · 上篇', 'next queues only the clicked folder');
     const grouped = await invoke('player_snapshot', { epoch });
-    assert(grouped.playId === before.playId && grouped.state === before.state &&
-      Math.abs(grouped.position - before.position) < 0.05, 'group next retains playback');
+    assertRetainedPause(before, grouped, 'group next retains playback');
     assert(origin.getAttribute('aria-pressed') === 'false' && trackRows().length === 5, 'context action does not select the group');
     assert(document.activeElement === origin, 'next restores menu origin focus');
 
@@ -185,9 +212,7 @@
     await wait(async () => (await invoke('player_queue', { epoch })).tracks
       .map(entry => entry.track.name).join(',') === '夜行 · 下篇,夜行 · 上篇,Bonus Track,雨声', 'next moves exactly the chosen CUE segment');
     const queuedTrack = await invoke('player_snapshot', { epoch });
-    assert(queuedTrack.playId === before.playId && queuedTrack.entryId === before.entryId &&
-      queuedTrack.state === before.state && Math.abs(queuedTrack.position - before.position) < .05,
-      'track next leaves the paused segment untouched');
+    assertRetainedPause(before, queuedTrack, 'track next leaves the paused segment untouched');
     assert(document.activeElement === upper && trackRows().length === 5, 'track next retains row focus and filter');
 
     const contextKey = () => origin.dispatchEvent(new KeyboardEvent('keydown', {
@@ -220,7 +245,7 @@
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
     let dropQueue = null;
     if (innerWidth >= 980) {
-      const held = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+      const { settled: held } = await pauseAndSettle(epoch);
       await filter('雨声', 1);
       click(button('播放队列'));
       const viewport = await wait(() => one('.queue-scroll') &&
@@ -283,8 +308,7 @@
         return found.join(',') === '雨声,夜行 · 下篇,夜行 · 上篇' && found;
       }, 'drop moves the active duplicate to the tail without a duplicate');
       const final = await invoke('player_snapshot', { epoch });
-      assert(final.playId === held.playId && final.entryId === held.entryId && final.state === 'paused' &&
-        Math.abs(final.position - held.position) < .05, 'drop retains the same native paused CUE clock');
+      assertRetainedPause(held, final, 'drop retains the same native paused CUE clock');
     }
     await emit('complete', { ok: true, queue: names, dropQueue, retainedPlayback: true, folderTree: true, groupMenu: true, trackMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
