@@ -3,18 +3,19 @@
 use super::{ResolvedSource, SourceResolver};
 use crate::{
     Error, Result,
-    library::{IndexedFlacReceipt, LocalResource},
+    library::{IndexedAudioFormat, IndexedAudioReceipt, LocalResource},
     playback::engine::{Cancellation, MediaInput},
 };
 use serde_json::Value;
 
 impl SourceResolver {
-    pub(crate) async fn hold_indexed_local_flac(
+    pub(crate) async fn hold_indexed_local_audio(
         &self,
         resource: &Value,
         source: &ResolvedSource,
+        format: IndexedAudioFormat,
         cancel: &Cancellation,
-    ) -> Result<Option<(IndexedFlacReceipt, LocalResource)>> {
+    ) -> Result<Option<(IndexedAudioReceipt, LocalResource)>> {
         let (Some(library), MediaInput::File(path)) = (&self.library, &source.input) else {
             return Ok(None);
         };
@@ -22,9 +23,7 @@ impl SourceResolver {
             || !source.info["segment"].is_null()
             || !source.info["volume_delta"].is_null()
             || source.info["loudness_invalid"] == true
-            || !path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("flac"))
+            || IndexedAudioFormat::from_path(path) != Some(format)
         {
             return Ok(None);
         }
@@ -32,18 +31,19 @@ impl SourceResolver {
         let (library, path, cancel) = (library.clone(), path.clone(), cancel.clone());
         tokio::task::spawn_blocking(move || {
             cancel.check()?;
-            let receipt = library.hold_ordinary_indexed_flac(&resource, &path, &cancel)?;
+            let receipt = library.hold_ordinary_indexed_audio(&resource, &path, format, &cancel)?;
             cancel.check()?;
             Ok(receipt.map(|receipt| (receipt, resource)))
         })
         .await
-        .map_err(|_| Error::State("indexed FLAC worker stopped"))?
+        .map_err(|_| Error::State("indexed audio worker stopped"))?
     }
 
-    pub(crate) async fn verify_indexed_local_flac(
+    pub(crate) async fn verify_indexed_local_audio(
         &self,
         resource: &Value,
         source: &ResolvedSource,
+        format: IndexedAudioFormat,
         cancel: &Cancellation,
     ) -> Result<()> {
         let (Some(library), MediaInput::File(path)) = (&self.library, &source.input) else {
@@ -53,12 +53,12 @@ impl SourceResolver {
         let (library, path, cancel) = (library.clone(), path.clone(), cancel.clone());
         tokio::task::spawn_blocking(move || {
             cancel.check()?;
-            if !library.ordinary_indexed_flac_current(&resource, &path)? {
+            if !library.ordinary_indexed_audio_current(&resource, &path, format)? {
                 return Err(Error::StaleResponse);
             }
             cancel.check()
         })
         .await
-        .map_err(|_| Error::State("indexed FLAC verification worker stopped"))?
+        .map_err(|_| Error::State("indexed audio verification worker stopped"))?
     }
 }

@@ -1834,6 +1834,14 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --indexed-flac-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
+      - name: Verify ordinary indexed WAV spatial controls and held seek on Linux
+        if: matrix.shard == 'media-decoder'
+        run: |
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --indexed-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe \
+            --frontend-dist frontend/dist --root .build/ci-indexed-wav-linux
       - name: Verify search playback with the packaged FLAC decoder and rejected digest
         if: matrix.shard == 'media-decoder'
         run: |

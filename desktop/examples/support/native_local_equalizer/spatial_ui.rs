@@ -1,4 +1,4 @@
-//! Sealed bridge for explicit fixture file opens; the sliders, player controls,
+//! Sealed bridge for fixture setup; the sliders, player controls,
 //! snapshots and persisted settings use the real product endpoints.
 use super::Proof;
 use cumulus_core::{
@@ -17,14 +17,12 @@ use tauri::{Listener, Manager};
 
 const SCRIPT: &str = include_str!("spatial_ui.js");
 
-pub(super) fn script() -> String {
+pub(super) fn script(indexed_wave: bool) -> String {
+    let prefix = format!("window.__spatialIndexedWave={indexed_wave};");
     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
-        super::capture_ack::script(&format!(
-            "window.__spatialCapture = true;
-{SCRIPT}"
-        ))
+        super::capture_ack::script(&format!("{prefix}window.__spatialCapture=true;\n{SCRIPT}"))
     } else {
-        SCRIPT.to_owned()
+        format!("{prefix}\n{SCRIPT}")
     }
 }
 
@@ -32,6 +30,7 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
     app.add_capability(r#"{"identifier":"local-spatial-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
     let next_open = AtomicU64::new(1);
     let seek_observed = AtomicBool::new(false);
+    let path_replaced = AtomicBool::new(false);
     let handle = app.handle().clone();
     app.listen("local-spatial-proof", move |event| {
         let mut value: Value = serde_json::from_str(event.payload()).expect("sealed spatial event");
@@ -62,6 +61,11 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
                             )
                             .await?;
                     }
+                    if proof.indexed_wave {
+                        // The only play selection for this case is the real
+                        // Local Music row's click, not this fixture bridge.
+                        return Ok(());
+                    }
                     #[cfg(windows)]
                     if proof.fixture_source["kind"] == "wav" {
                         client
@@ -91,6 +95,32 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
                     .eval(format!("window.__spatialOpenAck={reply}"))
                     .unwrap();
             });
+            return;
+        }
+        if value["replaceIndexedPath"] == true {
+            let proof = handle.state::<Proof>();
+            assert!(proof.indexed_wave && next_open.load(Ordering::Acquire) == 3);
+            assert!(!path_replaced.swap(true, Ordering::AcqRel));
+            let observed = proof.evidence.lock().unwrap();
+            assert!(matches!(observed.loads.as_slice(), [load]
+                if load.indexed_file && !load.native_file && load.graph_entry == Some(load.entry)));
+            assert!(observed.seeks.is_empty());
+            drop(observed);
+            let original = proof.root.join("held-original.wav");
+            fs::rename(&proof.file, &original).expect("preserve held synthetic WAV");
+            // A different valid one-frame WAV at the original pathname. A
+            // decoder reopened by name cannot reach the expected old EOF.
+            let mut replacement = fs::read(original).expect("synthetic WAV bytes");
+            replacement.truncate(48);
+            replacement[4..8].copy_from_slice(&40_u32.to_le_bytes());
+            replacement[40..44].copy_from_slice(&4_u32.to_le_bytes());
+            replacement[44..48].fill(0);
+            fs::write(&proof.file, replacement).expect("publish synthetic pathname replacement");
+            handle
+                .get_webview_window("main")
+                .unwrap()
+                .eval("window.__spatialIndexedPathReplaced=true;")
+                .unwrap();
             return;
         }
         if value["observePausedSeek"] == true {
@@ -148,6 +178,9 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
         value["native"] = json!(*proof.evidence.lock().unwrap());
         value["fixtureSource"] = proof.fixture_source.clone();
         value["fixtureOpens"] = json!(next_open.load(Ordering::Acquire) - 1);
+        if proof.indexed_wave {
+            value["fixtureIndexedPathReplaced"] = json!(path_replaced.load(Ordering::Acquire));
+        }
         value["webviewFinished"] = json!(true);
         value["realMusicRequests"] = json!(0);
         value["realAccountWrites"] = json!(0);

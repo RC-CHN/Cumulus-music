@@ -964,12 +964,17 @@ impl AudioEngine for MpvEngine {
     fn supports_local_equalizer(&self) -> bool {
         self.local_flac.is_some() || self.local_wave
     }
-    fn supports_indexed_flac_equalizer(&self) -> bool {
-        cfg!(all(target_os = "linux", target_arch = "x86_64")) && self.local_flac.is_some()
+    fn supports_indexed_audio_equalizer(&self, format: crate::library::IndexedAudioFormat) -> bool {
+        use crate::library::IndexedAudioFormat::*;
+        cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            && match format {
+                Flac => self.local_flac.is_some(),
+                Wave => self.local_wave,
+            }
     }
-    fn load_indexed_flac_equalizer(
+    fn load_indexed_audio_equalizer(
         &mut self,
-        receipt: crate::library::IndexedFlacReceipt,
+        receipt: crate::library::IndexedAudioReceipt,
         selected: crate::library::LocalResource,
         settings: crate::effects::equalizer::EqualizerSettings,
         cancel: &Cancellation,

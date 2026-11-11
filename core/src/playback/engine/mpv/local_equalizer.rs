@@ -1,4 +1,4 @@
-//! Combined M3091 material on one held, explicitly opened FLAC or PCM WAV.
+//! Combined M3091 material on one held local FLAC or PCM WAV.
 use super::{
     AudioEngine, Cancellation, Error, LoadRequest, LoadedMedia, MediaInput, MpvEngine, Result,
 };
@@ -24,9 +24,15 @@ enum HeldOrigin {
     SearchPublication,
 }
 
+#[derive(Clone, Copy)]
+struct HeldIdentity {
+    demuxer: &'static str,
+    origin: HeldOrigin,
+}
+
 pub(super) struct LocalEqualizer {
     pass: Box<NativeStereoPass>,
-    original_demuxer: &'static str,
+    identity: HeldIdentity,
     settings: EqualizerSettings,
     // Only claim the new settings after the native clock has passed audio
     // which could already have been queued when the worker applied them.
@@ -47,11 +53,9 @@ impl MpvEngine {
         &self,
         entry: i64,
     ) -> Result<Option<crate::playback::engine::NativeModernEffectSource>> {
-        let Some(local) = self
-            .local_equalizer
-            .as_ref()
-            .filter(|local| local.original_demuxer == "wav")
-        else {
+        let Some(local) = self.local_equalizer.as_ref().filter(|local| {
+            local.identity.demuxer == "wav" && local.identity.origin == HeldOrigin::ExplicitFile
+        }) else {
             return Ok(None);
         };
         #[cfg(windows)]
@@ -130,7 +134,15 @@ impl MpvEngine {
                 let plan = LocalEqualizerMaterialPlan::from_saved(settings);
                 let selection =
                     NativeStereoSource::select_rooted_wave(file.clone(), cancel.clone(), plan)?;
-                self.load_selected_local_equalizer(selection, "wav", settings, cancel)
+                self.load_selected_local_equalizer(
+                    selection,
+                    HeldIdentity {
+                        demuxer: "wav",
+                        origin: HeldOrigin::ExplicitFile,
+                    },
+                    settings,
+                    cancel,
+                )
             }
             _ => self.load_inner(request, cancel),
         }
@@ -138,22 +150,24 @@ impl MpvEngine {
 
     pub(super) fn load_indexed_local_equalizer(
         &mut self,
-        receipt: crate::library::IndexedFlacReceipt,
+        receipt: crate::library::IndexedAudioReceipt,
         selected: crate::library::LocalResource,
         settings: EqualizerSettings,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         cancel.check()?;
+        let format = receipt.format();
         let file = receipt.into_ordinary_file(&selected, cancel)?;
-        if !settings.local_graph_requested()
+        if !self.supports_indexed_audio_equalizer(format)
+            || !settings.local_graph_requested()
             || self.parametric.is_some()
             || (self.loudness.is_some() && !self.loudness_reserved)
         {
-            return self.load_open_file(file, "flac", cancel.clone(), 0.0, cancel);
+            return self.load_open_file(file, format.demuxer(), cancel.clone(), 0.0, cancel);
         }
         self.load_held_local_equalizer(
             file,
-            "flac",
+            format.demuxer(),
             settings,
             cancel.clone(),
             cancel,
@@ -200,7 +214,11 @@ impl MpvEngine {
     ) -> Result<LoadedMedia> {
         let plan = LocalEqualizerMaterialPlan::from_saved(settings);
         let selection = if format == "wav" && self.local_wave {
-            NativeStereoSource::select_wave(file, authority, plan)?
+            if origin == HeldOrigin::IndexedFile {
+                NativeStereoSource::select_indexed_wave(file, authority, plan)?
+            } else {
+                NativeStereoSource::select_wave(file, authority, plan)?
+            }
         } else {
             let Some(library) = self
                 .local_flac
@@ -226,13 +244,21 @@ impl MpvEngine {
                 NativeStereoSource::select(file, authority, library, plan)?
             }
         };
-        self.load_selected_local_equalizer(selection, format, settings, cancel)
+        self.load_selected_local_equalizer(
+            selection,
+            HeldIdentity {
+                demuxer: format,
+                origin,
+            },
+            settings,
+            cancel,
+        )
     }
 
     fn load_selected_local_equalizer(
         &mut self,
         selection: NativeStereoSelection,
-        format: &'static str,
+        identity: HeldIdentity,
         settings: EqualizerSettings,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
@@ -240,7 +266,7 @@ impl MpvEngine {
             NativeStereoSelection::Qualified(source) => source,
             NativeStereoSelection::Stock(held) => {
                 let (file, authority) = held.into_stock()?;
-                return self.load_open_file(file, format, authority, 0.0, cancel);
+                return self.load_open_file(file, identity.demuxer, authority, 0.0, cancel);
             }
         };
         let total = source.total_frames();
@@ -256,11 +282,11 @@ impl MpvEngine {
                 if self.loudness_reserved {
                     self.detach_loudness()?;
                 }
-                self.load_local_equalizer_pass(pass, format, settings, total, true, cancel)
+                self.load_local_equalizer_pass(pass, identity, settings, total, true, cancel)
             }
             NativeStereoStart::Stock(source) => {
                 let (file, authority) = source.into_reader()?.into_stock()?;
-                self.load_open_file(file, format, authority, 0.0, cancel)
+                self.load_open_file(file, identity.demuxer, authority, 0.0, cancel)
             }
         }
     }
@@ -268,7 +294,7 @@ impl MpvEngine {
     fn load_local_equalizer_pass(
         &mut self,
         mut pass: Box<NativeStereoPass>,
-        original_demuxer: &'static str,
+        identity: HeldIdentity,
         settings: EqualizerSettings,
         total: u64,
         allow_unplayed_fallback: bool,
@@ -282,7 +308,7 @@ impl MpvEngine {
                 cancel.check()?;
                 if let Ok(source) = pass.reclaim() {
                     let (file, authority) = source.into_reader()?.into_stock()?;
-                    return self.load_open_file(file, original_demuxer, authority, 0.0, cancel);
+                    return self.load_open_file(file, identity.demuxer, authority, 0.0, cancel);
                 }
                 return Err(error);
             }
@@ -291,7 +317,7 @@ impl MpvEngine {
         media.duration = Some(total as f64 / f64::from(rate));
         self.local_equalizer = Some(LocalEqualizer {
             pass,
-            original_demuxer,
+            identity,
             settings,
             watermark: 0,
             pending: false,
@@ -326,7 +352,7 @@ impl MpvEngine {
         let retirement = self.retire_local_equalizer_pinned(entry, cancel);
         let LocalEqualizer {
             pass,
-            original_demuxer,
+            identity,
             settings,
             pending,
             ..
@@ -344,14 +370,8 @@ impl MpvEngine {
         }
         match source.start(frame, cancel)? {
             NativeStereoStart::Ready(pass) => {
-                let media = self.load_local_equalizer_pass(
-                    pass,
-                    original_demuxer,
-                    settings,
-                    total,
-                    false,
-                    cancel,
-                )?;
+                let media =
+                    self.load_local_equalizer_pass(pass, identity, settings, total, false, cancel)?;
                 if let Some(speed) = playback_speed
                     && let Err(error) = self.speed(speed)
                 {
@@ -396,7 +416,7 @@ impl MpvEngine {
         self.native_mut()?;
         self.load_open_file(
             file,
-            local.original_demuxer,
+            local.identity.demuxer,
             authority,
             first as f64 / f64::from(control.rate()),
             cancel,

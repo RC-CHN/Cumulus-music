@@ -1,4 +1,4 @@
-//! Real desktop initialization and the ordinary actor's trusted file-open entry.
+//! Real desktop initialization and ordinary native-open or local-library playback.
 #[path = "support/assets.rs"]
 mod assets;
 #[path = "support/capture_ack.rs"]
@@ -75,6 +75,7 @@ struct Proof {
     exercise_spatial: bool,
     stop_reselect: bool,
     indexed: bool,
+    indexed_wave: bool,
     fixture_source: Value,
     started: AtomicBool,
 }
@@ -123,17 +124,19 @@ fn main() {
     let case = args.first().and_then(|value| value.to_str());
     let stop_reselect = std::env::var_os("CUMULUS_ORDINARY_STOP_RESELECT_PROOF").is_some();
     assert!(!stop_reselect || case == Some("trusted"));
-    let wave = matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
-    let indexed = matches!(case, Some("indexed_flac" | "indexed_wrong_digest"));
+    let indexed_wave = case == Some("indexed_wav");
+    let wave = indexed_wave || matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
+    let indexed = indexed_wave || matches!(case, Some("indexed_flac" | "indexed_wrong_digest"));
     assert!(!indexed || cfg!(all(target_os = "linux", target_arch = "x86_64")));
     let rate_48k = matches!(case, Some("spatial_wav_48k" | "spatial_flac_48k"));
     let (expect_graph, exercise_peq, exercise_spatial) = match case {
         Some("trusted" | "indexed_flac") => (true, false, false),
         Some("wrong_digest" | "indexed_wrong_digest") => (false, false, false),
         Some("paused_peq") => (true, true, false),
-        Some("spatial_controls" | "spatial_wav" | "spatial_wav_48k" | "spatial_flac_48k") => {
-            (true, false, true)
-        }
+        Some(
+            "spatial_controls" | "spatial_wav" | "spatial_wav_48k" | "spatial_flac_48k"
+            | "indexed_wav",
+        ) => (true, false, true),
         _ => panic!("invalid proof case"),
     };
     let required = if wave {
@@ -143,7 +146,7 @@ fn main() {
     };
     assert!(
         (required..=required + 1).contains(&args.len()),
-        "usage: native_local_equalizer_probe trusted|wrong_digest|indexed_flac|indexed_wrong_digest|spatial_controls|spatial_flac_48k ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav|spatial_wav_48k NEW_ROOT [ABS_MPV]"
+        "usage: native_local_equalizer_probe trusted|wrong_digest|indexed_flac|indexed_wrong_digest|spatial_controls|spatial_flac_48k ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav|spatial_wav_48k|indexed_wav NEW_ROOT [ABS_MPV]"
     );
     let decoder = (!wave).then(|| {
         let sdk = PathBuf::from(&args[1]);
@@ -248,10 +251,16 @@ fn main() {
                     Ok(Box::new(Recorded {
                         engine,
                         evidence: native_evidence.clone(),
-                        record_rate: rate_48k,
+                        record_rate: rate_48k || indexed_wave,
                         observe_stops: stop_reselect,
                     }))
                 });
+            if indexed_wave {
+                let library = cumulus_core::library::LocalLibrary::new(store.clone())?;
+                // Index once with the production scanner; no watch can hide
+                // the retained-file replacement during the sealed seek test.
+                library.scan(file.parent().expect("synthetic local music directory"))?;
+            }
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
             app.manage(Proof {
@@ -265,6 +274,7 @@ fn main() {
                 exercise_spatial,
                 stop_reselect,
                 indexed,
+                indexed_wave,
                 fixture_source,
                 started: AtomicBool::new(false),
             });
@@ -291,7 +301,7 @@ fn main() {
                 return;
             }
             if proof.exercise_spatial {
-                let script = spatial_ui::script();
+                let script = spatial_ui::script(proof.indexed_wave);
                 window.eval(script).expect("spatial controls probe script");
                 return;
             }

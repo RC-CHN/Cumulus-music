@@ -284,7 +284,7 @@ mod evidence {
             history: Default::default(),
             podcast_progress: None,
             local_equalizer: true,
-            indexed_flac: false,
+            indexed_audio: None,
             audiobook_skip: None,
         });
         actor.state = PlaybackStatus::Paused;

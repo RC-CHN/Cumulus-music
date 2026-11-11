@@ -113,6 +113,36 @@ fn wave_source(path: &Path, bytes: &[u8], authority: Cancellation) -> Box<Native
     source
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[test]
+fn indexed_wave_unsupported_layout_returns_same_handle_to_stock() {
+    // Keep a valid RIFF stream, but describe its original 8 bytes as four
+    // mono frames. The DSP path permits only signed-16 stereo.
+    let mut mono = wave([[1, -1], [2, -2]]);
+    mono[22..24].copy_from_slice(&1_u16.to_le_bytes());
+    mono[28..32].copy_from_slice(&(44_100_u32 * 2).to_le_bytes());
+    mono[32..34].copy_from_slice(&2_u16.to_le_bytes());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("indexed.wav");
+    fs::write(&path, &mono).unwrap();
+    let file = File::open(&path).unwrap();
+    fs::rename(&path, dir.path().join("original.wav")).unwrap();
+    fs::write(&path, wave([[0, 0]])).unwrap();
+
+    let authority = Cancellation::default();
+    let NativeStereoSelection::Stock(file) =
+        NativeStereoSource::select_indexed_wave(file, authority.clone(), plan(3)).unwrap()
+    else {
+        panic!("valid mono WAV must remain playable by the stock sink");
+    };
+    let (mut file, fallback_authority) = file.into_stock().unwrap();
+    let mut actual = Vec::new();
+    file.read_to_end(&mut actual).unwrap();
+    assert_eq!(actual, mono);
+    authority.cancel();
+    assert!(matches!(fallback_authority.check(), Err(Error::Cancelled)));
+}
+
 #[test]
 fn native_pcm_wav_retains_the_actual_file_and_frame_seek_after_rename() {
     let dir = tempfile::tempdir().unwrap();

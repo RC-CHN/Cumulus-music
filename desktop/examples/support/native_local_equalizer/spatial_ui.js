@@ -1,4 +1,4 @@
-// The sealed host opens only the fixed local FLAC; all user controls and
+// The sealed host prepares only fixed synthetic audio; all user controls and
 // observations below use the rendered main UI and production Tauri commands.
 (async () => {
   const one = (selector) => document.querySelector(selector);
@@ -17,6 +17,8 @@
   const sliders = ['环绕深度', '环绕强度'];
   let last = 'account';
   let epoch;
+  let localId;
+  const indexedWave = window.__spatialIndexedWave === true;
   async function wait(read, label) {
     last = label;
     const deadline = performance.now() + 11000;
@@ -69,8 +71,24 @@
   async function openFile(ordinal) {
     await emit({ open: ordinal });
     const ack = await wait(() => window.__spatialOpenAck?.ordinal === ordinal &&
-      window.__spatialOpenAck, 'trusted native open ' + ordinal);
+      window.__spatialOpenAck, 'local audio fixture ready ' + ordinal);
     assert(ack.ok, ack.error);
+    if (indexedWave) {
+      if (ordinal === 1) {
+        const route = await wait(() => [...document.querySelectorAll('button')].find((node) =>
+          (node.textContent.trim() === '本地音乐' || node.getAttribute('aria-label') === '本地音乐') &&
+          visible(node)), 'visible Local Music navigation');
+        click(route);
+      }
+      const row = await wait(() => {
+        const rows = [...document.querySelectorAll('.local-tracks tbody tr[data-local-id]')];
+        return rows.length === 1 && visible(rows[0].querySelector('.local-title')) && rows[0];
+      }, 'actual indexed WAV row');
+      assert(/^[0-9a-f]{64}$/.test(row.dataset.localId), 'native local file identity');
+      assert(!localId || localId === row.dataset.localId, 'same indexed row selected again');
+      localId = row.dataset.localId;
+      click(row.querySelector('.local-title'));
+    }
   }
   async function openEq() {
     await wait(() => visible(launcher()), 'enabled EQ launcher');
@@ -144,7 +162,8 @@
       paintSamples: (dialog() ? ['.equalizer-dialog'] : ['.sidebar-caption', '.playerbar'])
         .map(paintSample),
     } : {};
-    await emit({ stage: name, epoch, player: view, ...capture, ...extra, dom: {
+    await emit({ stage: name, epoch, player: view, ...capture, ...extra,
+      ...(indexedWave ? { indexedLocalId: localId } : {}), dom: {
       state: bar()?.dataset.state, status: spatial()?.dataset.spatialStatus ?? null,
       sliders: dialog() ? sliderValues(sliders) : null,
       tone: dialog() ? sliderValues(tone) : null,
@@ -184,7 +203,7 @@
     const playing = await playback((view) => view.state === 'playing' &&
       view.position > .1 && view.playId !== stock.playId &&
       view.equalizer.spatial_status === 'processing' && launcher()?.dataset.equalizerState === 'processing',
-    'native clock shows real spatial-only PCM processing after explicit open');
+    'native clock shows real spatial-only PCM processing for the selected file');
     const paused = await pause(playing);
     await openEq();
     set(sliders[0], 6);
@@ -202,6 +221,10 @@
     assert(samePlay(on, off) && !on.equalizer.settings.master_bypassed, 'master re-applies same graph');
     await stage('ux_04_master_on', on);
     await closeEq();
+    if (indexedWave) {
+      await emit({ replaceIndexedPath: true });
+      await wait(() => window.__spatialIndexedPathReplaced, 'held index fixture pathname replaced');
+    }
 
     const requested = .5;
     const { step, accepted } = await wait(() => {
@@ -249,7 +272,8 @@
     'one enhanced reset clears tone and spatial, keeps completed source');
     await stage('ux_07_reset', reset);
     await emit({ stage: 'complete', ok: true, stageCount: 7, epoch,
-      startedSpatial: playing.equalizer.spatial_status === 'processing' });
+      startedSpatial: playing.equalizer.spatial_status === 'processing',
+      ...(indexedWave ? { indexedLocalId: localId } : {}) });
   } catch (error) {
     await emit({ stage: 'failed', ok: false, last, error: String(error), epoch });
   }

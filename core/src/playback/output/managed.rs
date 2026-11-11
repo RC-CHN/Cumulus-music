@@ -380,12 +380,12 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn supports_local_equalizer(&self) -> bool {
         self.inner.supports_local_equalizer()
     }
-    fn supports_indexed_flac_equalizer(&self) -> bool {
-        self.inner.supports_indexed_flac_equalizer()
+    fn supports_indexed_audio_equalizer(&self, format: crate::library::IndexedAudioFormat) -> bool {
+        self.inner.supports_indexed_audio_equalizer(format)
     }
-    fn load_indexed_flac_equalizer(
+    fn load_indexed_audio_equalizer(
         &mut self,
-        receipt: crate::library::IndexedFlacReceipt,
+        receipt: crate::library::IndexedAudioReceipt,
         selected: crate::library::LocalResource,
         settings: crate::effects::equalizer::EqualizerSettings,
         cancel: &Cancellation,
@@ -398,7 +398,7 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         // still owns this descriptor. Never retry using a pathname here.
         let result = self
             .inner
-            .load_indexed_flac_equalizer(receipt, selected, settings, &cancel);
+            .load_indexed_audio_equalizer(receipt, selected, settings, &cancel);
         if cancel.is_cancelled() {
             let _ = self.inner.stop();
             return Err(Error::Cancelled);

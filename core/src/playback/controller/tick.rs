@@ -220,7 +220,7 @@ impl Actor {
                 matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
             })
         {
-            if loaded.indexed_flac {
+            if loaded.indexed_audio.is_some() {
                 // This entry has consumed a one-shot descriptor. Device
                 // recovery cannot silently replay it via the retained path.
                 let _ = self.stop(false).await;

@@ -88,6 +88,28 @@ impl NativeStereoSource {
         Self::select_wave_graph(reader, |format| SourceGraph::new_local(format, plan))
     }
 
+    /// A WAV already playable through the ordinary library may have a layout
+    /// outside our DSP subset. Leave that exact verified handle with stock;
+    /// descriptor I/O failure or revoked authority still ends this attempt.
+    pub(crate) fn select_indexed_wave(
+        file: File,
+        authority: Cancellation,
+        plan: LocalEqualizerMaterialPlan,
+    ) -> Result<NativeStereoSelection> {
+        let mut reader = NativeStereoFile::new(file, authority)?;
+        let layout = match PcmWave::inspect(&mut reader) {
+            Ok(layout) => layout,
+            Err(Error::InvalidInput(_)) => {
+                reader.authority.check()?;
+                return Ok(NativeStereoSelection::Stock(reader));
+            }
+            Err(error) => return Err(error),
+        };
+        Self::select_wave_layout(reader, layout, |format| {
+            SourceGraph::new_local(format, plan)
+        })
+    }
+
     /// Consume only a previously admitted WAV. The reader owns the exact
     /// rooted handle, including when the graph yields to the stock sink.
     #[cfg(windows)]
@@ -121,6 +143,14 @@ impl NativeStereoSource {
         graph: impl FnOnce(crate::effects::dsp::Format) -> Result<SourceGraph>,
     ) -> Result<NativeStereoSelection> {
         let layout = PcmWave::inspect(&mut reader)?;
+        Self::select_wave_layout(reader, layout, graph)
+    }
+
+    fn select_wave_layout(
+        mut reader: NativeStereoFile,
+        layout: PcmWave,
+        graph: impl FnOnce(crate::effects::dsp::Format) -> Result<SourceGraph>,
+    ) -> Result<NativeStereoSelection> {
         reader.wave_layout = Some(layout);
         Ok(
             match HeldSource::qualified(

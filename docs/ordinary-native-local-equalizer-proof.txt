@@ -300,6 +300,36 @@ warm-open in the existing process, verified a 48 kHz source record and measured
 queue (`.build/ui-proof/phase73-warm-48k-r1/report.json`). These are synthetic
 local files and controlled outputs; no service request or physical sound test.
 
+普通本地库索引 WAV
+------------------
+
+官方 PC 3.1.42.205594 M/163:373–381 为已存在的本地音乐选择 native
+type 0，仅 CUE 添加 start/duration；M/308:2118–2141 提交到原生播放器。
+cloudmusic.dll 103B83C–103B86F 进入普通文件分支，1055EF0 将实际解码
+PCM 送入效果 SDK。M/3091:1278–1305、1403–1429 的本地 GEQ/BT/SE
+设置不依赖选歌来自本地库还是原生文件打开。该证据不推断官方的文件打开权限。
+
+Cumulus 在 Linux x86_64 对「本地音乐」列表选出的普通整曲 WAV 使用同一
+已恢复的本地音效图。源必须是当前索引选中的普通文件、独立播放、完整时间轴、
+无竞争的专有 PEQ，且已保存设置请求使用本地图。与原先索引 FLAC 相同，先核对
+索引记录、受管理下载/离线所有权、解析路径、文件设备号和 inode，再持有唯一
+链接的原始描述符；RIFF/WAVE 头来自该描述符，实际 PCM 几何由既有解码路径
+校验。支持 44.1/48 kHz、双声道、16 位 PCM；不支持的几何仍使用同一已持有
+文件的普通解码。CUE、NCM/解密缓存、下载声明与受限时间轴不借用这条路径。
+开始播放前复核选中队列、索引和下载声明；开始后 seek 沿用原文件描述符，输出
+设备故障不自动按原路径重开。此处的权限边界不授予现代目录材料身份。
+Windows 本地索引目前没有可与 NTFS 持有句柄核对的原始设备/文件 ID；它继续走
+原有播放路径。另行验证的 Windows 原生打开 WAV 路线不受影响。
+
+普通 Rust 测试覆盖旧路径被替换后仍可消费原描述符、旧索引不能打开替换文件、
+CUE/改名 NCM 排除、另一账号迟到的下载声明，以及有效单声道 WAV 仍通过
+同一描述符交给普通解码（不以音效不支持为由让原本可播放的音频失效）。Linux 的既有
+native_local_equalizer_probe 增加 `native_local_equalizer_smoke.py
+--indexed-wav-only` 模式，真实窗口从本地音乐行点击选曲，不走 native Open。
+验收检查设置保存、处理状态、同一播放内开关、原路径被有效一帧 WAV 替换后的
+暂停定位、新原生条目继续播放、原 WAV 时长的自然 EOF 与实际样本率；该模式只用
+合成文件及 libmpv null 输出。只有实际通过的运行才能作为桌面验收。
+
 Windows 空间音效探针：暂停定位阶段的原生回执
 3e91f381 Windows package job 127626307412:1995 的合成 WAV 停在 ux_05_paused_seek。
 原 native entry 2 连续暂停于 0.4414965986394558 秒，和网页请求约 0.500039682539683 秒

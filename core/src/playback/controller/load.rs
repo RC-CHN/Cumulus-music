@@ -6,6 +6,7 @@ use crate::{
     Error, Result,
     download::offline::HeldSearchFile,
     effects::equalizer::EqualizerStatus,
+    library::IndexedAudioFormat,
     playback::{
         QueueEntry, Timeline, TimelineMode,
         engine::{Cancellation, LoadRequest, LoadedMedia, MediaInput},
@@ -49,7 +50,7 @@ pub(super) struct Prepared {
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
     pub local_equalizer: bool,
-    pub indexed_flac: bool,
+    pub indexed_audio: Option<IndexedAudioFormat>,
     reopened_local_sink: bool,
     pub timeline: Timeline,
     pub position: f64,
@@ -297,7 +298,8 @@ impl Actor {
                 let (
                     streaming_revision,
                     pinned_search,
-                    native_indexed,
+                    native_indexed_flac,
+                    native_indexed_wave,
                     native_publication_equalizer,
                     reopened_local_sink,
                 ) = super::engine(engine.clone(), cancel.clone(), move |engine| {
@@ -312,7 +314,10 @@ impl Actor {
                     Ok((
                         streaming_revision.filter(|_| engine.streaming_audio_available()),
                         engine.supports_pinned_search_download(),
-                        indexed_equalizer.is_some() && engine.supports_indexed_flac_equalizer(),
+                        indexed_equalizer.is_some()
+                            && engine.supports_indexed_audio_equalizer(IndexedAudioFormat::Flac),
+                        indexed_equalizer.is_some()
+                            && engine.supports_indexed_audio_equalizer(IndexedAudioFormat::Wave),
                         local_material.is_some() && engine.supports_local_equalizer(),
                         reopened,
                     ))
@@ -493,20 +498,28 @@ impl Actor {
                     ready.await.map_err(|_| Error::Cancelled)?;
                     load_cancel.check()?;
                 }
-                let indexed = if native_indexed
+                let indexed_format = match &source.input {
+                    MediaInput::File(path) => IndexedAudioFormat::from_path(path),
+                    _ => None,
+                }
+                .filter(|format| match format {
+                    IndexedAudioFormat::Flac => native_indexed_flac,
+                    IndexedAudioFormat::Wave => native_indexed_wave,
+                });
+                let indexed = if let Some(format) = indexed_format
                     && held_file.is_none()
                     && stream_reader.is_none()
                     && snapshot.mode == TimelineMode::Full
                     && snapshot.media_start == 0.0
                 {
                     resolver
-                        .hold_indexed_local_flac(&item.resource, &source, &load_cancel)
+                        .hold_indexed_local_audio(&item.resource, &source, format, &load_cancel)
                         .await?
                         .zip(indexed_equalizer)
                 } else {
                     None
                 };
-                let indexed_flac = indexed.is_some();
+                let indexed_audio = indexed.as_ref().map(|((receipt, _), _)| receipt.format());
                 let native_equalizer_source = match &load.source {
                     MediaInput::NativeFile { .. } => true,
                     #[cfg(windows)]
@@ -533,7 +546,7 @@ impl Actor {
                         } else if let Some(reader) = stream_reader {
                             engine.load_streaming_audio(reader, &load_cancel)?
                         } else if let Some(((receipt, selected), settings)) = indexed {
-                            engine.load_indexed_flac_equalizer(
+                            engine.load_indexed_audio_equalizer(
                                 receipt,
                                 selected,
                                 settings,
@@ -578,7 +591,7 @@ impl Actor {
                     source,
                     media,
                     local_equalizer,
-                    indexed_flac,
+                    indexed_audio,
                     reopened_local_sink,
                     timeline,
                     position,
@@ -726,7 +739,7 @@ impl Actor {
                         let seek_cancel = transport.clone();
                         let entry = prepared.media.entry_id;
                         let local_equalizer = prepared.local_equalizer;
-                        let indexed_flac = prepared.indexed_flac;
+                        let indexed_audio = prepared.indexed_audio;
                         let publication = match &prepared.source.input {
                             MediaInput::SearchPublication(source) => {
                                 Some((source.clone(), prepared.item.clone()))
@@ -749,7 +762,7 @@ impl Actor {
                                     source.revalidate_playback(Some(&entry))?;
                                     seek_cancel.check()?;
                                 }
-                                if !local_equalizer && !indexed_flac {
+                                if !local_equalizer && indexed_audio.is_none() {
                                     engine.pause(paused)?;
                                 }
                                 Ok(replacement)
@@ -763,16 +776,17 @@ impl Actor {
                             if self.queue.selected().as_ref() != Some(&prepared.item) {
                                 return Err(Error::QueueChanged);
                             }
-                            if indexed_flac {
+                            if let Some(format) = indexed_audio {
                                 self.resolver
-                                    .verify_indexed_local_flac(
+                                    .verify_indexed_local_audio(
                                         &prepared.item.resource,
                                         &prepared.source,
+                                        format,
                                         &transport,
                                     )
                                     .await?;
                             }
-                            if local_equalizer || indexed_flac {
+                            if local_equalizer || indexed_audio.is_some() {
                                 if pending
                                     .reply
                                     .as_ref()
@@ -897,7 +911,7 @@ impl Actor {
                     source: prepared.source,
                     media: prepared.media,
                     local_equalizer: prepared.local_equalizer,
-                    indexed_flac: prepared.indexed_flac,
+                    indexed_audio: prepared.indexed_audio,
                     timeline: prepared.timeline,
                 });
                 if let Some(radio) = refresh_radio {

@@ -10,7 +10,10 @@ pub(crate) mod native_open;
 pub mod probe;
 mod records;
 mod types;
-pub use index::{IndexedFlacReceipt, LocalLibrary, LocalMapping, MappingSource};
+pub use index::{
+    IndexedAudioFormat, IndexedAudioReceipt, IndexedFlacReceipt, LocalLibrary, LocalMapping,
+    MappingSource,
+};
 pub(crate) use index::{delete_completed_download, relocate_download};
 #[cfg(windows)]
 #[doc(hidden)]

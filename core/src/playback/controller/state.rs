@@ -34,7 +34,7 @@ pub(super) struct Loaded {
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
     pub local_equalizer: bool,
-    pub indexed_flac: bool,
+    pub indexed_audio: Option<crate::library::IndexedAudioFormat>,
     pub timeline: Timeline,
 }
 pub(super) struct Pending {

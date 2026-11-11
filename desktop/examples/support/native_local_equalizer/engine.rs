@@ -173,19 +173,22 @@ impl AudioEngine for Recorded {
         });
         Ok(loaded)
     }
-    fn supports_indexed_flac_equalizer(&self) -> bool {
-        self.engine.supports_indexed_flac_equalizer()
+    fn supports_indexed_audio_equalizer(
+        &self,
+        format: cumulus_core::library::IndexedAudioFormat,
+    ) -> bool {
+        self.engine.supports_indexed_audio_equalizer(format)
     }
-    fn load_indexed_flac_equalizer(
+    fn load_indexed_audio_equalizer(
         &mut self,
-        receipt: cumulus_core::library::IndexedFlacReceipt,
+        receipt: cumulus_core::library::IndexedAudioReceipt,
         selected: cumulus_core::library::LocalResource,
         settings: EqualizerSettings,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         let loaded = self
             .engine
-            .load_indexed_flac_equalizer(receipt, selected, settings, cancel)?;
+            .load_indexed_audio_equalizer(receipt, selected, settings, cancel)?;
         self.evidence.lock().unwrap().loads.push(Load {
             native_file: false,
             rooted_windows: false,

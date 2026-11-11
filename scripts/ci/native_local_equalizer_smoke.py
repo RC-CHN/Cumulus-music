@@ -82,7 +82,7 @@ def verify_paused_native_clock(polls, replacement, target, rate):
         'tolerance': tolerance, 'settledNativePositions': settled,
     }
 
-def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
+def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100, indexed_wave=False):
     directory = root / 'spatial'
     names = [
         'ux_01_stock_saved', 'ux_02_hot_paused', 'ux_03_master_off',
@@ -121,7 +121,20 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
         48_000: '0ed7634a1be5f5116c688980096c04b43e331022e69b3c3c990a1daaea09d0c4',
     }[rate]
     assert fixture['sourcePcmSha256'] == source_pcm_sha
-    path, = root.glob('*.' + source_kind)
+    if indexed_wave:
+        local_id = complete['indexedLocalId']
+        assert len(local_id) == 64 and all(ch in '0123456789abcdef' for ch in local_id)
+        assert all(row['indexedLocalId'] == local_id for row in stages)
+        assert not any(row['fixtureIndexedPathReplaced'] for row in stages[:4])
+        assert all(row['fixtureIndexedPathReplaced'] for row in (*stages[4:], complete))
+        path = root / 'held-original.wav'
+        replacement, = (root / 'media').glob('*.wav')
+        import wave
+        with wave.open(str(replacement), 'rb') as source:
+            assert source.getframerate() == rate and source.getnframes() == 1
+            assert source.readframes(1) == bytes(4)
+    else:
+        path, = root.glob('*.' + source_kind)
     with path.open('rb') as source:
         assert hashlib.file_digest(source, 'sha256').hexdigest() == fixture['sha256']
     if source_kind == 'wav':
@@ -176,12 +189,13 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
     rooted_windows = sys.platform == 'win32' and source_kind == 'wav'
     assert stock['native']['stock_rooted_windows'] == native['stock_rooted_windows'] == [rooted_windows]
     assert load['rooted_windows'] is rooted_windows
-    assert load['native_file'] and load['codec'] == 'pcm_f32le' and load['graph_entry'] == load['entry']
+    assert load['native_file'] is (not indexed_wave) and load['indexed_file'] is indexed_wave
+    assert load['codec'] == 'pcm_f32le' and load['graph_entry'] == load['entry']
     assert seek['seconds'] == seek_target['accepted'] and seek['old_entry'] == load['entry']
     assert seek['graph_entry'] == seek['replacement'] != load['entry']
     assert native['processed_entries'] == sorted([load['entry'], seek['replacement']])
     assert native['eof_entries'] == [seek['replacement']]
-    if rate == 48_000:
+    if rate == 48_000 or indexed_wave:
         stock_entry, = native['stock_entries']
         expected_formats = {str(entry): [rate, 2] for entry in (stock_entry, load['entry'], seek['replacement'])}
         assert native['decoded_formats'] == expected_formats
@@ -217,6 +231,8 @@ def main():
     spatial = parser.add_mutually_exclusive_group()
     spatial.add_argument('--indexed-flac-only', action='store_true',
                          help='run trusted graph and held stock via a native Linux library index')
+    spatial.add_argument('--indexed-wav-only', action='store_true',
+                         help='exercise indexed Linux local WAV via actual Local Music row clicks')
     spatial.add_argument('--spatial-controls-only', action='store_true',
                          help='run the actual EQ UI with the ordinary held FLAC source')
     spatial.add_argument('--spatial-wav-only', action='store_true',
@@ -228,7 +244,7 @@ def main():
     parser.add_argument('--screenshots', action='store_true',
                         help='capture settled spatial stages on isolated Linux GTK')
     args = parser.parse_args()
-    is_wave = args.spatial_wav_only or args.spatial_wav_48k_only
+    is_wave = args.spatial_wav_only or args.spatial_wav_48k_only or args.indexed_wav_only
     rate_48k = args.spatial_wav_48k_only or args.spatial_flac_48k_only
     is_spatial = args.spatial_controls_only or is_wave or args.spatial_flac_48k_only
     if args.screenshots and (not sys.platform.startswith('linux') or not is_spatial):
@@ -237,6 +253,8 @@ def main():
         parser.error('the WAV-only proof does not configure a FLAC or independent filter library')
     if not is_wave and not (args.flac_library and args.flac_sha256):
         parser.error('FLAC proofs require --flac-library and --flac-sha256')
+    if args.indexed_wav_only and not sys.platform.startswith('linux'):
+        parser.error('--indexed-wav-only requires the verified Linux indexed source')
     if args.indexed_flac_only and (not sys.platform.startswith('linux') or args.filter_library):
         parser.error('--indexed-flac-only requires Linux and no independent filter library')
     root = args.root.resolve()
@@ -266,6 +284,8 @@ def main():
         cases = [('spatial_wav_48k', True, [])]
     elif args.spatial_flac_48k_only:
         cases = [('spatial_flac_48k', True, [])]
+    elif args.indexed_wav_only:
+        cases = [('indexed_wav', True, [])]
     elif args.indexed_flac_only:
         cases = [('indexed_flac', True, []), ('indexed_wrong_digest', False, [])]
     reports = {}
@@ -292,7 +312,8 @@ def main():
         )
         reports[case] = (read_spatial_report(work, capture=args.screenshots,
                                              source_kind='wav' if is_wave else 'flac',
-                                             rate=48_000 if rate_48k else 44_100) if is_spatial
+                                             rate=48_000 if rate_48k else 44_100,
+                                             indexed_wave=args.indexed_wav_only) if is_spatial
                          else read_report(work, graph=graph, peq=bool(filter_args),
                                           indexed=args.indexed_flac_only))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,

@@ -1,6 +1,6 @@
 mod cue;
 mod decoded;
-mod held_flac;
+mod held_audio;
 mod mapping;
 mod playlist_membership;
 mod relocate;
@@ -16,7 +16,7 @@ use crate::{
     Error, Result,
     storage::{OperationLock, StateStore, StateTransaction},
 };
-pub use held_flac::IndexedFlacReceipt;
+pub use held_audio::{IndexedAudioFormat, IndexedAudioReceipt, IndexedFlacReceipt};
 pub use mapping::{LocalMapping, MappingSource};
 pub(crate) use relocate::{delete_completed_download, relocate_download};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};

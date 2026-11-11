@@ -5,7 +5,7 @@ mod catalog_download;
 mod fetch;
 #[cfg(test)]
 mod fresh_tests;
-mod indexed_flac;
+mod indexed_audio;
 mod loudness;
 mod streaming;
 use super::{
