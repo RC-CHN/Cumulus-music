@@ -27,6 +27,7 @@
     && !one('.page-enter-active,.page-leave-active,.search-results-leave-active');
   const mode = window.__searchFooterCase;
   let step = 'startup', count = 0, epoch, firstOrdinaryFooterCount, initialPresentation;
+  let pauseSettlement, lastObserved;
   const native = () => invoke('player_snapshot', { epoch });
   const presentation = () => invoke('pc_presentation', { epoch });
   const ordinaryReady = () => ready() && one('.search-results-page h1')?.textContent === '合成 V3'
@@ -41,6 +42,29 @@
     let result;
     await wait(async () => { result = await native(); return test(result); }, message);
     return result;
+  }
+  const clock = ({ epoch, revision, state, playId, entryId, queueRevision, position, nativeSeeking, error }) =>
+    ({ epoch, revision, state, playId, entryId, queueRevision, position, nativeSeeking, error });
+  const clockIdentity = ['epoch', 'playId', 'entryId', 'queueRevision'];
+  async function settledPause(playing) {
+    step = 'pause_clock';
+    let first, since;
+    return playerWhen((view) => {
+      const observed = clock(view), now = performance.now();
+      assert(clockIdentity.every((key) => observed[key] === playing[key]) && !observed.error,
+        'pausing must retain the exact current native selection');
+      const eligible = observed.state === 'paused' && !observed.nativeSeeking &&
+        Number.isFinite(observed.position) && observed.position >= playing.position - .04;
+      // Native Pause can be acknowledged before the decoder reports its last
+      // position. Freeze the comparison baseline only after the clock stops.
+      if (!eligible || !first || observed.position !== first.position) {
+        first = eligible ? observed : undefined;
+        since = now;
+      }
+      pauseSettlement = { first: first ?? null, observed, quietMs: now - since };
+      return first && pauseSettlement.quietMs >= 450 &&
+        BigInt(observed.revision) - BigInt(first.revision) >= 2n;
+    }, 'native paused position did not settle');
   }
   function verifyFooters() {
     assert(cards().map((card) => card.dataset.resultKey).join(',') === 'song:1,song:2,song:3', 'same three ordinary V3 song cards');
@@ -64,6 +88,7 @@
     await wait(() => !one('.page-enter-active,.page-leave-active')
       && all('.search-result-panel,.search-reason-page').every((node) => node.getAnimations().every((animation) => animation.playState !== 'running' && !animation.pending)), 'settled page ' + label);
     const observed = await native();
+    lastObserved = clock(observed);
     if (expected) assert(expected(observed), 'native state before ' + label);
     await wait(() => {
       const rendered = bar();
@@ -86,6 +111,7 @@
       observedPlayId: observed.playId, observedState: observed.state,
       playerbar: bar(),
       ...(label === 'results' ? { firstOrdinaryFooterCount, initialPresentation } : {}),
+      ...(label === 'paused' ? { pauseSettlement } : {}),
     });
     // An emit reply precedes the spawned host actor snapshot. This receipt is
     // emitted only after native JSON persistence (and optional PNG capture).
@@ -122,10 +148,9 @@
     verifyFooters();
     await capture('playing', (view) => view.playId === playing.playId && view.state === 'playing' && view.position > .25);
     click(cover());
-    const paused = await playerWhen((view) => view.playId === playing.playId && view.state === 'paused', 'same decoder pauses');
-    assert(paused.entryId === playing.entryId && paused.queueRevision === playing.queueRevision, 'pause retains queue and entry');
-    const stillPaused = (view) => view.state === 'paused' && view.playId === paused.playId
-      && view.entryId === paused.entryId && view.queueRevision === paused.queueRevision
+    const paused = await settledPause(playing);
+    const stillPaused = (view) => view.state === 'paused' && !view.nativeSeeking && !view.error
+      && clockIdentity.every((key) => view[key] === paused[key])
       && Math.abs(view.position - paused.position) < .04;
     verifyFooters();
     await capture('paused', stillPaused);
@@ -166,6 +191,7 @@
       account, accountReadFailure, page: one('.main-content')?.innerText.slice(0, 1800) ?? null,
       firstOrdinaryFooterCount, footerCount: footerCount(), ordinaryReady: ordinaryReady(),
       cardKeys: cards().map((card) => card.dataset.resultKey), currentPresentation, presentationReadFailure,
+      pauseSettlement, lastObserved,
     });
   }
 })();

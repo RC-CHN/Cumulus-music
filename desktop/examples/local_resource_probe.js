@@ -652,16 +652,29 @@
     await resize(1120, 760);
     const separator = () => local().querySelector('[role="separator"][aria-label="调整本地分组宽度"]');
     const groupWidth = () => Math.round(local().querySelector(".local-groups").getBoundingClientRect().width);
+    const groupMaximum = () => Number(separator()?.getAttribute("aria-valuemax"));
     const press = (key) => separator().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
     const pointer = (target, type, x) => target.dispatchEvent(new PointerEvent(type, {
       pointerId: 91, pointerType: "mouse", isPrimary: true, button: 0, clientX: x, bubbles: true, cancelable: true,
     }));
-    await wait(() => separator() && groupWidth() === 155, "wide group layout starts at recovered width");
+    let previousMaximum, maximumSince;
+    await wait(() => {
+      const maximum = groupMaximum();
+      if (maximum !== previousMaximum) {
+        previousMaximum = maximum;
+        maximumSince = performance.now();
+        return false;
+      }
+      return maximum >= 227 && groupWidth() === 155 && performance.now() - maximumSince >= 90;
+    }, "wide group layout and ResizeObserver bound settle");
     separator().focus();
     press("End");
-    const maxWidth = Number(separator().getAttribute("aria-valuemax"));
-    await wait(() => groupWidth() === maxWidth, "keyboard grows group list to its bound");
-    assert(local().querySelector(".local-tracks").getBoundingClientRect().width >= 459, "song table keeps its recovered minimum");
+    await wait(() => groupMaximum() >= 227 && groupWidth() === groupMaximum(),
+      "keyboard grows group list to its settled bound");
+    const maxWidth = groupMaximum();
+    const keyboardWidth = groupWidth();
+    const trackWidthAtMaximum = local().querySelector(".local-tracks").getBoundingClientRect().width;
+    assert(trackWidthAtMaximum >= 459, "song table keeps its recovered minimum");
     press("Home");
     await wait(() => groupWidth() === 155, "keyboard restores minimum");
     const x = separator().getBoundingClientRect().left + 4;
@@ -672,9 +685,13 @@
     pointer(separator(), "pointerdown", x + 40);
     pointer(document, "pointermove", x + 72);
     await wait(() => groupWidth() === 227, "pointer previews group width");
+    const previewWidth = groupWidth();
     press("Escape");
     await wait(() => groupWidth() === 195, "escape cancels group width preview");
-    await capture("group_resized_dark", { groupWidth: groupWidth(), groupWidthMaximum: maxWidth });
+    await capture("group_resized_dark", {
+      groupWidth: groupWidth(), groupWidthMaximum: maxWidth, keyboardWidth,
+      previewWidth, trackWidthAtMaximum,
+    });
     await resize(760, 620);
     await wait(() => !separator() && groupWidth() === 120, "compact group view keeps room for the table");
     await wait(

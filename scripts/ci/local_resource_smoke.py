@@ -101,8 +101,11 @@ def main():
     assert states['query_failed_dark']['readError'] and states['query_failed_dark']['localCount'] == 0
     assert states['query_empty_light']['localEmpty'] == '没有匹配的本地音乐' and not states['query_empty_light'].get('readError')
     assert states['group_cleared_dark']['localSearch'] == '' and states['group_cleared_dark']['group'] == '歌手'
-    assert states['group_resized_dark']['groupWidth'] == 195
-    assert states['group_resized_dark']['groupWidthMaximum'] >= 227
+    resized = states['group_resized_dark']
+    assert (resized['width'], resized['height']) == (1120, 760)
+    assert resized['groupWidth'] == 195 and resized['previewWidth'] == 227
+    assert resized['keyboardWidth'] == resized['groupWidthMaximum'] >= 227
+    assert resized['trackWidthAtMaximum'] >= 459
     assert states['group_compact_dark']['groupWidth'] == 120 and states['group_compact_dark']['focusLabel'] == '全部'
     assert len(states['queue_before_light']['queueEntries']) == 3
     assert len(states['downloads_before_dark']['downloadIds']) == 1

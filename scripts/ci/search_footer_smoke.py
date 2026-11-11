@@ -62,6 +62,13 @@ def verify(directory, case, expected_assignment, screenshots, windows):
     paused = states["paused"]["nativePlayer"]
     assert playing["state"] == "playing" and playing["position"] > .25
     assert paused["state"] == "paused" and paused["position"] >= playing["position"] - .04
+    settlement = states["paused"]["pauseSettlement"]
+    first, observed = settlement["first"], settlement["observed"]
+    assert settlement["quietMs"] >= 450 and int(observed["revision"]) - int(first["revision"]) >= 2
+    assert all(first[key] == observed[key] == paused[key]
+               for key in ("epoch", "state", "playId", "entryId", "queueRevision"))
+    assert first["position"] == observed["position"] and abs(observed["position"] - paused["position"]) < .04
+    assert all(not sample["nativeSeeking"] and sample["error"] is None for sample in (first, observed, paused))
     queue = states["playing"]["nativeQueue"]
     assert [row["track"]["id"] for row in queue["tracks"]] == ["1"], "official single-card action queues only the selected song"
     assert queue["current"] == playing["entryId"] and queue["revision"] == playing["queueRevision"]
