@@ -2820,11 +2820,12 @@ jobs:
               --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
           }
           # Keep literal roots so the existing guarded diagnostics archive can
-          # find each failed case. Collect all three results before failing.
+          # find each failed case. Collect every result before failing.
           result=0
           prove_current_song_download --root .build/ci-current-song-download-liked-linux --case liked || result=1
           prove_current_song_download --root .build/ci-current-song-download-playlist-linux --case playlist || result=1
           prove_current_song_download --root .build/ci-current-song-download-directory-linux --case directory || result=1
+          prove_current_song_download --root .build/ci-current-song-download-directory-setup-linux --case directory --directory-setup || result=1
           exit "$result"
       - name: Preserve Linux current-song download screenshots and receipts
         if: matrix.shard == 'download-lyrics' && steps.current_song_download.outcome == 'success'
@@ -2846,6 +2847,11 @@ jobs:
             .build/ci-current-song-download-directory-linux/first/ux_*.json
             .build/ci-current-song-download-directory-linux/first/ux_*.png
             .build/ci-current-song-download-directory-linux/first/paint-ux_08_settings.json
+            .build/ci-current-song-download-directory-setup-linux/audit.json
+            .build/ci-current-song-download-directory-setup-linux/first/complete.json
+            .build/ci-current-song-download-directory-setup-linux/first/ux_*.json
+            .build/ci-current-song-download-directory-setup-linux/first/ux_*.png
+            .build/ci-current-song-download-directory-setup-linux/first/paint-ux_*.json
           if-no-files-found: error
           retention-days: 7
       - name: Measure Linux WebView disk after smoke
