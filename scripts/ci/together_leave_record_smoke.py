@@ -62,6 +62,7 @@ def audit(output, screenshots):
         assert row['avatars'] == ['我的头像', '听友头像'] and row['focused'] == '关闭一起听记录'
         assert row['community'] == 'CumulusMusic' and row['layout'] == [442, 404]
         assert all(abs(actual - expected) <= .5 for actual, expected in zip(row['rect'], (442, 404), strict=True))
+        assert len(row['overflow']) == 2 and all(0 <= excess <= 1 for excess in row['overflow'])
         assert abs(row['qrWidth'] - 72) <= .5 and share_qr_payload(row['qr']) == PUBLIC_ACTIVITY
         assert data[close]['operationId'] == operation and data[close]['gesture'] == gesture
         assert data[close]['modalOpen'] is False and data[close]['activeOutsideModal'] is True

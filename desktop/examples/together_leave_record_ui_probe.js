@@ -109,10 +109,13 @@
       const avatars = [...opened.querySelectorAll('.record-avatars [role="img"]')]
         .map((node) => node.getAttribute('aria-label'));
       const box = await wait(() => {
+        if (opened.matches('.modal-enter-active,.modal-enter-from,.modal-leave-active')) return;
         const rect = opened.getBoundingClientRect();
         if (opened.getAnimations().some((animation) => animation.pending || animation.playState === 'running'))
           return;
-        const color = getComputedStyle(opened).backgroundColor;
+        const style = getComputedStyle(opened);
+        if (style.opacity !== '1' || style.transform !== 'none') return;
+        const color = style.backgroundColor;
         return /^rgb\(\d+, \d+, \d+\)$/.test(color) && { rect, color };
       }, 'settled native modal layout');
       check(document.activeElement === close && opened.querySelectorAll('button').length === 1,
@@ -123,6 +126,7 @@
         receipt, labels: text('.record-stats dt'), values: text('.record-stats dd'),
         total: text('.record-total')[0], avatars, focused: close.getAttribute('aria-label'),
         rect: [box.rect.width, box.rect.height], layout: [opened.offsetWidth, opened.offsetHeight],
+        overflow: [opened.scrollHeight - opened.clientHeight, opened.scrollWidth - opened.clientWidth],
         qrWidth: svg.getBoundingClientRect().width, qr, community: text('.record-footer strong')[0],
         paintSamples: [{ x: box.rect.left + 20, y: box.rect.top + 24, color: box.color }],
       });
