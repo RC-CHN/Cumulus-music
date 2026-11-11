@@ -24,8 +24,15 @@ permissions:
   contents: read
 
 concurrency:
-  # Preserve each main SHA and isolate manual diagnostics by mode.
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', inputs.windows_native_file_output) || 'required' }}
+  # Superseded development pushes give up their runners. Each release marker
+  # keeps its own SHA group, even if development continues while it is checked.
+  # PRs stay isolated from main; manual diagnostics stay isolated by mode.
+  group: >-
+    ci-${{ github.workflow }}-${{ github.event_name }}-${{
+    github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+    !startsWith(github.event.head_commit.message, 'chore:release ') && 'main-latest' ||
+    github.event_name == 'pull_request' && github.ref || github.sha }}-${{
+    github.event_name == 'workflow_dispatch' && format('manual-{0}', inputs.windows_native_file_output) || 'required' }}
   cancel-in-progress: true
 
 env:
@@ -1933,10 +1940,10 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example login_interception_ui_probe --example scroll_ui_probe
           xvfb-run -a dbus-run-session -- /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
-          cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
           xvfb-run -a dbus-run-session -- python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_guide_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-power-guide-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-master-volume-linux --screenshots
@@ -1968,20 +1975,17 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example queue_room_ui_probe --example shared_queue_ui_probe --example user_blacklist_ui_probe \
+            --example profile_report_ui_probe --example comment_report_ui_probe --example manual_update_ui_probe \
+            --example network_diagnostics_ui_probe --example podcast_recent_ui_probe
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/queue_room_smoke.py --room-loss --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-loss-linux --screenshots
-          cargo build -p cumulus-desktop --example shared_queue_ui_probe --features custom-protocol --locked
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/together_external_selection_smoke.py --binary .build/target/debug/examples/shared_queue_ui_probe --root .build/ci-together-external-selection-linux --screenshots
-          cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
-          cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe --root .build/ci-profile-report-linux
-          cargo build -p cumulus-desktop --example comment_report_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_report_smoke.py --binary .build/target/debug/examples/comment_report_ui_probe --root .build/ci-comment-report-linux
-          cargo build -p cumulus-desktop --example manual_update_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/manual_update_smoke.py --binary .build/target/debug/examples/manual_update_ui_probe --root .build/ci-manual-update-linux
-          cargo build -p cumulus-desktop --example network_diagnostics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/network_diagnostics_smoke.py --binary .build/target/debug/examples/network_diagnostics_ui_probe --root .build/ci-network-diagnostics-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-relations-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-linux
@@ -1992,7 +1996,6 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-queue-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-next-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --podcast-follow --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-follow-linux
-          cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-recent-linux
           sh scripts/ci/loopback_only.sh --synthetic-online env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/podcast_liked_withdrawn_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-liked-withdrawn-linux
           sh scripts/ci/loopback_only.sh --synthetic-online env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/podcast_liked_waterfall_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-podcast-liked-waterfall-linux
@@ -2032,13 +2035,12 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example playback_power_ui_probe --example search_playback_read --example main_flow_ui_probe
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_smoke.py --binary .build/target/debug/examples/playback_power_ui_probe --root .build/ci-playback-power-linux --screenshots
-          cargo build -p cumulus-desktop --example search_playback_read --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment control --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-control-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
-          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
           python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
@@ -2171,6 +2173,10 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example saved_accounts_ui_probe --example account_login_ui_probe --example login_notice_ui_probe \
+            --example renewal_ui_probe --example legacy_renewal_ui_probe --example auth_ui_probe \
+            --example device_login_ui_probe --example sms_login_ui_probe
           loopback_only() {
             sudo unshare --net --fork --kill-child sh -ec '
               target_user=$1
@@ -2179,9 +2185,7 @@ jobs:
               exec runuser -u "$target_user" -- "$@"
             ' sh "$(id -un)" "$@"
           }
-          cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
-          cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-detail-linux --account-detail
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-bindings-linux --account-bindings
@@ -2193,19 +2197,13 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-qr-legacy-linux --qr-status legacy
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-qr-jsk-linux --qr-status jsk
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-login-entry-linux
-          cargo build -p cumulus-desktop --example login_notice_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/login_notice_smoke.py --binary .build/target/debug/examples/login_notice_ui_probe --root .build/ci-login-notice-linux
-          cargo build -p cumulus-desktop --example renewal_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe --root .build/ci-session-renewal-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe --root .build/ci-session-renewal-foreground-linux --foreground
-          cargo build -p cumulus-desktop --example legacy_renewal_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/legacy_session_renewal_smoke.py --binary .build/target/debug/examples/legacy_renewal_ui_probe --root .build/ci-legacy-renewal-linux --screenshots
-          cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/jsk_auth_smoke.py --binary .build/target/debug/examples/auth_ui_probe --root .build/ci-jsk-auth-linux
-          cargo build -p cumulus-desktop --example device_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe --root .build/ci-device-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe --root .build/ci-device-login-legacy-linux --legacy
-          cargo build -p cumulus-desktop --example sms_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-login-legacy-linux --legacy
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-linux --send-failure
@@ -2218,27 +2216,22 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example email_login_ui_probe --example question_login_ui_probe --example phone_entry_ui_probe \
+            --example reuse_login_ui_probe --example output_ui_probe --example tray_ui_probe \
+            --example mpris_probe --example shortcut_probe --example startup_ui_probe
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-legacy-linux --legacy
-          cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe --root .build/ci-question-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe --root .build/ci-question-login-legacy-linux --legacy
-          cargo build -p cumulus-desktop --example phone_entry_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe --root .build/ci-phone-entry-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe --root .build/ci-phone-entry-legacy-linux --legacy
-          cargo build -p cumulus-desktop --example reuse_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe --root .build/ci-reuse-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe --root .build/ci-reuse-login-legacy-linux --legacy
-          cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
-          cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --lifecycle --binary .build/target/debug/examples/tray_ui_probe --root .build/ci-tray-linux
-          cargo build -p cumulus-desktop --example mpris_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
-          cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
-          cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
       - *linux_webview_disk_after
       - *linux_webview_failure_checkpoints
