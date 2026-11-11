@@ -142,8 +142,10 @@ UI“暂时无需续期”不承诺已经轮换；lastSuccess只公开已确认�
 原生注入with_session_renewal_clock仅配置宿主时钟，测试不修改系统时间；IPC没有clock或force参数。
 公开CI的session_renewal_smoke.py使用合成HTTP、真实WebView/IPC/pump，独立检查两次新登录零轮换、
 到期轮换、重复检查抑制、未决写不重放及SQLite持久化；不依赖官方私有文件或真实账号。
-该脚本可加 --foreground（Linux Xvfb 与原生 WM），以同一个真实 WebView 检查已经有焦点的
-到期会话在 restore_account 后零轮换，真实切出仍为零，切回后才发一次合成请求并核对同 UID。
+Linux（Xvfb 与原生 WM）和 Windows CI 都用 --foreground 启动额外用例：同一到期会话在
+restore_account 后零轮换，真实切出仍为零，切回后才发一次合成请求并核对同 UID。Linux 核对
+原生 Focused 序列，Windows 独立核对每一步的真实前台 HWND，不把 WebView2 子控件焦点当成
+激活事件。Windows 运行结果尚待托管 CI。
 
 账号弹窗中的到期状态回读（2026-11-05）
 M/1368:2292–2308 每次检查从存储读最近时间，并以当前时钟对照24小时；旧UI投影只保留

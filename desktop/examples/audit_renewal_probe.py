@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sqlite3
+import sys
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('root', type=Path)
@@ -48,9 +49,17 @@ if args.foreground:
         if not args.no_screenshots:
             assert (run / (name + '.png')).is_file()
     fresh, restored, blurred, refreshed = (stages[key] for key in ('fresh', 'restore_only', 'blurred', 'refreshed'))
-    assert fresh['nativeFocusEvents'] == restored['nativeFocusEvents'] and restored['nativeFocusEvents'][-1] is True
-    assert blurred['nativeFocusEvents'] == restored['nativeFocusEvents'] + [False]
-    assert refreshed['nativeFocusEvents'] == blurred['nativeFocusEvents'] + [True]
+    if sys.platform.startswith('linux'):
+        assert fresh['nativeFocusEvents'] == restored['nativeFocusEvents'] and restored['nativeFocusEvents'][-1] is True
+        assert blurred['nativeFocusEvents'] == restored['nativeFocusEvents'] + [False]
+        assert refreshed['nativeFocusEvents'] == blurred['nativeFocusEvents'] + [True]
+        foreground_evidence = 'tauri-native-focus-events'
+    else:
+        # Windows renewal observes WM_ACTIVATE on the top-level HWND; Tao
+        # Focused events can follow WebView2 child keyboard focus. The native
+        # probe already checked the actual foreground HWND at every stage.
+        assert sys.platform == 'win32'
+        foreground_evidence = 'win32-foreground-hwnd'
     assert len({row['nativeRenewal']['epoch'] for row in stages.values()}) == 1
     assert restored['fixtureRequests'][identity] == fresh['fixtureRequests'][identity] + 1
     assert blurred['fixtureRequests'] == restored['fixtureRequests']
@@ -64,7 +73,7 @@ if args.foreground:
     screenshots = 0 if args.no_screenshots else len(expected)
     assert capture['ok'] and capture['screenshots'] == screenshots
     result = {'ok': True, 'syntheticOnly': True, 'realMusicRequests': 0, 'screenshots': screenshots,
-              'alreadyFocusedAccountRestoreReadDidNotRotate': True,
+              'foregroundEvidence': foreground_evidence, 'alreadyFocusedAccountRestoreReadDidNotRotate': True,
               'nativeBlurDidNotRotate': True, 'genuineNativeRefocusRotatedExactlyOnce': True,
               'sameEpochIdentityConfirmed': True}
     (root / 'independent-audit.json').write_text(json.dumps(result, indent=2) + '\n')

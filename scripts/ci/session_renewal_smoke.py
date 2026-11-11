@@ -15,10 +15,10 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--foreground', action='store_true',
-                        help='exercise a distinct real Linux foreground transition')
+                        help='exercise a real Linux or Windows foreground transition')
     args = parser.parse_args()
-    if args.foreground and not sys.platform.startswith('linux'):
-        parser.error('--foreground requires a Linux window manager')
+    if args.foreground and not (sys.platform.startswith('linux') or sys.platform == 'win32'):
+        parser.error('--foreground requires a Linux or Windows desktop')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
