@@ -55,6 +55,11 @@ const SONGS: &str = "/api/search/song/list/page";
 const DETAIL: &str = "/api/v3/song/detail";
 const SOURCE: &str = "/api/song/enhance/player/url/v1";
 const SEED: &[u8] = include_bytes!("../../core/tests/fixtures/tag_audio/seed.flac");
+// Playback must leave enough time for two native clock observations on a
+// busy runner. The short, byte-verified download seed remains separate.
+const PLAYBACK_FIXTURE: &[u8] =
+    include_bytes!("../../core/tests/fixtures/held_audio/search-playback-8s.flac");
+const PLAYBACK_DURATION_MS: u64 = 8_000;
 
 struct Assets;
 impl tauri::Assets<tauri::Wry> for Assets {
@@ -256,7 +261,7 @@ impl Api for Reads {
             let response = if let Some(client) = &self.live {
                 client.request(path, payload, cache).await?
             } else {
-                let song = || json!({"id":1,"name":"Fixture","dt":1500,"fee":0,"ar":[],"al":{"name":"Fixture"}});
+                let song = || json!({"id":1,"name":"Fixture","dt":PLAYBACK_DURATION_MS,"fee":0,"ar":[],"al":{"name":"Fixture"}});
                 match path {
                     ACCOUNT => json!({"code":200,"profile":{"userId":2,"nickname":"Fixture"}}),
                     ASSIGNMENT => {
@@ -470,7 +475,7 @@ async fn verify(proof: &Proof) -> std::result::Result<Facts, &'static str> {
         )
         .await;
     let observation = async {
-        attempted.map_err(|error| match ClientError::from(error).code {
+        let mut current = attempted.map_err(|error| match ClientError::from(error).code {
             "playback_source_unavailable" => "no_authorized_source",
             "audio_open_failed" => "authorized_media_open",
             "audio_output_failed" => "native_audio_output",
@@ -480,12 +485,8 @@ async fn verify(proof: &Proof) -> std::result::Result<Facts, &'static str> {
             _ => "native_selection",
         })?;
         let deadline = Instant::now() + Duration::from_secs(15);
-        let mut first = None;
+        let mut first: Option<(String, String, f64)> = None;
         loop {
-            let current = client
-                .player_snapshot(&epoch)
-                .await
-                .map_err(|_| "native_snapshot")?;
             if current.error.is_some() {
                 return Err("native_playback");
             }
@@ -496,14 +497,25 @@ async fn verify(proof: &Proof) -> std::result::Result<Facts, &'static str> {
                     .as_ref()
                     .is_some_and(|track| track.id == song.id)
                 && let Some(clock) = current.position
-                && clock - *first.get_or_insert(clock) > 0.2
+                && let (Some(play), Some(entry)) = (&current.play_id, &current.entry_id)
             {
-                return Ok(());
+                let (initial_play, initial_entry, initial_clock) =
+                    first.get_or_insert_with(|| (play.clone(), entry.clone(), clock));
+                if initial_play != play || initial_entry != entry {
+                    return Err("native_playback_replaced");
+                }
+                if clock - *initial_clock > 0.2 {
+                    return Ok(());
+                }
             }
             if Instant::now() >= deadline {
                 return Err("playback_clock_did_not_advance");
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
+            current = client
+                .player_snapshot(&epoch)
+                .await
+                .map_err(|_| "native_snapshot")?;
         }
     }
     .await;
@@ -676,7 +688,7 @@ fn main() {
             let session = Arc::new(AccountSession::new(reads.clone(), Some(registry.store())));
             let fixture = if synthetic {
                 let file = root.join("synthetic.flac");
-                fs::write(&file, SEED)?;
+                fs::write(&file, PLAYBACK_FIXTURE)?;
                 Some(file)
             } else {
                 None
