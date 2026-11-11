@@ -595,6 +595,8 @@ export function createTauriClient(): CoreClient {
     pickDownloadDirectory: (epoch) => invoke('pick_download_directory', { epoch }),
     downloadDirectoryPreview: (epoch, root) =>
       invoke('download_directory_preview', { epoch, root }),
+    downloadLayout: (epoch) => invoke('download_layout', { epoch }),
+    changeDownloadLayout: (epoch, change) => invoke('change_download_layout', { epoch, change }),
     openDownloadDirectory: (epoch, taskId) => invoke('open_download_directory', { epoch, taskId }),
     playlistTags: (epoch) => invoke('playlist_tags', { epoch }),
     playlistEditor: (epoch, id) => invoke('playlist_editor', { epoch, id }),

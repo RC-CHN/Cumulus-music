@@ -4,6 +4,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { downloadAdmissionSummary, downloadCommandLabel } from '../services/downloadFeedback.ts';
 import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport.ts';
+import { isDownloadLayoutSettings } from '../services/downloads.ts';
 import type {
   DownloadClearPlan,
   DownloadClient,
@@ -297,6 +298,50 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
   ) {
     return observeCommand(input, expectedEpoch);
   }
+  async function configureForDownload(root: string, owner: () => boolean) {
+    if (!epoch || busy.value || !owner()) return false;
+    const captured = epoch;
+    const ownsVisit = captureVisit();
+    const current = () => ownsVisit() && owner();
+    if (view.value?.epoch === captured && view.value.directory?.root === root && !readError.value)
+      return true;
+    error.value = '';
+    try {
+      const layout = await core.downloadLayout(captured);
+      if (!current() || busy.value) return false;
+      if (!isDownloadLayoutSettings(layout)) {
+        error.value = '无法确认当前下载命名与分类。';
+        return false;
+      }
+      const result = await observeCommand(
+        { kind: 'configure_for_download', root, revision: layout.revision },
+        captured,
+      );
+      if (!current()) return false;
+      if (!result) {
+        if (!error.value) error.value = '无法确认下载目录是否已设置，请核对后重试。';
+        return false;
+      }
+      if ('failure' in result) {
+        if (result.failure.code === 'stale')
+          error.value = '下载目录或命名设置已变化，请核对后重试。';
+        return false;
+      }
+      if (result.result.failed.length) {
+        error.value = result.result.failed[0]!.message;
+        return false;
+      }
+      return true;
+    } catch (cause) {
+      if (current()) {
+        const issue = failure(cause);
+        if (issue.code === 'stale') error.value = '下载设置已变化，请核对后重试。';
+        else if (['session_expired', 'profile_changed'].includes(issue.code)) sessionChanged();
+        else error.value = issue.message;
+      }
+      return false;
+    }
+  }
   async function pick() {
     const version = generation;
     if (!epoch) return;
@@ -403,6 +448,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     filter,
     command,
     changeDirectory,
+    configureForDownload,
     pick,
     open,
     dispose,

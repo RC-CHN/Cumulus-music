@@ -28,11 +28,6 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.download-naming {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
 .download-checkboxes {
   display: flex;
   flex-wrap: wrap;

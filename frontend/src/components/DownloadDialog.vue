@@ -22,6 +22,10 @@ const historyVoice = computed(
   () => props.target.kind === 'voice' && !!(props.target.history || props.target.historyRow),
 );
 const historyQualityOnly = computed(() => historyVoice.value && !!view.value?.directory?.root);
+const preferencesOnly = computed(
+  () => props.target.kind === 'settings' && props.target.preferencesOnly === true,
+);
+const needsDirectory = computed(() => !historyQualityOnly.value && !preferencesOnly.value);
 const options = ref({ ...(view.value?.options ?? defaultDownloadOptions) });
 if (props.target.kind === 'voice')
   Object.assign(options.value, { container: 'audio', lyrics: false });
@@ -127,15 +131,14 @@ async function loadQuality(refresh = false) {
     if (dialogOpen) loadingQuality.value = false;
   }
 }
-const pathType = ref(view.value?.directory?.path_type ?? 0),
-  fileType = ref(view.value?.directory?.file_type ?? 1);
 const directoryMode = ref<'future' | 'migrate'>('future');
 const rename = ref(''),
   destination = ref(''),
   localError = ref(''),
   admissionNotice = ref(''),
   admissionTab = ref<'active' | 'completed' | undefined>(),
-  choosing = ref(false);
+  choosing = ref(false),
+  checkingRoot = ref(false);
 const confirmation = ref<'delete' | 'forget' | 'move' | 'rename' | undefined>(
   props.target.kind === 'file' ? props.target.action : undefined,
 );
@@ -167,6 +170,7 @@ const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
+    checkingRoot.value ||
     staleVoice.value ||
     staleCurrentSong.value ||
     (props.target.kind === 'voice' &&
@@ -311,56 +315,50 @@ async function save() {
     if (!blocked.value) await confirmVoice(true);
     return;
   }
-  if (!root.value.trim()) {
+  if (blocked.value) return;
+  if (preferencesOnly.value) {
+    if (quality.value)
+      await perform({
+        kind: 'preferences',
+        revision: quality.value.revision,
+        options: { ...options.value },
+      });
+    return;
+  }
+  const destinationRoot = root.value.trim();
+  if (!destinationRoot) {
     localError.value = '请选择下载目录';
     return;
   }
-  if (blocked.value) return;
   const previousRoot = view.value?.directory?.root;
   if (
-    props.target.kind === 'settings' &&
+    target.kind === 'settings' &&
     directoryMode.value === 'migrate' &&
     previousRoot &&
-    previousRoot !== root.value.trim()
+    previousRoot !== destinationRoot
   ) {
     const settings = await props.model.command({
       kind: 'preferences',
       revision: quality.value!.revision,
       options: { ...options.value },
     });
-    if (!dialogOpen || !settings || settings.failed.length) return;
-    const configured = await props.model.command({
-      kind: 'configure',
-      root: previousRoot,
-      path_type: pathType.value,
-      file_type: fileType.value,
-    });
-    if (!dialogOpen || !configured || configured.failed.length) return;
-    await perform({ kind: 'migrate', root: root.value.trim() });
+    if (!dialogOpen || props.target !== target || !settings || settings.failed.length) return;
+    await perform({ kind: 'migrate', root: destinationRoot });
     return;
   }
-  const currentDirectory = view.value?.directory;
-  const onlyConfigureChanges = target.kind === 'start' || historyVoice.value;
-  if (
-    !onlyConfigureChanges ||
-    currentDirectory?.root !== root.value.trim() ||
-    currentDirectory.path_type !== pathType.value ||
-    currentDirectory.file_type !== fileType.value
-  ) {
-    const configured = await props.model.command({
-      kind: 'configure',
-      root: root.value.trim(),
-      path_type: pathType.value,
-      file_type: fileType.value,
-    });
-    if (
-      !dialogOpen ||
-      props.target !== target ||
-      staleCurrentSong.value ||
-      !configured ||
-      configured.failed.length
-    )
+  const stillOpen = () =>
+    dialogOpen &&
+    props.target === target &&
+    !staleVoice.value &&
+    !staleCurrentSong.value &&
+    (target.kind !== 'voice_song' || target.live()) &&
+    root.value.trim() === destinationRoot;
+  checkingRoot.value = true;
+  try {
+    if (!(await props.model.configureForDownload(destinationRoot, stillOpen)) || !stillOpen())
       return;
+  } finally {
+    checkingRoot.value = false;
   }
   if (props.target.kind === 'voice_song') {
     if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');
@@ -559,7 +557,7 @@ async function fileAction() {
           >
             刷新下载音质
           </button>
-          <template v-if="!historyQualityOnly">
+          <template v-if="needsDirectory">
             <label
               >下载目录
               <div class="download-path">
@@ -573,21 +571,6 @@ async function fileAction() {
                 </button>
               </div></label
             >
-            <div class="download-naming">
-              <label
-                >文件夹组织<select v-model.number="pathType" aria-label="文件夹组织">
-                  <option :value="0">全部放在下载目录</option>
-                  <option :value="1">按歌手</option>
-                  <option :value="2">按歌手 / 专辑</option>
-                </select></label
-              ><label
-                >文件命名<select v-model.number="fileType" aria-label="文件命名">
-                  <option :value="1">歌曲名</option>
-                  <option :value="0">歌手 - 歌曲名</option>
-                  <option :value="2">歌曲名 - 歌手</option>
-                </select></label
-              >
-            </div>
             <div
               v-if="
                 target.kind === 'settings' && view?.directory && root.trim() !== view.directory.root
@@ -634,7 +617,7 @@ async function fileAction() {
         </button>
         <button type="button" class="text-button" :disabled="busy || choosing" @click="close">
           取消</button
-        ><button class="primary" :disabled="blocked || (!historyQualityOnly && !root.trim())">
+        ><button class="primary" :disabled="blocked || (needsDirectory && !root.trim())">
           {{
             busy
               ? '正在处理…'

@@ -61,6 +61,7 @@ export function downloadCommandLabel(command: DownloadCommand): string {
     case 'preferences':
       return '保存下载设置';
     case 'configure':
+    case 'configure_for_download':
       return '保存下载目录';
     case 'migrate':
       return '迁移下载目录';

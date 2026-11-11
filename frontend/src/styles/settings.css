@@ -115,6 +115,22 @@
 .settings-confirm p {
   overflow-wrap: anywhere;
 }
+.settings-download-layout {
+  display: grid;
+  justify-items: start;
+  gap: 20px;
+  margin-top: 22px;
+  min-width: 0;
+}
+.settings-download-layout .settings-choices {
+  gap: 10px 20px;
+}
+.settings-download-layout label:has(input[aria-disabled='true']) {
+  cursor: default;
+}
+.settings-download-layout > .settings-note {
+  margin: 0;
+}
 .settings-download-actions {
   display: flex;
   flex-wrap: wrap;

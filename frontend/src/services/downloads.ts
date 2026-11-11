@@ -34,6 +34,32 @@ export interface DirectorySettings {
   file_type: number;
   revision: string;
 }
+export type DownloadLayoutField = 'path_type' | 'file_type';
+export type DownloadLayoutValue = 0 | 1 | 2;
+export interface DownloadLayoutSettings {
+  pathType: DownloadLayoutValue;
+  fileType: DownloadLayoutValue;
+  revision: string | null;
+}
+export interface DownloadLayoutChange {
+  field: DownloadLayoutField;
+  value: DownloadLayoutValue;
+  expectedRevision: string | null;
+}
+export function isDownloadLayoutValue(value: unknown): value is DownloadLayoutValue {
+  return value === 0 || value === 1 || value === 2;
+}
+export function isDownloadLayoutSettings(value: unknown): value is DownloadLayoutSettings {
+  if (!value || typeof value !== 'object') return false;
+  const { pathType, fileType, revision } = value as Partial<DownloadLayoutSettings>;
+  return (
+    isDownloadLayoutValue(pathType) &&
+    isDownloadLayoutValue(fileType) &&
+    (revision === null
+      ? pathType === 0 && fileType === 0
+      : typeof revision === 'string' && !!revision)
+  );
+}
 export interface DownloadDirectoryPreview {
   epoch: string;
   target: string;
@@ -154,6 +180,7 @@ export type DownloadCommand =
   | { kind: 'confirm_clear'; receipt: string }
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
+  | { kind: 'configure_for_download'; root: string; revision: string | null }
   | { kind: 'migrate'; root: string }
   | { kind: 'change_directory'; root: string; revision: string | null; receipt: string }
   | { kind: 'migration' | 'file_operation'; operation_id: string; cancel: boolean }
@@ -290,6 +317,11 @@ export interface DownloadClient {
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;
   downloadDirectoryPreview(epoch: string, root: string): Promise<DownloadDirectoryPreview>;
+  downloadLayout(epoch: string): Promise<DownloadLayoutSettings>;
+  changeDownloadLayout(
+    epoch: string,
+    change: DownloadLayoutChange,
+  ): Promise<DownloadLayoutSettings>;
   openDownloadDirectory(epoch: string, taskId: string | null): Promise<void>;
 }
 export type DownloadDialogTarget =
@@ -316,7 +348,7 @@ export type DownloadDialogTarget =
       busy: () => boolean;
       start: (options: DownloadOptions) => Promise<boolean>;
     }
-  | { kind: 'settings' }
+  | { kind: 'settings'; preferencesOnly?: boolean }
   | { kind: 'file'; task: DownloadTask; action?: import('./downloadMenu').DownloadFileAction }
   | { kind: 'cancel'; task: DownloadTask }
   | { kind: 'restart'; task: DownloadTask }

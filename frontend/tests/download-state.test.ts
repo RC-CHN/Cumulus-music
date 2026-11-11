@@ -614,3 +614,52 @@ test('history row quality uses only its scoped preparation and discards it after
   ]);
   model.dispose();
 });
+
+test('setting a download root preserves the native layout and skips configuration for the same root', async () => {
+  const calls: unknown[][] = [];
+  let directory: DownloadsView['directory'] = null;
+  const model = useDownloads({
+    downloads: async (epoch) => ({ ...state(epoch), directory }),
+    downloadLayout: async (epoch) => {
+      calls.push(['layout', epoch]);
+      return { fileType: 2, pathType: 1, revision: 'layout' };
+    },
+    downloadCommand: async (epoch, command) => {
+      calls.push(['command', epoch, command]);
+      if (command.kind === 'configure_for_download')
+        directory = { root: command.root, file_type: 2, path_type: 1, revision: 'directory' };
+      return { epoch, accepted: [], failed: [], operationId: null };
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  assert.equal(await model.configureForDownload('/new', () => true), true);
+  assert.equal(await model.configureForDownload('/new', () => true), true);
+  assert.deepEqual(calls, [
+    ['layout', '1'],
+    ['command', '1', { kind: 'configure_for_download', root: '/new', revision: 'layout' }],
+  ]);
+  assert.equal(model.view.value?.directory?.file_type, 2);
+  assert.equal(model.view.value?.directory?.path_type, 1);
+  model.dispose();
+});
+
+test('a closed download dialog cannot set the root after the layout read returns', async () => {
+  let open = true;
+  const held = deferred<{ fileType: 0; pathType: 0; revision: null }>();
+  let commands = 0;
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadLayout: () => held.promise,
+    downloadCommand: async (epoch) => {
+      commands++;
+      return { epoch, accepted: [], failed: [], operationId: null };
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  const pending = model.configureForDownload('/new', () => open);
+  open = false;
+  held.resolve({ fileType: 0, pathType: 0, revision: null });
+  assert.equal(await pending, false);
+  assert.equal(commands, 0);
+  model.dispose();
+});

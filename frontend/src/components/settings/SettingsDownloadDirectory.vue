@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
+import type { DownloadLayoutField, DownloadLayoutValue } from '../../services/downloads';
 import type { DownloadModel } from '../../composables/useDownloads';
 import {
   createDownloadDirectorySettings,
@@ -8,6 +9,7 @@ import {
   displayDownloadDirectory,
   type DownloadDirectorySettingsOwner,
 } from '../../composables/useDownloadDirectorySettings';
+import { createDownloadLayoutSettings } from '../../composables/useDownloadLayoutSettings';
 import { useControlFocus } from '../../composables/useControlFocus';
 import { useCore } from '../../services/core';
 import ModalTransition from '../ModalTransition.vue';
@@ -23,6 +25,7 @@ const core = useCore();
 const opener = ref<HTMLButtonElement>();
 const manage = ref<HTMLButtonElement>();
 const migrationStatus = ref<HTMLElement>();
+const layoutControls = ref<HTMLElement>();
 let alive = true;
 const scope = computed<DownloadDirectorySettingsOwner | undefined>((previous) => {
   const visit = props.visit();
@@ -45,7 +48,8 @@ const blocked = () =>
   !downloads.value ||
   !!readError.value ||
   props.model.busy.value ||
-  !!migration.value;
+  !!migration.value ||
+  layout.activity.value === 'saving';
 const directory = createDownloadDirectorySettings({
   owner: () => (alive ? scope.value : undefined),
   blocked,
@@ -56,10 +60,69 @@ const directory = createDownloadDirectorySettings({
   expired: () => emit('expired'),
 });
 const { activity, confirmation, feedback } = directory;
+const layout = createDownloadLayoutSettings({
+  owner: () => (alive ? scope.value : undefined),
+  blocked: () =>
+    !!activity.value || !!confirmation.value || !!migration.value || props.model.busy.value,
+  read: (epoch) => core.downloadLayout(epoch),
+  change: (epoch, change) => core.changeDownloadLayout(epoch, change),
+  directoryChanged: () => void props.model.refresh(true),
+  expired: () => emit('expired'),
+});
+const { value: layoutValue, activity: layoutActivity, feedback: layoutFeedback } = layout;
+const layoutDisabled = computed(() => !layout.canChoose());
+const layoutGroups = [
+  {
+    field: 'file_type',
+    title: '音乐命名格式',
+    options: [
+      { value: 1, label: '歌曲名' },
+      { value: 0, label: '歌手-歌曲名' },
+      { value: 2, label: '歌曲名-歌手' },
+    ],
+  },
+  {
+    field: 'path_type',
+    title: '文件智能分类',
+    options: [
+      { value: 0, label: '不分文件夹' },
+      { value: 1, label: '按歌手分文件夹' },
+      { value: 2, label: '按歌手\\专辑分文件夹' },
+    ],
+  },
+] as const;
+function changeLayout(event: Event, field: DownloadLayoutField, value: DownloadLayoutValue) {
+  void layout.choose(field, value);
+  // Native arrows toggle the DOM before change fires. Restore the projected
+  // choice if a pending action or failed read blocked this event.
+  const selected = layout.shown(field);
+  if (selected !== value) {
+    const input = event.currentTarget as HTMLInputElement;
+    input.checked = false;
+    const previous = input
+      .closest('fieldset')
+      ?.querySelector<HTMLInputElement>(`input[value="${selected}"]`);
+    if (previous) previous.checked = true;
+  }
+}
+function guardLayoutKeys(event: KeyboardEvent) {
+  if (
+    layoutDisabled.value &&
+    ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)
+  )
+    event.preventDefault();
+}
 const focus = useControlFocus(
   () => scope.value,
   () => opener.value,
 );
+const layoutFocus = useControlFocus(
+  () => scope.value,
+  () => layoutControls.value?.querySelector<HTMLInputElement>('input:checked'),
+);
+function checkLayout(event: MouseEvent) {
+  if (!layoutActivity.value) void layoutFocus.run(event, () => layout.refresh());
+}
 const repick = shallowRef<DownloadDirectorySettingsOwner>();
 const dialogOwner = shallowRef<DownloadDirectorySettingsOwner>();
 watch(
@@ -72,8 +135,28 @@ watch(
 function retire() {
   repick.value = undefined;
   directory.retire();
+  layout.retire();
 }
-watch([() => scope.value?.epoch, () => scope.value?.visit], retire, { flush: 'sync' });
+watch(
+  scope,
+  (owner) => {
+    retire();
+    if (owner) void layout.refresh(owner);
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(
+  () => downloads.value?.directory?.revision,
+  (revision, previous) => {
+    if (
+      downloads.value &&
+      (revision || previous) &&
+      revision !== layoutValue.value?.revision &&
+      !layoutFeedback.value?.recheck
+    )
+      void layout.refresh();
+  },
+);
 onBeforeUnmount(() => {
   alive = false;
   retire();
@@ -194,6 +277,49 @@ function check(event: MouseEvent) {
       <button type="button" class="secondary" @click="emit('preferences')">音质与下载选项</button>
       <button ref="manage" type="button" class="secondary" @click="emit('downloads')">
         打开下载管理
+      </button>
+    </div>
+    <div ref="layoutControls" class="settings-download-layout">
+      <fieldset
+        v-for="group in layoutGroups"
+        :key="group.field"
+        class="settings-options"
+        :data-download-layout-field="group.field"
+        :disabled="!layoutValue"
+        @keydown="guardLayoutKeys"
+      >
+        <legend>{{ group.title }}</legend>
+        <div class="settings-choices">
+          <label v-for="option in group.options" :key="option.value">
+            <input
+              type="radio"
+              :name="`download-layout-${group.field}`"
+              :value="option.value"
+              :checked="layout.shown(group.field) === option.value"
+              :aria-disabled="layoutDisabled || undefined"
+              data-download-layout-option
+              @click="layoutDisabled && $event.preventDefault()"
+              @change="changeLayout($event, group.field, option.value)"
+            />
+            {{ option.label }}
+          </label>
+        </div>
+      </fieldset>
+      <p v-if="layoutActivity === 'reading' && !layoutValue" class="settings-note" role="status">
+        正在读取下载命名与分类…
+      </p>
+      <p v-if="layoutFeedback" class="settings-note" role="status" data-download-layout-feedback>
+        {{ layoutValue && layoutFeedback.recheck ? '以上为上次读取的设置。' : ''
+        }}{{ layoutFeedback.text }}
+      </p>
+      <button
+        v-if="layoutFeedback?.recheck"
+        type="button"
+        class="secondary"
+        :disabled="!!layoutActivity"
+        @click="checkLayout"
+      >
+        重新读取下载命名与分类
       </button>
     </div>
     <ModalTransition

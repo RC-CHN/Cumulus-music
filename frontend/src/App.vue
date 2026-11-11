@@ -7325,7 +7325,7 @@ onUnmounted(() => {
                 @blacklist-profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @blacklist-updated="profileBlacklistUpdated"
                 @downloads="music.navigate({ kind: 'downloads' })"
-                @download-preferences="downloadDialog = { kind: 'settings' }"
+                @download-preferences="downloadDialog = { kind: 'settings', preferencesOnly: true }"
                 @account-detail="
                   (kind) => music.navigate({ kind: 'settings', accountDetail: kind })
                 "
