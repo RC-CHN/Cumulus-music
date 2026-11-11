@@ -3,20 +3,22 @@ from pathlib import Path
 import unittest
 
 import windows_native_selectors_pilot as pilot
+from windows_native_plan import WORKSPACE_PACKAGES
+from windows_native_shard import owner
 
 
 def fixture_plan():
     repo = Path.cwd().resolve()
     packages = []
-    for package, folder in pilot.PACKAGES.items():
+    for folder, package in WORKSPACE_PACKAGES.items():
         def target(kind, name, **kwargs):
-            return dict(kind=[kind], name=name, **kwargs)
+            return dict(kind=[kind], name=name, test=kwargs.pop('test', True), **kwargs)
 
         targets = [target('lib', package)]
         for shard in pilot.SHARDS:
             # Ensure selectors from every package remain in every test shard.
             name = next(f'suite_{shard}_{i}' for i in range(100)
-                        if pilot.owner((folder, f'deps/suite_{shard}_{i}')) == shard)
+                        if owner((folder, f'deps/suite_{shard}_{i}')) == shard)
             targets.append(target('test', name))
         if folder in ('core', 'desktop'):
             targets.append(target('test', 'watchman_collection'))
@@ -24,8 +26,10 @@ def fixture_plan():
             targets.extend([target('example', 'feature-gated', test=False,
                                    **{'required-features': ['custom-protocol']}),
                             target('bin', 'desktop-app')])
-        packages.append(dict(id=package, name=package, manifest_path=repo/folder/'Cargo.toml', targets=targets))
-    meta = dict(packages=packages, workspace_members=list(pilot.PACKAGES))
+        features = {'custom-protocol': ['tauri/custom-protocol']} if folder == 'desktop' else {}
+        packages.append(dict(id=package, name=package, manifest_path=repo/folder/'Cargo.toml',
+                             features=features, targets=targets))
+    meta = dict(packages=packages, workspace_root=str(repo), workspace_members=list(WORKSPACE_PACKAGES.values()))
     return pilot.plan_targets(meta, repo)
 
 

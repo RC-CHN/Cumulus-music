@@ -1,87 +1,27 @@
 """Opt-in measurement of Windows Cargo target selection, never a release gate."""
 
 import argparse
-from collections import defaultdict
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
 import time
 
-from windows_native_shard import SHARDS, inventory_key, owner
+from windows_native_shard import SHARDS, inventory_key
+from windows_native_plan import FEATURE, cargo_metadata, is_library, plan_targets
 from windows_webview_inputs import ci_identity, frontend_receipts
 
 
-FEATURE = 'cumulus-desktop/custom-protocol'
-PACKAGES = {'cumulus-core': 'core', 'cumulus-audio-filter': 'core/audio-filter',
-            'cumulus-desktop': 'desktop'}
 MODES = ('reference', 'selective')
-FLAGS = {'test': '--test', 'example': '--example', 'bin': '--bin'}
-LIBRARY = ('--lib',)
-NAME = re.compile(r'[A-Za-z0-9_-]+')
 SCHEMA = 1
 
 
 def need(condition, message):
     if not condition:
         raise ValueError(message)
-
-
-def cargo_metadata(repo):
-    return json.loads(subprocess.check_output([
-        'cargo', 'metadata', '--format-version=1', '--no-deps', '--locked', '--offline',
-        '--features', FEATURE,
-    ], cwd=repo))
-
-
-def plan_targets(metadata, repo):
-    """Keep metadata test:false examples: --all-targets runs their harnesses."""
-    ids, targets, selectors = {}, {}, defaultdict(list)
-    for package in metadata['packages']:
-        cwd = Path(package['manifest_path']).resolve().parent.relative_to(repo).as_posix()
-        need(PACKAGES.get(package['name']) == cwd and package['id'] not in ids,
-             'pilot package set or location changed')
-        ids[package['id']] = cwd
-        for target in package['targets']:
-            kinds, name = target['kind'], target['name']
-            if kinds == ['custom-build']:
-                continue
-            required = target.get('required-features', [])
-            need(not required or (cwd == 'desktop' and required == ['custom-protocol']),
-                 f'review unsupported required features for {cwd}/{name}: {required}')
-            need(NAME.fullmatch(name) is not None, f'unsupported Cargo target name: {name}')
-            if kinds in (['lib'], ['cdylib', 'rlib']):
-                key = (cwd, 'deps/' + name.replace('-', '_'))
-                selector = LIBRARY
-            else:
-                need(len(kinds) == 1 and kinds[0] in FLAGS, f'unsupported target kind: {kinds}')
-                key = (cwd, ('examples/' if kinds == ['example'] else 'deps/') + name)
-                selector = (FLAGS[kinds[0]], name)
-            need(key not in targets, f'ambiguous normalized Cargo target: {key}')
-            targets[key] = selector
-            selectors[selector].append(key)
-    need(set(ids) == set(metadata['workspace_members']) and set(ids.values()) == set(PACKAGES.values())
-         and len(ids) == len(PACKAGES), 'pilot requires the complete known workspace')
-
-    # The existing heavy-suite policy owns singleton targets. With --workspace,
-    # --lib and repeated selector names apply to every matching package.
-    assigned = {key: owner(key) for key in targets}
-    for key in selectors[LIBRARY]:
-        assigned[key] = owner(('core', 'deps/cumulus_core'))
-    for selector, keys in sorted(selectors.items()):
-        candidates = {assigned[key] for key in keys}
-        if len(candidates) > 1:
-            shard = min(candidates, key=lambda part: (list(assigned.values()).count(part), part))
-            for key in keys:
-                assigned[key] = shard
-    for shard in SHARDS:
-        need({key[0] for key in targets if assigned[key] == shard} == set(PACKAGES.values()),
-             f'pilot shard {shard} must still select tests from every workspace package')
-    return ids, targets, assigned
 
 
 def cargo_command(targets, assigned, mode, shard):
@@ -115,7 +55,7 @@ def artifact_facts(row, package_ids, known):
     if not cwd or not row.get('executable') or row['profile'].get('test') is not True:
         return None
     target = row['target']
-    name = target['name'].replace('-', '_') if target['kind'] in (['lib'], ['cdylib', 'rlib']) else target['name']
+    name = target['name'].replace('-', '_') if is_library(target['kind']) else target['name']
     key = (cwd, ('examples/' if target['kind'] == ['example'] else 'deps/') + name)
     need(key in known, f'unexpected compiled test harness: {key}')
     return key, {'target': list(key), 'features': sorted(row['features']), 'profile': row['profile']}
