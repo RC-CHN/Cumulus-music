@@ -227,6 +227,88 @@ async fn ordinary_and_receipt_entries_share_the_native_song_admission_in_both_or
 }
 
 #[tokio::test]
+async fn history_download_rechecks_completed_anchor_inside_the_admission_transaction() {
+    use std::cell::Cell;
+
+    let f = Fixture::new().await;
+    let mut anchor = f
+        .service
+        .create_default(&json!(42), DownloadOptions::default())
+        .unwrap();
+    anchor.song = Some(json!({"id":42,"privilege":{"id":42}}));
+    anchor.status = DownloadStatus::Complete;
+    anchor.phase = DownloadPhase::Complete;
+    let store = &f.service.store;
+    store
+        .put(
+            "25",
+            KIND,
+            &anchor.id,
+            &serde_json::to_value(&anchor).unwrap(),
+        )
+        .unwrap();
+    let revision = store
+        .read_snapshot(|tx| Ok(HistoryService::snapshot_in(tx, "25", HistoryKind::Song)?.revision))
+        .unwrap();
+    let admission = |receipt: &str| GuardedSongBatch {
+        receipt: receipt.into(),
+        admission: SongBatchAdmission::HistoryLikedAnchor {
+            anchor: "42".into(),
+            source: HistoryBatchSource {
+                revision: revision.clone(),
+                offline: BTreeMap::from([("42".into(), anchor.id.clone())]),
+            },
+        },
+        songs: vec!["41".into()].into(),
+        options: DownloadOptions::default(),
+        existing: Arc::new(BTreeMap::new()),
+    };
+    let checks = Cell::new(0);
+    let permission = || {
+        checks.set(checks.get() + 1);
+        if checks.get() == 2 {
+            // Model a ledger writer immediately after the host's final
+            // preflight, without changing the history or liked membership.
+            let mut changed = anchor.clone();
+            changed.song = Some(json!({"id":43}));
+            store.put("25", KIND, &anchor.id, &serde_json::to_value(changed)?)?;
+        }
+        OperationLock::acquire(f.root.path(), "test", "scope")
+    };
+    assert!(matches!(
+        f.service.create_guarded_song_batch(
+            admission("history-old"),
+            &permission,
+            &AtomicBool::new(false),
+        ),
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(checks.get(), 2);
+    assert_eq!(f.service.list().unwrap().len(), 1);
+    assert_eq!(store.get("25", BATCH, LAST).unwrap(), None);
+    store
+        .put(
+            "25",
+            KIND,
+            &anchor.id,
+            &serde_json::to_value(&anchor).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        f.service
+            .create_guarded_song_batch(
+                admission("history-new"),
+                &permission,
+                &AtomicBool::new(false),
+            )
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(f.wire.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn mixed_admission_keeps_old_task_and_schedules_its_new_position() {
     let f = Fixture::new().await;
     let old = f.paused("41");

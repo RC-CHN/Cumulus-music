@@ -77,7 +77,7 @@ impl MusicClient {
         let plan = host.use_plan(&token, receipt, false)?;
         let observed = &plan.observed;
         authorization(&self.session, observed)?;
-        host.current(observed)?;
+        host.current(&self.session, observed)?;
         let vivid = vivid(&self.pc_experiments, observed)?;
         if plan.quality.get().is_some()
             || plan.busy.load(Ordering::Acquire)
@@ -104,7 +104,7 @@ impl MusicClient {
         let check = || {
             self.auth.pending_guard()()?;
             authorization(&self.session, observed)?;
-            self.search.group_downloads.current(observed)
+            self.search.group_downloads.current(&self.session, observed)
         };
         check()?;
         if !plan.purchased_qualities.contains(&quality)
@@ -136,6 +136,7 @@ impl MusicClient {
             receipt: has_destination.then(|| plan.receipt.clone()),
             quality,
         };
+        self.refresh_history_download_anchor(observed).await?;
         let store = self.session.persistent_store()?;
         let membership = self.session.with_token(&observed.owner, |owner| {
             store.read_snapshot(|tx| {
@@ -170,7 +171,7 @@ impl MusicClient {
                     epoch,
                     lease,
                     plan.songs.clone(),
-                    SongBatchAdmission::LikedAnchor(observed.anchor.clone()),
+                    plan.direct_admission(),
                     false,
                 )
                 .await

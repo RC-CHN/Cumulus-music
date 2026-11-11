@@ -1,12 +1,12 @@
-//! Verified playlist destinations for search group download.
+//! Verified playlist destinations for scoped song downloads.
 pub(super) mod creation;
 use super::*;
 use crate::{
     account::resources::{AccountResources, ResourceKind},
     client::content::PLAYLIST_COLLECT_LAST_PAGE,
     playlist::{
-        GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, PlaylistMutation, PlaylistPhase,
-        PlaylistService,
+        GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, HistoryCollectDestination,
+        PlaylistMutation, PlaylistPhase, PlaylistService,
     },
 };
 use serde_json::json;
@@ -108,11 +108,12 @@ impl Attempt {
 }
 
 pub(super) fn authorize_collection(observed: &Observed) -> Result<()> {
-    if observed
-        .api
-        .song_card_collection_scope_revision()?
-        .as_deref()
-        != Some(&observed.revision)
+    if (observed.history_revision().is_none()
+        && observed
+            .api
+            .song_card_collection_scope_revision()?
+            .as_deref()
+            != Some(&observed.revision))
         || observed
             .api
             .download_collection_scope_revision()?
@@ -172,7 +173,7 @@ impl MusicClient {
             } else {
                 authorize_collection(&observed)?;
             }
-            pages.current(&observed)
+            pages.current(&session, &observed)
         };
         check()?;
         Ok(check)
@@ -205,8 +206,9 @@ impl MusicClient {
                 destination.can_create = false;
             }
         }
+        let regular_only = lease.0.observed.history_revision().is_none();
         let reply = self
-            .playlist_collect_page_scope(epoch, sort, page, true)
+            .playlist_collect_page_scope(epoch, sort, page, regular_only)
             .await?;
         // Only advertise the fixed account-owned system row if a current
         // signed observation identifies it. Missing capability or failure of
@@ -314,7 +316,22 @@ impl MusicClient {
                 if liked != Some(false) || pending.is_some_and(|record| record.phase.pending()) {
                     return Err(Error::StaleResponse);
                 }
-                if system_liked {
+                if plan.observed.history_revision().is_some() {
+                    let destination = if system_liked {
+                        HistoryCollectDestination::SystemLiked(&attempt.playlist)
+                    } else {
+                        HistoryCollectDestination::Existing(&attempt.playlist)
+                    };
+                    service
+                        .guarded_collect_history(
+                            token,
+                            destination,
+                            &plan.collection,
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await?
+                } else if system_liked {
                     service
                         .guarded_collect_download_liked_group(
                             token,
@@ -405,18 +422,17 @@ impl MusicClient {
             return Ok(SearchGroupDownloadReply::DirectoryRequired);
         }
         check()?;
-        // The picker reverses the resource array, but the actual playlist
-        // add reverses its separate copy back to the gesture order.
-        let songs = plan.songs.iter().rev().cloned().collect();
-        let anchor = plan.observed.anchor.clone();
-        self.enqueue_search_download(
-            epoch,
-            lease,
-            songs,
-            SongBatchAdmission::SearchPlaylist { proof, anchor },
-            true,
-        )
-        .await
+        // History carries the original data.from.selectedData into the picker.
+        // The favorite action reverses that separate selection, not the
+        // surviving download array as it does for Search.
+        let songs = if plan.observed.history_revision().is_some() {
+            plan.songs.clone()
+        } else {
+            plan.songs.iter().rev().cloned().collect()
+        };
+        let admission = plan.playlist_admission(proof);
+        self.enqueue_search_download(epoch, lease, songs, admission, true)
+            .await
     }
 }
 

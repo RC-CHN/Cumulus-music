@@ -8,6 +8,7 @@ import type {
 } from './player';
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
+import type { SongGroupDownloadPrepare } from './search';
 
 export type TrackPlayGesture = 'double_click';
 export interface TrackPendingToggle {
@@ -24,6 +25,12 @@ export interface TrackCurrentToggle {
   playId: string;
   queueRevision: string;
   pause: boolean;
+}
+
+export interface SongGroupDownloadRequest {
+  epoch: string;
+  prepare: SongGroupDownloadPrepare;
+  live: () => boolean;
 }
 
 // UI-only request: playback retains the originating list and its ordering.

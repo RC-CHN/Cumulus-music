@@ -18,7 +18,9 @@ mod run;
 mod scheduler;
 mod voice;
 pub(crate) use admission::CatalogAdmission;
-pub(crate) use batch::{ExistingSongAdmission, GuardedSongBatch, SongBatchAdmission};
+pub(crate) use batch::{
+    ExistingSongAdmission, GuardedSongBatch, HistoryBatchSource, SongBatchAdmission,
+};
 pub use manager::DownloadService;
 pub(super) use manager::{CONTROL as TASK_CONTROL, KIND as TASKS};
 pub(crate) use manager::{ScopedTaskAdmission, ScopedTaskLease};

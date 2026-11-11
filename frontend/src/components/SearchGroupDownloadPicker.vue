@@ -12,7 +12,12 @@ import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
 
-const props = defineProps<{ epoch: string; receipt: string; live: () => boolean }>();
+const props = defineProps<{
+  epoch: string;
+  receipt: string;
+  live: () => boolean;
+  cancelUnsubmittedOnUnmount?: boolean;
+}>();
 const emit = defineEmits<{
   close: [];
   accepted: [count: number, addFailed: boolean];
@@ -55,6 +60,7 @@ function savedSort(): SearchGroupDownloadSort {
 const sort = ref<SearchGroupDownloadSort>(savedSort());
 const scrollTop = ref(0);
 let alive = true;
+let cancelled = false;
 const live = () => alive && props.live();
 const canLoad = computed(() => !pending.value && cursor.value !== null && !busy.value);
 onMounted(() => {
@@ -63,6 +69,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   alive = false;
+  if (props.cancelUnsubmittedOnUnmount) cancelUnsubmitted();
 });
 
 async function read() {
@@ -126,12 +133,16 @@ function sortKeys(event: KeyboardEvent) {
     dialog.value?.querySelector<HTMLElement>(`[data-collect-sort="${next}"]`)?.focus(),
   );
 }
+function cancelUnsubmitted() {
+  if (cancelled || pending.value) return;
+  cancelled = true;
+  void core
+    .searchGroupDownload(props.epoch, { kind: 'cancel', receipt: props.receipt })
+    .catch(() => {});
+}
 function close() {
   if (busy.value) return;
-  if (!pending.value)
-    void core
-      .searchGroupDownload(props.epoch, { kind: 'cancel', receipt: props.receipt })
-      .catch(() => {});
+  cancelUnsubmitted();
   emit('close');
 }
 

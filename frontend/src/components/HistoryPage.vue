@@ -40,6 +40,7 @@ const props = defineProps<{
   playable: boolean;
   batchMode: boolean;
   collecting?: boolean;
+  downloadingSongs?: boolean;
   collectFeedback?: { message: string; failed?: boolean };
   batchSelection: (
     kind: HistoryQueueKind,
@@ -61,6 +62,11 @@ const emit = defineEmits<{
   leaveBatch: [];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
   collectSongs: [target: HistoryCollectTarget, opener: HTMLElement];
+  downloadSongs: [
+    target: HistorySelectionScope,
+    opener: HTMLElement,
+    selectionCurrent: () => boolean,
+  ];
   downloadVoices: [target: HistorySelectionScope];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
@@ -348,19 +354,33 @@ async function runQueueAction(action: HistoryQueueAction) {
     batchError.value = issue.message;
   }
 }
-function downloadSelectedVoices() {
+function downloadSelected(event: MouseEvent) {
   const snapshot = page.value;
   const ids = selectedBatch.value;
+  const scope = kind.value;
   if (
     !props.batchMode ||
-    kind.value !== 'voice' ||
-    snapshot?.kind !== 'voice' ||
+    (scope !== 'voice' && scope !== 'song') ||
+    snapshot?.kind !== scope ||
     loading.value ||
     busy.value ||
     !ids.length
   )
     return;
-  emit('downloadVoices', { revision: snapshot.revision, ids: [...ids] });
+  const target = { revision: snapshot.revision, ids: [...ids] };
+  if (scope === 'voice') {
+    emit('downloadVoices', target);
+    return;
+  }
+  if (props.downloadingSongs || !(event.currentTarget instanceof HTMLElement)) return;
+  const selection = selected.value;
+  const filter = keyword.value;
+  emit(
+    'downloadSongs',
+    target,
+    event.currentTarget,
+    () => props.batchMode && selected.value === selection && keyword.value === filter,
+  );
 }
 function collectSelectedSongs(event: MouseEvent) {
   const snapshot = page.value;
@@ -556,6 +576,16 @@ function keyboard(event: KeyboardEvent) {
         <Icon name="plus" />添加到播放列表
       </button>
       <button
+        v-if="batchMode && listKind"
+        type="button"
+        class="secondary history-download-selected"
+        :disabled="loading || busy || !selectedBatch.length"
+        :aria-disabled="kind === 'song' && downloadingSongs"
+        @click="downloadSelected"
+      >
+        <Icon name="download" />下载
+      </button>
+      <button
         v-if="batchMode && kind === 'song'"
         type="button"
         class="secondary history-collect-selected"
@@ -564,15 +594,6 @@ function keyboard(event: KeyboardEvent) {
         @click="collectSelectedSongs"
       >
         <Icon name="collect" />收藏
-      </button>
-      <button
-        v-if="batchMode && kind === 'voice'"
-        type="button"
-        class="secondary history-download-selected"
-        :disabled="loading || busy || !selectedBatch.length"
-        @click="downloadSelectedVoices"
-      >
-        <Icon name="download" />下载
       </button>
       <label class="history-search"
         ><Icon name="search" /><input

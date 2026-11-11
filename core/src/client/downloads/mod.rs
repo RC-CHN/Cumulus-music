@@ -23,6 +23,7 @@ use crate::{
     },
     storage::{OperationLock, StateStore},
 };
+pub(in crate::client) use collect::HistoryDownloadSources;
 pub use collect::{
     DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
     DownloadCollectPlan, DownloadLikedDestination, HistoryCollectPlan,

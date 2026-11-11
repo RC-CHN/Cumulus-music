@@ -1,14 +1,9 @@
 //! Recently played uses the same picker but freezes a separate source policy.
 use super::{
     AccountData, Context, HistoryCollectTarget, HistoryKind, HistoryService, MusicClient,
-    Selection, Source, collection_resource,
+    Selection, Source,
 };
-use crate::{
-    Error, Result,
-    catalog::CatalogApi,
-    download::service::{DownloadOrigin, DownloadStatus},
-    protocol::api::identifier,
-};
+use crate::{Error, Result, catalog::CatalogApi, protocol::api::identifier};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -25,7 +20,7 @@ pub struct HistoryCollectPlan {
     pub song_ids: Vec<String>,
 }
 
-pub(super) struct OfflineSources {
+pub(in crate::client) struct OfflineSources {
     context: Context,
     tasks: BTreeMap<String, String>,
 }
@@ -37,13 +32,10 @@ impl OfflineSources {
             Err(Error::State("download does not belong to this account")) => return Ok(false),
             Err(error) => return Err(error),
         };
-        Ok(matches!(item.origin, DownloadOrigin::Song)
-            && item.status == DownloadStatus::Complete
-            && item.song_id == song
-            && collection_resource(&item).is_some_and(|(id, _)| id == song))
+        Ok(item.matches_completed_history_song(song))
     }
 
-    pub(super) fn require(&self) -> Result<()> {
+    pub(in crate::client) fn require(&self) -> Result<()> {
         for (song, task) in &self.tasks {
             if !Self::matches(&self.context, song, task)? {
                 return Err(Error::QueueChanged);
@@ -51,9 +43,40 @@ impl OfflineSources {
         }
         Ok(())
     }
+
+    pub(in crate::client) fn task_ids(&self) -> &BTreeMap<String, String> {
+        &self.tasks
+    }
 }
 
 impl MusicClient {
+    pub(in crate::client) fn resolve_history_catalogue_downloads(
+        &self,
+        epoch: &str,
+        snapshot: &mut crate::history::HistorySnapshot,
+        candidates: Vec<(String, String)>,
+    ) -> Result<Option<OfflineSources>> {
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        let context = self.downloads.inner.context(epoch)?;
+        let mut tasks = BTreeMap::new();
+        for (song, task) in candidates {
+            if OfflineSources::matches(&context, &song, &task)? {
+                tasks.insert(song, task);
+            }
+        }
+        for row in &mut snapshot.entries {
+            if tasks.contains_key(&row.id) {
+                row.resource
+                    .as_object_mut()
+                    .expect("verified history song")
+                    .remove("download_task_id");
+            }
+        }
+        Ok((!tasks.is_empty()).then_some(OfflineSources { context, tasks }))
+    }
+
     pub async fn history_collect_prepare(
         &self,
         epoch: &str,
@@ -68,25 +91,8 @@ impl MusicClient {
         let history = HistoryService::new(self.session.clone())?;
         let mut snapshot = history.snapshot_for(&token, HistoryKind::Song)?;
         let candidates = target.download_candidates(&snapshot)?;
-        let mut offline = None;
-        if !candidates.is_empty() {
-            let context = self.downloads.inner.context(epoch)?;
-            let mut tasks = BTreeMap::new();
-            for (song, task) in candidates {
-                if OfflineSources::matches(&context, &song, &task)? {
-                    tasks.insert(song, task);
-                }
-            }
-            for row in &mut snapshot.entries {
-                if tasks.contains_key(&row.id) {
-                    row.resource
-                        .as_object_mut()
-                        .expect("verified history song")
-                        .remove("download_task_id");
-                }
-            }
-            offline = Some(Box::new(OfflineSources { context, tasks }));
-        }
+        let mut offline =
+            self.resolve_history_catalogue_downloads(epoch, &mut snapshot, candidates)?;
         let missing = target.unobserved_privilege_ids(&snapshot)?;
         if !missing.is_empty() {
             // The local playback mapper does not retain all privilege fields.
@@ -147,7 +153,9 @@ impl MusicClient {
                     selection: Selection::History {
                         target,
                         songs: value.song_ids.clone(),
-                        offline: offline.filter(|sources| !sources.tasks.is_empty()),
+                        offline: offline
+                            .filter(|sources| !sources.tasks.is_empty())
+                            .map(Box::new),
                     },
                     created: Instant::now(),
                 }),

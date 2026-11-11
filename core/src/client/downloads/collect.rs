@@ -27,6 +27,7 @@ pub use batch::DownloadBatchCollectPlan;
 use creation::CreationAttempt;
 pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
 pub use history::HistoryCollectPlan;
+pub(in crate::client) use history::OfflineSources as HistoryDownloadSources;
 pub use liked::DownloadLikedDestination;
 use serde::Serialize;
 use serde_json::Value;

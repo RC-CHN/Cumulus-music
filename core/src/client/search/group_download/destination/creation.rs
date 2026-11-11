@@ -1,4 +1,4 @@
-//! A search download picker has separate durable create and ordered add writes.
+//! A download picker has separate durable create and ordered add writes.
 use super::*;
 use crate::{playlist::PlaylistCommand, protocol::api::playlist_name};
 
@@ -178,15 +178,27 @@ impl MusicClient {
         let mut add = service.operation_for(token, &creation.add)?;
         if (first || matches!(request, Request::Add)) && add.is_none() {
             if attempt.is_some() {
-                let result = service
-                    .guarded_collect_created_download(
-                        token,
-                        &creation.operation,
-                        &plan.collection,
-                        &creation.add,
-                        &mutation,
-                    )
-                    .await;
+                let result = if plan.observed.history_revision().is_some() {
+                    service
+                        .guarded_collect_history(
+                            token,
+                            HistoryCollectDestination::Created(&creation.operation),
+                            &plan.collection,
+                            &creation.add,
+                            &mutation,
+                        )
+                        .await
+                } else {
+                    service
+                        .guarded_collect_created_download(
+                            token,
+                            &creation.operation,
+                            &plan.collection,
+                            &creation.add,
+                            &mutation,
+                        )
+                        .await
+                };
                 add = Some(match result {
                     Ok(record) => record,
                     Err(error) => service.operation_for(token, &creation.add)?.ok_or(error)?,

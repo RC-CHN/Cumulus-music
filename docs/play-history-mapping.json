@@ -285,6 +285,35 @@
         "Local placeholders, private-cloud promotion and queue referral metadata are outside this path",
         "No automatic re-dispatch after a lost acknowledgment; no real account writes during tests"
       ]
+    },
+    {
+      "feature": "Download selected recent songs with history-specific anchor and collection order",
+      "official": [
+        "HistoryPlayBatchTrack.tsx:51–64,81–94,143–177; M3102:1876–1908",
+        "M3085:3455–3488,764–783,3806–3883,3965–3982; M27:280–317; M3160:1061"
+      ],
+      "rust": [
+        "core/src/client/history/song_download.rs",
+        "core/src/client/search/group_download/history.rs",
+        "core/src/client/search/group_download/destination.rs",
+        "core/src/download/service/batch.rs"
+      ],
+      "ui": [
+        "desktop/src/search.rs search_group_download prepare_history",
+        "frontend/src/components/HistoryPage.vue batch song Download",
+        "frontend/src/components/TrackActions.vue and SearchGroupDownloadPicker.vue"
+      ],
+      "tests": [
+        "core/src/client/history/song_download.rs projection tests",
+        "core/src/download/service/batch_tests.rs atomic offline identity guard",
+        "core/tests/pc_experiment_transport/search_group_download/history.rs signed synthetic workflow",
+        "scripts/ci/history_song_download_smoke.py and desktop/examples/history_song_download_ui_probe.js"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase295-history-song-download/audit.json: 5 WebKitGTK checkpoints and PNGs, exact guarded playlist order and three byte-verified MP3 files; Windows CI pending",
+      "boundaries": [
+        "Only positively authorized ordinary and purchased catalogue downloads; no automatic paid checkout or local/cloud promotion",
+        "A catalogue anchor must be verified even when excluded from downloads; collection and download order come from separate native projections"
+      ]
     }
   ],
   "alternativeClientSources": [],

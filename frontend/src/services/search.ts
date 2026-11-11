@@ -276,8 +276,11 @@ export interface SearchGroupDownloadSelection {
 }
 export type SearchGroupDownloadSort = 'default' | 'recently';
 export type SearchPurchasedQuality = import('./voiceSongs').VoiceSongPurchasedQuality;
-export type SearchGroupDownloadCommand =
+export type SongGroupDownloadPrepare =
   | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
+  | { kind: 'prepare_history'; target: import('./history').HistorySelectionScope };
+export type SearchGroupDownloadCommand =
+  | SongGroupDownloadPrepare
   | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
   | { kind: 'confirm_quality'; receipt: string; quality: SearchPurchasedQuality }
   | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
@@ -317,6 +320,8 @@ export type SearchGroupDownloadReply =
         | 'membership_unknown'
         | 'directory_required'
         | 'anchor_unavailable'
+        | 'already_available'
+        | 'copyright_blocked'
         | 'unavailable';
       receipt: string | null;
       eligibleCount: number;

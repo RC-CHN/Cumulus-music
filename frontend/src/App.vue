@@ -785,6 +785,53 @@ function openHistoryVoiceDownload(target: HistorySelectionScope) {
       signedIn.value,
   };
 }
+function openHistorySongDownload(
+  target: HistorySelectionScope,
+  opener: HTMLElement,
+  selectionCurrent: () => boolean,
+) {
+  const route = music.page.value;
+  const snapshot = recent.page.value;
+  const epoch = music.account.value.epoch;
+  if (
+    route.kind !== 'history' ||
+    route.scope !== 'song' ||
+    route.batch !== true ||
+    snapshot?.kind !== 'song' ||
+    snapshot.revision !== target.revision ||
+    recent.loading.value ||
+    recent.busy.value ||
+    !target.ids.length ||
+    !opener.isConnected ||
+    !selectionCurrent()
+  )
+    return;
+  const wanted = new Set(target.ids);
+  if (wanted.size !== target.ids.length) return;
+  const ids = snapshot.entries.filter((entry) => wanted.has(entry.id)).map((entry) => entry.id);
+  if (ids.length !== target.ids.length || ids.some((id, i) => id !== target.ids[i])) return;
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  if (loginOpen.value || accountsOpen.value || document.querySelector('dialog[open]')) return;
+  trackActions.value?.showHistoryDownload(
+    {
+      epoch,
+      prepare: { kind: 'prepare_history', target: { revision: snapshot.revision, ids } },
+      live: () =>
+        music.page.value === route &&
+        recent.page.value === snapshot &&
+        music.account.value.epoch === epoch &&
+        signedIn.value &&
+        !recent.loading.value &&
+        !recent.busy.value &&
+        opener.isConnected &&
+        selectionCurrent(),
+    },
+    opener,
+  );
+}
 function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
   const route = music.page.value;
   if (
@@ -6472,6 +6519,7 @@ onUnmounted(() => {
                 :account="account"
                 :batch-mode="page.batch === true"
                 :collecting="!!historyCollectPreparing"
+                :downloading-songs="trackActions?.songGroupDownloadActive"
                 :collect-feedback="historyCollectFeedback"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
@@ -6481,6 +6529,7 @@ onUnmounted(() => {
                 @leave-batch="music.back()"
                 @play="playHistory"
                 @collect-songs="openHistoryCollection"
+                @download-songs="openHistorySongDownload"
                 @download-voices="openHistoryVoiceDownload"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"

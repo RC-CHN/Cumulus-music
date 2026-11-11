@@ -25,6 +25,7 @@ pub struct Library {
     pub writes: AtomicUsize,
     pub downloads: Option<Arc<super::history_download_fixture::Fixture>>,
     pub song_collect: Option<super::history_song_collect_fixture::Fixture>,
+    pub song_download: Option<Arc<super::history_song_download_fixture::Fixture>>,
 }
 impl Library {
     pub fn with_chapters() -> Self {
@@ -313,11 +314,19 @@ fn resource(kind: &str, id: u64) -> Value {
     }
 }
 impl Api for Library {
+    fn song_card_download_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self
+            .song_download
+            .as_ref()
+            .map(|_| super::history_song_download_fixture::REVISION.to_owned()))
+    }
+
     fn download_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self
             .song_collect
             .as_ref()
-            .map(|_| super::history_song_collect_fixture::REVISION.to_owned()))
+            .map(|_| super::history_song_collect_fixture::REVISION.to_owned())
+            .or(self.song_card_download_scope_revision()?))
     }
 
     fn request_guarded_playlist_add<'a>(
@@ -327,14 +336,20 @@ impl Api for Library {
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            let fixture = self
-                .song_collect
-                .as_ref()
-                .ok_or(Error::State("guarded playlist add is unavailable"))?;
             let (path, args) = write.into_request()?;
+            if self.song_collect.is_none() && self.song_download.is_none() {
+                return Err(Error::State("guarded playlist add is unavailable"));
+            }
             permission()?;
             dispatched.store(true, Ordering::Release);
-            fixture.add(path, args)
+            if let Some(fixture) = &self.song_collect {
+                fixture.add(path, args)
+            } else {
+                self.song_download
+                    .as_ref()
+                    .expect("guarded fixture")
+                    .add(path, args)
+            }
         })
     }
 
@@ -344,6 +359,11 @@ impl Api for Library {
                 .song_collect
                 .as_ref()
                 .and_then(|fixture| fixture.response(path, &args, cache))
+                .or_else(|| {
+                    self.song_download
+                        .as_ref()
+                        .and_then(|fixture| fixture.response(path, &args, cache))
+                })
             {
                 if path == "/api/play-record/song/list" {
                     self.reads.fetch_add(1, Ordering::SeqCst);

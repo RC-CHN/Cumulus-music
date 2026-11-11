@@ -1,7 +1,7 @@
 use super::files::{Artifact, Identity};
 use crate::{
     Error, Result, download::transfer::TransferIntegrity, media::integrity::FileIntegrity,
-    membership::Quality,
+    membership::Quality, protocol::api::identifier,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -163,6 +163,29 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
+    pub(crate) fn matches_completed_history_song(&self, song: &str) -> bool {
+        if !matches!(self.origin, DownloadOrigin::Song)
+            || self.status != DownloadStatus::Complete
+            || self.song_id != song
+        {
+            return false;
+        }
+        let Some(metadata) = &self.song else {
+            return false;
+        };
+        if identifier(&metadata["id"]).ok().as_deref() != Some(song)
+            || ["voice_id", "voice", "_cloud_public_id", "_cloud_catalog_id"]
+                .iter()
+                .any(|key| !metadata[*key].is_null())
+        {
+            return false;
+        }
+        let privilege = &metadata["privilege"];
+        (privilege.is_null() || privilege.is_object())
+            && (privilege["id"].is_null()
+                || identifier(&privilege["id"]).ok().as_deref() == Some(song))
+    }
+
     pub(crate) fn needs_transfer_restart(&self) -> bool {
         matches!(self.status, DownloadStatus::Error | DownloadStatus::Paused)
             && self.phase == DownloadPhase::Transfer

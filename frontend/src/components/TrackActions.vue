@@ -11,6 +11,7 @@ import {
   songLink,
   type QueueMenuAction,
   type QueueMenuRequest,
+  type SongGroupDownloadRequest,
   type TrackMenuRequest,
 } from '../services/trackMenu';
 import { useCore } from '../services/core';
@@ -38,7 +39,7 @@ const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
 const queueRequest = shallowRef<QueueMenuRequest>();
 type SearchDownloadFeedback = {
-  group: NonNullable<TrackMenuRequest['searchGroup']>;
+  group: SongGroupDownloadRequest;
   receipt?: string;
   omitted?: number;
   action: 'settings' | 'check';
@@ -46,7 +47,7 @@ type SearchDownloadFeedback = {
 const downloadFeedback = shallowRef<SearchDownloadFeedback>();
 const groupDownloadBusy = ref(false);
 type SearchDownloadTarget = {
-  group: NonNullable<TrackMenuRequest['searchGroup']>;
+  group: SongGroupDownloadRequest;
   receipt: string;
   omitted: number;
 };
@@ -57,6 +58,15 @@ const purchaseChooser = shallowRef<
     existingQuality?: SearchPurchasedQuality;
   }
 >();
+const historyDownload = shallowRef<SongGroupDownloadRequest>();
+const historyFocusGuard = shallowRef<() => boolean>();
+const songGroupDownloadActive = computed(
+  () =>
+    groupDownloadBusy.value ||
+    !!purchaseChooser.value ||
+    !!downloadPicker.value ||
+    downloadFeedback.value?.action === 'check',
+);
 const purchaseQualityMismatch = ref(false);
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 const searchSingleQueue = shallowRef<{ epoch: string; playId: string | null; revision: string }>();
@@ -269,10 +279,12 @@ function clear() {
   downloadFeedback.value = undefined;
   downloadPicker.value = undefined;
   closeSearchPurchase(!groupDownloadBusy.value);
+  historyDownload.value = undefined;
 }
 function dismiss() {
   clear();
-  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  if (returnFocus?.isConnected && canRestoreDownloadFocus())
+    returnFocus.focus({ preventScroll: true });
 }
 function close() {
   menu.value?.close();
@@ -289,6 +301,13 @@ watch(
   },
 );
 watch(
+  () => historyDownload.value?.live(),
+  (live) => {
+    if (live === false) close();
+  },
+  { flush: 'sync' },
+);
+watch(
   () =>
     request.value?.episode?.live() ??
     request.value?.searchGroup?.live() ??
@@ -300,6 +319,7 @@ watch(
 onBeforeUnmount(close);
 async function show(input: TrackMenuRequest, source?: PlaylistView) {
   clear();
+  historyFocusGuard.value = undefined;
   queueRequest.value = undefined;
   request.value = input;
   const view = props.player.view.value;
@@ -343,6 +363,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
 }
 async function showQueue(input: QueueMenuRequest) {
   clear();
+  historyFocusGuard.value = undefined;
   menu.value?.close();
   request.value = undefined;
   playlist.value = undefined;
@@ -402,18 +423,40 @@ function closeVoiceShare(restore: boolean) {
 function voiceShareReturn() {
   return returnFocus ?? null;
 }
-async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['searchGroup']>) {
-  if (!group.live() || !group.download || groupDownloadBusy.value) return;
+function canRestoreDownloadFocus() {
+  return historyFocusGuard.value?.() ?? true;
+}
+function showHistoryDownload(input: SongGroupDownloadRequest, opener: HTMLElement) {
+  if (
+    input.prepare.kind !== 'prepare_history' ||
+    !input.live() ||
+    !opener.isConnected ||
+    songGroupDownloadActive.value
+  )
+    return;
+  close();
+  returnFocus = opener;
+  historyFocusGuard.value = input.live;
+  historyDownload.value = input;
+  void startSongGroupDownload({
+    ...input,
+    live: () => historyDownload.value === input && input.live(),
+  });
+}
+function groupMembershipUnknown(group: SongGroupDownloadRequest) {
+  return group.prepare.kind === 'prepare_history'
+    ? '暂未核实所选歌曲的喜欢状态，未添加下载任务。'
+    : '暂未核实右击歌曲的喜欢状态，未添加下载任务。';
+}
+async function startSongGroupDownload(group: SongGroupDownloadRequest) {
+  if (!group.live() || groupDownloadBusy.value) return;
   const attempt = sequence;
   const live = () => attempt === sequence && group.live();
   groupDownloadBusy.value = true;
   let receipt: string | undefined;
   let omitted = 0;
   try {
-    const plan = await client.searchGroupDownload(group.epoch, {
-      kind: 'prepare',
-      ...group.download,
-    });
+    const plan = await client.searchGroupDownload(group.epoch, group.prepare);
     if (plan.kind !== 'prepared' || plan.epoch !== group.epoch) return;
     if (!live()) {
       if (plan.receipt)
@@ -453,10 +496,20 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
         feedback('暂不能核对这组歌曲可用的下载歌单，未添加下载任务。');
         return;
       case 'membership_unknown':
-        feedback('暂未核实右击歌曲的喜欢状态，未添加下载任务。');
+        feedback(groupMembershipUnknown(group));
         return;
       case 'anchor_unavailable':
-        feedback('右击的歌曲已有本地音频，未添加下载任务。');
+        feedback(
+          group.prepare.kind === 'prepare_history'
+            ? '所选歌曲没有可添加的新下载任务。'
+            : '右击的歌曲已有本地音频，未添加下载任务。',
+        );
+        return;
+      case 'already_available':
+        feedback('所选歌曲已有下载记录或匹配的本地文件。');
+        return;
+      case 'copyright_blocked':
+        feedback('所选歌曲因版权原因暂时无法下载。');
         return;
       case 'unavailable':
         feedback('所选歌曲没有可添加的新下载任务。');
@@ -541,7 +594,7 @@ async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
         closeSearchPurchase(true);
         feedback(
           reply.decision === 'membership_unknown'
-            ? '暂未核实右击歌曲的喜欢状态，未添加下载任务。'
+            ? groupMembershipUnknown(group)
             : '暂不能核对这组歌曲可用的下载歌单，未添加下载任务。',
         );
       }
@@ -556,18 +609,26 @@ async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
     groupDownloadBusy.value = false;
   }
 }
-function askSearchDownloadDirectory(group: NonNullable<TrackMenuRequest['searchGroup']>) {
+function askSearchDownloadDirectory(group: SongGroupDownloadRequest) {
   clearTimeout(timer);
   message.value = '请先设置下载目录，再重新选择下载。';
   downloadFeedback.value = { group, action: 'settings' };
 }
 function closeSearchDownloadPicker() {
+  const history = downloadPicker.value?.group.prepare.kind === 'prepare_history';
   downloadPicker.value = undefined;
   const target = returnFocus;
   if (target)
     void nextTick(() => {
       const focused = document.activeElement;
-      if (target.isConnected && (!focused || focused === document.body || !focused.isConnected))
+      if (
+        target.isConnected &&
+        returnFocus === target &&
+        canRestoreDownloadFocus() &&
+        (history
+          ? !document.querySelector('dialog[open]')
+          : !focused || focused === document.body || !focused.isConnected)
+      )
         target.focus({ preventScroll: true });
     });
 }
@@ -661,7 +722,12 @@ async function select(key: string) {
     return;
   const group = input.searchGroup;
   if (group && key === 'download') {
-    await startSearchGroupDownload(group);
+    if (group.download)
+      await startSongGroupDownload({
+        epoch: group.epoch,
+        live: group.live,
+        prepare: { kind: 'prepare', ...group.download },
+      });
     return;
   }
   if (group && (key === 'play' || key === 'next')) {
@@ -773,7 +839,7 @@ async function select(key: string) {
     }
   }
 }
-defineExpose({ show, showQueue, close });
+defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadActive });
 </script>
 <template>
   <ActionMenu
@@ -802,7 +868,10 @@ defineExpose({ show, showQueue, close });
       @close="closeVoiceShare(sharedVoice.live())"
     />
   </ModalTransition>
-  <ModalTransition :return-focus="voiceShareReturn" :restore-focus="!downloadPicker">
+  <ModalTransition
+    :return-focus="voiceShareReturn"
+    :restore-focus="!downloadPicker && canRestoreDownloadFocus()"
+  >
     <VoiceSongPurchasedQuality
       v-if="purchaseChooser"
       :key="purchaseChooser.receipt"
@@ -818,9 +887,11 @@ defineExpose({ show, showQueue, close });
   </ModalTransition>
   <SearchGroupDownloadPicker
     v-if="downloadPicker"
+    :key="downloadPicker.receipt"
     :epoch="downloadPicker.group.epoch"
     :receipt="downloadPicker.receipt"
     :live="downloadPicker.group.live"
+    :cancel-unsubmitted-on-unmount="downloadPicker.group.prepare.kind === 'prepare_history'"
     @close="closeSearchDownloadPicker"
     @accepted="searchDownloadPicked"
     @directory="searchDownloadPickerDirectory"

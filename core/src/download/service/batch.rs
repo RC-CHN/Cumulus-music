@@ -15,6 +15,7 @@ use crate::{
         directory::{DirectorySettings, gate as directory_gate},
         transfer::{TRANSFERS, TransferJob, TransferStatus},
     },
+    history::{HistoryKind, HistoryService},
     playlist::GroupDownloadPlaylistProof,
     protocol::api::identifier,
     storage::{OperationLock, PlaybackDownloadKind, StateTransaction},
@@ -45,6 +46,55 @@ pub(crate) enum SongBatchAdmission {
         proof: GroupDownloadPlaylistProof,
         anchor: String,
     },
+    HistoryLikedAnchor {
+        anchor: String,
+        source: HistoryBatchSource,
+    },
+    HistoryPlaylist {
+        proof: GroupDownloadPlaylistProof,
+        source: HistoryBatchSource,
+    },
+}
+
+pub(crate) struct HistoryBatchSource {
+    pub revision: String,
+    pub offline: BTreeMap<String, String>,
+}
+
+impl HistoryBatchSource {
+    fn verify_in(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+        if HistoryService::snapshot_in(tx, owner, HistoryKind::Song)?.revision != self.revision {
+            return Err(Error::QueueChanged);
+        }
+        for (song, task_id) in &self.offline {
+            let task: DownloadTask =
+                serde_json::from_value(tx.get(owner, KIND, task_id)?.ok_or(Error::QueueChanged)?)?;
+            if task.id != *task_id || !task.matches_completed_history_song(song) {
+                return Err(Error::QueueChanged);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SongBatchAdmission {
+    pub(crate) fn playlist_proof(&self) -> Option<&GroupDownloadPlaylistProof> {
+        match self {
+            Self::Playlist(proof)
+            | Self::SearchPlaylist { proof, .. }
+            | Self::HistoryPlaylist { proof, .. } => Some(proof),
+            _ => None,
+        }
+    }
+
+    fn history_source(&self) -> Option<&HistoryBatchSource> {
+        match self {
+            Self::HistoryLikedAnchor { source, .. } | Self::HistoryPlaylist { source, .. } => {
+                Some(source)
+            }
+            _ => None,
+        }
+    }
 }
 
 pub(crate) struct GuardedSongBatch {
@@ -265,8 +315,13 @@ impl DownloadService {
             },
             root,
         };
+        let max_rows = if admission.history_source().is_some() {
+            crate::protocol::api::GuardedPlaylistAdd::MAX_HISTORY_SONGS
+        } else {
+            100
+        };
         if ids.is_empty()
-            || ids.len() > 100
+            || ids.len() > max_rows
             || ids.iter().collect::<HashSet<_>>().len() != ids.len()
         {
             return Err(Error::InvalidInput(
@@ -312,8 +367,12 @@ impl DownloadService {
                 return Err(Error::StaleResponse);
             }
             self.store.transaction(|tx| {
+                if let Some(source) = admission.history_source() {
+                    source.verify_in(tx, owner)?;
+                }
                 match &admission {
-                    SongBatchAdmission::LikedAnchor(anchor) => {
+                    SongBatchAdmission::LikedAnchor(anchor)
+                    | SongBatchAdmission::HistoryLikedAnchor { anchor, .. } => {
                         let (liked, operation) = AccountResources::membership_in(
                             tx,
                             owner,
@@ -329,14 +388,17 @@ impl DownloadService {
                         }
                     }
                     SongBatchAdmission::Playlist(proof) => proof.verify_in(tx, owner)?,
-                    SongBatchAdmission::SearchPlaylist { proof, .. } => {
+                    SongBatchAdmission::SearchPlaylist { proof, .. }
+                    | SongBatchAdmission::HistoryPlaylist { proof, .. } => {
                         proof.verify_in(tx, owner)?
                     }
                 }
                 let anchor = match &admission {
                     SongBatchAdmission::LikedAnchor(anchor)
                     | SongBatchAdmission::SearchPlaylist { anchor, .. } => Some(anchor),
-                    SongBatchAdmission::Playlist(_) => None,
+                    SongBatchAdmission::Playlist(_)
+                    | SongBatchAdmission::HistoryLikedAnchor { .. }
+                    | SongBatchAdmission::HistoryPlaylist { .. } => None,
                 };
                 if let Some(anchor) = anchor
                     && tx
