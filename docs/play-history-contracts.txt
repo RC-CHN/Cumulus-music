@@ -525,3 +525,9 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
 - 可执行：core/tests/client_history.rs 的 history_add / history_batch_play 定向测试；
   scripts/ci/catalog_smoke.py --history 在歌曲、声音的 WebView 阶段先建立含前缀、
   当前项和后缀的队列，再点击两个实际按钮，核对插入顺序、起播和暂停状态。
+- Linux 验收：产品源码 `f8275b84` 的 18 项 client_history 回归及 31 个
+  WebKitGTK/libmpv null 实窗状态通过，留存 31 张截图。歌曲、声音均由
+  `[5,6,7]` 播放选中得到 `[5,6,2,3,7]` 并起播 2，随后添加得到
+  `[5,6,2,4,3,7]`，继续保留该暂停实例和位置。独立 Rust 用例核对同曲
+  续播、随机、标灰节目和过期票据。证据 `.build/ui-proof/phase280-history-batch/`；
+  所有音源及历史写测试均合成，Windows、真实账号和实体输出尚未在此增量验证。

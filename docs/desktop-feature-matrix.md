@@ -10,6 +10,14 @@
 
 RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音质](desktop-podcast-contracts.txt) 和 [历史批量添加到播放列表](play-history-contracts.txt)：取消不创建下载，明确选择后才授权并发布；历史批量追加保留已加载条目与暂停进度。证据是 `.build/ui-proof/phase257-podcast-history/` 的 37 张截图和对应原生报告。音效另有 [现代限幅器离线图对照](core-effects-modern-limiter-renderer.txt)；不代表生产播放器启用了该预设。
 
+2026-11-11 的后续候选分别补齐 [历史批量播放](play-history-contracts.txt) 和
+[搜索空结果](search-results-ui-contracts.txt)。历史的两种资源都实测保留队列、实际起播和
+仅添加时保留暂停（31 个 Linux 实窗检查点）；搜索核对正常完成和仍可继续分页的不同空态
+（10 张 Linux 实窗截图）。证据在 `.build/ui-proof/phase280-history-batch/` 与
+`.build/ui-proof/phase280-search-empty/`。另外，[下载冷启动](desktop-download-contracts.txt)
+有 79 项 Rust 回归，验证本地复位到暂停后才由显式继续触发音源和范围请求。
+这些是不同的合成候选，不能替代 Windows 或正式发行验收。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。
