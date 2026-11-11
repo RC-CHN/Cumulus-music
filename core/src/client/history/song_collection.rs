@@ -1,5 +1,5 @@
-//! Project the history snapshot into the two ordinary PC favorite orders.
-use super::HistorySelectionScope;
+//! Project the history snapshot into the ordinary PC favorite orders.
+use super::{HistorySelectionScope, row_menu};
 use crate::{
     Error, Result,
     history::{HistoryKind, HistoryRecord, HistorySnapshot},
@@ -14,13 +14,23 @@ use std::collections::BTreeSet;
 
 const MAX_HISTORY_COLLECTION: usize = 600;
 
-/// The header has no renderer-supplied rows. Batch selection supplies only
-/// the ordered row identities from the same native history snapshot.
+/// Only row identities from the same native history snapshot are accepted.
+/// The context menu keeps its clicked row separate from the table selection.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HistoryCollectTarget {
-    All { revision: String },
-    Selected { revision: String, ids: Vec<String> },
+    All {
+        revision: String,
+    },
+    Selected {
+        revision: String,
+        ids: Vec<String>,
+    },
+    Row {
+        revision: String,
+        clicked_id: String,
+        selected_ids: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,7 +89,7 @@ fn privilege(track: &Value) -> Privilege {
     }
 }
 
-fn catalog_identity(row: &HistoryRecord) -> Option<&str> {
+fn catalog_identity(row: &HistoryRecord, row_menu: bool) -> Option<&str> {
     let track = &row.resource;
     // History local origin is device provenance. Only the typed local
     // marker identifies a path-based row. A download task ID alone is
@@ -107,23 +117,38 @@ fn catalog_identity(row: &HistoryRecord) -> Option<&str> {
         || ["cloudSong", "cs"]
             .into_iter()
             .any(|key| js_truthy(&track["privilege"][key]))
+        // M213:73 treats an explicit fileId as local, and M556:165
+        // excludes the private uploaded song type. These checks are for
+        // the row menu; established header and batch policy stays intact.
+        || row_menu
+            && (track["fileId"].as_str().is_some_and(|id| !id.is_empty())
+                || track["fileId"].as_u64().is_some_and(|id| id != 0)
+                || ["songType", "t"].into_iter().any(|key| {
+                    track[key].as_i64() == Some(1) || track[key].as_str() == Some("1")
+                }))
     {
         return None;
     }
     (identifier(&track["id"]).ok()?.as_str() == row.id.as_str()).then_some(row.id.as_str())
 }
 
-fn catalog_id(row: &HistoryRecord) -> Option<&str> {
+fn catalog_id(row: &HistoryRecord, row_menu: bool) -> Option<&str> {
     if !row.resource["download_task_id"].is_null() {
         return None;
     }
-    catalog_identity(row)
+    catalog_identity(row, row_menu)
 }
 
 impl HistoryCollectTarget {
+    fn is_row_menu(&self) -> bool {
+        matches!(self, Self::Row { .. })
+    }
+
     pub(in crate::client) fn revision(&self) -> &str {
         match self {
-            Self::All { revision } | Self::Selected { revision, .. } => revision,
+            Self::All { revision }
+            | Self::Selected { revision, .. }
+            | Self::Row { revision, .. } => revision,
         }
     }
 
@@ -146,6 +171,24 @@ impl HistoryCollectTarget {
                 ids: ids.clone(),
             }
             .ordered_rows(snapshot, MAX_HISTORY_COLLECTION)?,
+            Self::Row {
+                clicked_id,
+                selected_ids,
+                ..
+            } => {
+                if selected_ids.len() > MAX_HISTORY_COLLECTION {
+                    return Err(Error::InvalidInput("invalid history collection size"));
+                }
+                let row = row_menu::resolve(snapshot, clicked_id, selected_ids)?;
+                if row.selected.is_empty() {
+                    vec![row.clicked]
+                } else {
+                    // M3085 uses the table's Set insertion order. The
+                    // clicked row can be outside a retained modifier group;
+                    // it is checked but must not enter that group's write.
+                    row.selected
+                }
+            }
         };
         if rows
             .iter()
@@ -168,7 +211,7 @@ impl HistoryCollectTarget {
             .into_iter()
             .filter_map(|row| {
                 (row.resource["privilege"].is_null())
-                    .then(|| catalog_id(row))
+                    .then(|| catalog_id(row, self.is_row_menu()))
                     .flatten()
                     .map(str::to_owned)
             })
@@ -183,7 +226,7 @@ impl HistoryCollectTarget {
             .rows(snapshot)?
             .into_iter()
             .filter_map(|row| {
-                let song = catalog_identity(row)?;
+                let song = catalog_identity(row, self.is_row_menu())?;
                 let task = row.resource["download_task_id"].as_str()?;
                 (task.len() == 32 && task.bytes().all(|digit| digit.is_ascii_hexdigit()))
                     .then(|| (song.to_owned(), task.to_owned()))
@@ -199,7 +242,12 @@ impl HistoryCollectTarget {
         let count = rows.len();
         let rows: Vec<_> = rows
             .into_iter()
-            .map(|row| (catalog_id(row), privilege(&row.resource)))
+            .map(|row| {
+                (
+                    catalog_id(row, self.is_row_menu()),
+                    privilege(&row.resource),
+                )
+            })
             .collect();
         let eligible = |(id, access): &(Option<&str>, Privilege)| {
             id.filter(|_| access.allowed()).map(str::to_owned)
@@ -209,7 +257,12 @@ impl HistoryCollectTarget {
             // :1645–1653). The popup's native add uses the reversed array and
             // only the falsey-or-positive test; it has no selectedData fallback.
             Self::All { .. } => rows.iter().rev().filter_map(eligible).collect(),
-            Self::Selected { .. } => {
+            // M3085:767–775 has no selectedData to filter for a single row.
+            // Only the second subPriv test is applied to the clicked row.
+            Self::Row { selected_ids, .. } if selected_ids.is_empty() => {
+                rows.iter().filter_map(eligible).collect()
+            }
+            Self::Selected { .. } | Self::Row { .. } => {
                 // M/3085:768–792 first checks undefined or positive. Unsupported
                 // rows still occupy their original position. A known preferred
                 // row or unknown privilege must not manufacture a fallback.
@@ -266,6 +319,14 @@ mod tests {
         }
     }
 
+    fn row(clicked: &str, ids: &[&str]) -> HistoryCollectTarget {
+        HistoryCollectTarget::Row {
+            revision: "visible".into(),
+            clicked_id: clicked.into(),
+            selected_ids: ids.iter().map(|id| (*id).into()).collect(),
+        }
+    }
+
     #[test]
     fn header_reverses_full_order_and_selected_keeps_only_first_filter_in_order() {
         let rows = snapshot(vec![
@@ -303,6 +364,69 @@ mod tests {
             selected(&["2", "3"]).project(&rows).unwrap(),
             (2, Vec::<String>::new())
         );
+    }
+
+    #[test]
+    fn history_row_collect_singleton_only_applies_the_second_privilege_test() {
+        let rows = snapshot(vec![
+            song("1", json!({"privilege":{"st":-100,"subp":0}})),
+            song("2", json!({"privilege":{"subPriv":-1}})),
+            song("3", json!({"privilege":{"subp":null}})),
+            song("4", json!({"privilege":{"subp":"0"}})),
+            song("5", json!({"privilege":null})),
+            song("6", json!({"songType":1,"privilege":{"subp":2}})),
+            song("7", json!({"local_id":"file","privilege":{"subp":2}})),
+        ]);
+        for id in ["1", "3"] {
+            assert_eq!(
+                row(id, &[]).project(&rows).unwrap(),
+                (1, vec![id.to_owned()])
+            );
+        }
+        for id in ["2", "4", "5", "6", "local:file"] {
+            assert_eq!(
+                row(id, &[]).project(&rows).unwrap(),
+                (1, Vec::<String>::new())
+            );
+        }
+    }
+
+    #[test]
+    fn history_row_collect_keeps_gesture_order_and_does_not_promote_clicked() {
+        let rows = snapshot(vec![
+            song("1", json!({"privilege":{"subp":2}})),
+            song("2", json!({"privilege":{"subp":0}})),
+            song("3", json!({"privilege":{"subp":-1}})),
+            song("4", json!({"privilege":{}})),
+            song("5", json!({"privilege":{"subp":null}})),
+            song("6", json!({"fileId":"local-match","privilege":{"subp":2}})),
+        ]);
+        assert_eq!(
+            row("2", &["4", "2", "1"]).project(&rows).unwrap(),
+            (3, ["4", "1"].map(str::to_owned).to_vec())
+        );
+        assert_eq!(
+            row("1", &["5", "2", "3"]).project(&rows).unwrap(),
+            (3, vec!["5".to_owned()])
+        );
+        assert_eq!(
+            row("1", &["3", "2"]).project(&rows).unwrap(),
+            (2, Vec::<String>::new())
+        );
+        assert_eq!(
+            row("1", &["5", "6"]).project(&rows).unwrap(),
+            (2, Vec::<String>::new())
+        );
+        assert!(matches!(
+            row("99", &["5", "2"]).project(&rows),
+            Err(Error::QueueChanged)
+        ));
+        for ids in [&["2"][..], &["2", "2"]] {
+            assert!(matches!(
+                row("1", ids).project(&rows),
+                Err(Error::InvalidInput(_))
+            ));
+        }
     }
 
     #[test]

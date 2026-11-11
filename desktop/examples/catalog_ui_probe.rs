@@ -168,12 +168,15 @@ fn main() {
         std::env::var("CUMULUS_HISTORY_VOICE_ROW_DOWNLOAD_PROOF").as_deref() == Ok("1");
     let history_song_collect =
         std::env::var("CUMULUS_HISTORY_SONG_COLLECT_PROOF").as_deref() == Ok("1");
+    let history_song_row_collect =
+        std::env::var("CUMULUS_HISTORY_SONG_ROW_COLLECT_PROOF").as_deref() == Ok("1");
     let history_song_download =
         std::env::var("CUMULUS_HISTORY_SONG_DOWNLOAD_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     assert!(!history_collection || history_chapters);
     assert!(!history_radio_menu || history_collection);
     assert!(!history_voice_row_download || history_download);
+    assert!(!history_song_row_collect || history_song_collect);
     assert!(
         !history_queue_actions
             || (histories && !is_live && !history_chapters && !interactive && !collections)
@@ -253,9 +256,9 @@ fn main() {
             else if history_collection { history_fixture::Library::with_collections() }
             else if history_chapters { history_fixture::Library::with_chapters() }
             else { history_fixture::Library::default() };
-        history_fixture.row_queue_menu=history_row_next || history_voice_row_download;
+        history_fixture.row_queue_menu=history_row_next || history_voice_row_download || history_song_row_collect;
         if history_download {history_fixture.downloads=Some(Arc::new(history_download_fixture::Fixture::default()));}
-        if history_song_collect {history_fixture.song_collect=Some(history_song_collect_fixture::Fixture::default());}
+        if history_song_collect {history_fixture.song_collect=Some(history_song_collect_fixture::Fixture::new(history_song_row_collect));}
         if history_song_download {history_fixture.song_download=Some(Arc::new(history_song_download_fixture::Fixture::default()));}
         let history_fixture=Arc::new(history_fixture);
         let settings_fixture=Arc::new(settings_fixture::Library::default());
@@ -438,7 +441,7 @@ fn main() {
             let history_download_report=history_fixture.downloads.as_ref().map(|fixture|fixture.report());
             let history_song_collect_report=history_fixture.song_collect.as_ref().map(|fixture|fixture.report());
             let history_song_download_report=history_fixture.song_download.as_ref().map(|fixture|fixture.report(&follow_store));
-            let history_row_menu_calls=(history_row_next || history_voice_row_download).then(||history_fixture.row_menu.report());
+            let history_row_menu_calls=(history_row_next || history_voice_row_download || history_song_row_collect).then(||history_fixture.row_menu.report());
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);

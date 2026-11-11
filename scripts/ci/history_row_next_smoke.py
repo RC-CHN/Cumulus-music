@@ -33,7 +33,7 @@ PLAY_SEED = ['voice:11', 'voice:12', 'voice:13']
 PLAY_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13']
 RESUMED_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13']
 PLAY_VOICES = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:4', 'voice:2', 'voice:13']
-SINGLE_ACTIONS = ['play', 'next', 'comments', 'copy', 'remove']
+SINGLE_ACTIONS = ['play', 'next', 'comments', 'collect', 'copy', 'remove']
 VOICE_ACTIONS = ['play', 'next', 'comments', 'download', 'copy', 'remove']
 DELETE_CALL = dict(path='/api/play-record/batch/delete', cached=False, args={
     'type': 'SONG', 'resourceIds': '["10","7"]', 'lastResourceId': '300',
@@ -110,7 +110,7 @@ def audit_row_actions(actions, incumbent, complete):
 
     assert all(row['clicked'] == '7' and row['selected'] == ['10', '7']
                for row in (confirmation, cancelled, removed))
-    assert confirmation['keys'] == ['play', 'next', 'remove']
+    assert confirmation['keys'] == ['play', 'next', 'collect', 'remove']
     assert (confirmation['title'], confirmation['actions'], confirmation['focus']) == (
         '删除 2 条播放记录？', ['取消', '确认'], '取消',
     )
@@ -202,7 +202,7 @@ def audit(output, screenshots, runtime=None):
         '8', ['8'], True, True,
     )
     assert blocked['copyrightHint'] == ['暂无版权', '暂无版权']
-    assert blocked['keys'] == ['play', 'next', 'comments', 'remove']
+    assert blocked['keys'] == ['play', 'next', 'comments', 'collect', 'remove']
     assert (rejected['clicked'], rejected['selected'], rejected['focusRestored']) == (
         '8', ['3', '8'], True,
     )

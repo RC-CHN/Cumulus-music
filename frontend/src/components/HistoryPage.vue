@@ -10,12 +10,14 @@ export interface HistoryCommentReturn {
   keyword: string;
   scrollTop: number;
 }
-export interface HistoryVoiceRowDownloadRequest {
-  target: HistoryRowMenuTarget;
+export interface HistoryRowMenuVisit {
   epoch: string;
   routeIdentity: object;
-  opener: HTMLElement;
   live: () => boolean;
+}
+export interface HistoryVoiceRowDownloadRequest extends HistoryRowMenuVisit {
+  target: HistoryRowMenuTarget;
+  opener: HTMLElement;
   preparing: (active: boolean) => void;
   feedback: (message: string, failed?: boolean) => void;
   accepted: (count: number) => void;
@@ -105,7 +107,7 @@ const emit = defineEmits<{
   batch: [kind: HistoryQueueKind];
   leaveBatch: [];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
-  collectSongs: [target: HistoryCollectTarget, opener: HTMLElement];
+  collectSongs: [target: HistoryCollectTarget, opener: HTMLElement, row?: HistoryRowMenuVisit];
   downloadSongs: [
     target: HistorySelectionScope,
     opener: HTMLElement,
@@ -297,8 +299,21 @@ const rowMenuItems = computed<MenuItem[]>(() => {
           },
         ]
       : []),
-    ...(voiceFile?.kind === 'download' || voiceFile?.kind === 'reveal' || info?.copyLink
+    ...(target.kind === 'song' ||
+    voiceFile?.kind === 'download' ||
+    voiceFile?.kind === 'reveal' ||
+    info?.copyLink
       ? [{ key: 'link-divider', label: '', separator: true }]
+      : []),
+    ...(target.kind === 'song'
+      ? [
+          {
+            key: 'collect',
+            label: '收藏',
+            icon: 'collect',
+            disabled: props.collecting || loading.value || busy.value,
+          },
+        ]
       : []),
     ...(voiceFile?.kind === 'download'
       ? [{ key: 'download', label: '下载', icon: 'download' }]
@@ -463,6 +478,24 @@ async function chooseRowMenu(key: string) {
       keyword,
       scrollTop: container.value?.scrollTop ?? 0,
     });
+    return;
+  }
+  if (key === 'collect' && target.kind === 'song') {
+    emit(
+      'collectSongs',
+      {
+        kind: 'row',
+        revision: target.revision,
+        clicked_id: target.clickedId,
+        selected_ids: [...target.tableGroup],
+      },
+      target.anchor,
+      {
+        epoch: target.epoch,
+        routeIdentity: target.routeIdentity,
+        live: () => rowTargetLive(target),
+      },
+    );
     return;
   }
   if (key === 'copy' && info?.copyLink) {

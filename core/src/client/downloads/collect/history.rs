@@ -83,6 +83,8 @@ impl MusicClient {
         target: HistoryCollectTarget,
     ) -> Result<AccountData<HistoryCollectPlan>> {
         let token = self.player_token(epoch)?;
+        // M3085 opens login before evaluating the favorite action.
+        self.session.with_token(&token, |_| Ok(()))?;
         let api = self.session.native_api(&token)?;
         let credentials = api
             .download_collection_scope_revision()?

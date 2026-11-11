@@ -34,6 +34,14 @@ fn all(f: &Fixture) -> HistoryCollectTarget {
     }
 }
 
+fn row(revision: &str, clicked_id: &str, gesture: &[&str]) -> HistoryCollectTarget {
+    HistoryCollectTarget::Row {
+        revision: revision.into(),
+        clicked_id: clicked_id.into(),
+        selected_ids: gesture.iter().map(|id| (*id).into()).collect(),
+    }
+}
+
 async fn destinations(f: &Fixture, epoch: &str, receipt: &str) {
     let page = f
         .client
@@ -180,6 +188,101 @@ async fn history_collect_selected_preserves_order_and_checks_the_advertised_dest
         .value;
     assert_eq!(result.phase, PlaylistPhase::Confirmed);
     assert_eq!(*api.writes.lock().unwrap(), [add_body(&plan.song_ids)]);
+}
+
+#[tokio::test]
+async fn history_collect_row_binds_clicked_and_gesture_before_confirming_native_add() {
+    let f = Fixture::new();
+    let (api, epoch) = connect(&f);
+    for (id, privilege) in [
+        (10, json!({"subp":1})),
+        (20, json!({"subp":0})),
+        (30, json!({})),
+        (40, json!({"subp":-1})),
+    ] {
+        record(&f, id, id, Some(privilege));
+    }
+    let revision = snapshot(&f).revision;
+    for invalid in [
+        row(&revision, "999", &["30", "20", "10"]),
+        row(&revision, "40", &["30", "999", "10"]),
+        row(&revision, "40", &["30", "30"]),
+        row("retired", "40", &["30", "20", "10"]),
+    ] {
+        assert!(matches!(
+            f.client.history_collect_prepare(&epoch, invalid).await,
+            Err(Error::QueueChanged | Error::InvalidInput(_))
+        ));
+    }
+    let target = row(&revision, "40", &["10", "20", "30"]);
+    let plan = f
+        .client
+        .history_collect_prepare(&epoch, target)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(plan.selected_count, 3);
+    assert_eq!(plan.song_ids, ["10", "30"]);
+    assert!(api.reads.lock().unwrap().is_empty());
+    assert!(api.writes.lock().unwrap().is_empty());
+    let receipt = plan.receipt.unwrap();
+    destinations(&f, &epoch, &receipt).await;
+    let result = f
+        .client
+        .download_collect_existing(&epoch, &receipt, "81")
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(result.phase, PlaylistPhase::Confirmed);
+    assert_eq!(result.observed.unwrap().track_ids, plan.song_ids);
+    assert_eq!(*api.writes.lock().unwrap(), [add_body(&plan.song_ids)]);
+}
+
+#[tokio::test]
+async fn history_collect_row_uses_single_clicked_access_and_only_original_group_fallback() {
+    let f = Fixture::new();
+    let (api, epoch) = connect(&f);
+    for (id, privilege) in [
+        (10, json!({"subp":0})),
+        (20, json!({"subp":null})),
+        (30, json!({"subp":-1})),
+    ] {
+        record(&f, id, id, Some(privilege));
+    }
+    let revision = snapshot(&f).revision;
+    for (clicked, selection, selected_count, expected) in [
+        ("10", &[][..], 1, &["10"][..]),
+        ("30", &[][..], 1, &[][..]),
+        ("10", &["20", "10", "30"][..], 3, &["20"][..]),
+        ("10", &["30", "20", "10"][..], 3, &[][..]),
+    ] {
+        let target = row(&revision, clicked, selection);
+        let plan = f
+            .client
+            .history_collect_prepare(&epoch, target)
+            .await
+            .unwrap()
+            .value;
+        assert_eq!(plan.selected_count, selected_count);
+        assert!(
+            plan.song_ids
+                .iter()
+                .map(String::as_str)
+                .eq(expected.iter().copied())
+        );
+        assert_eq!(plan.receipt.is_some(), !expected.is_empty());
+        if let Some(receipt) = plan.receipt {
+            destinations(&f, &epoch, &receipt).await;
+            f.client.download_collect_cancel(&epoch, &receipt).unwrap();
+            assert!(matches!(
+                f.client
+                    .download_collect_existing(&epoch, &receipt, "81")
+                    .await,
+                Err(Error::StaleResponse)
+            ));
+        }
+    }
+    assert!(api.writes.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

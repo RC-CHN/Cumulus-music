@@ -150,6 +150,7 @@ import CollectionsPage from './components/CollectionsPage.vue';
 import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
 import HistoryPage, {
   type HistoryCommentReturn,
+  type HistoryRowMenuVisit,
   type HistoryVoiceRowDownloadRequest,
 } from './components/HistoryPage.vue';
 import ListenedBooksPage from './components/history/ListenedBooksPage.vue';
@@ -175,7 +176,10 @@ import type {
   HistoryRowQueueTarget,
   HistorySelectionScope,
 } from './services/history';
-import { historyBrowseVoiceDownloadTracks } from './services/historyBrowseSelection';
+import {
+  historyBrowseSongCollectionRows,
+  historyBrowseVoiceDownloadTracks,
+} from './services/historyBrowseSelection';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
 import DailyNotificationCard from './components/DailyNotificationCard.vue';
@@ -3060,6 +3064,7 @@ type HistoryCollectVisit = {
   snapshot: NonNullable<typeof recent.page.value>;
   epoch: string;
   opener: HTMLElement;
+  row?: HistoryRowMenuVisit;
 };
 const historyCollectPreparing = shallowRef<HistoryCollectVisit>();
 const historyCollectReturn = shallowRef<HistoryCollectVisit>();
@@ -3073,7 +3078,11 @@ function historyCollectCurrent(visit: HistoryCollectVisit) {
     music.signedIn.value &&
     music.account.value.epoch === visit.epoch &&
     music.page.value === visit.route &&
-    recent.page.value === visit.snapshot
+    (visit.row
+      ? recent.page.value?.kind === 'song' &&
+        recent.page.value.revision === visit.snapshot.revision &&
+        visit.row.live()
+      : recent.page.value === visit.snapshot)
   );
 }
 const historyCollectFeedback = computed(() => {
@@ -3081,14 +3090,15 @@ const historyCollectFeedback = computed(() => {
   return status && historyCollectCurrent(status.visit) ? status : undefined;
 });
 watch(
-  [recent.page, music.page, () => music.account.value.epoch, () => music.account.value.status],
-  () => {
-    const preparing = historyCollectPreparing.value;
-    if (preparing && !historyCollectCurrent(preparing)) historyCollectPreparing.value = undefined;
-    const active = historyCollectReturn.value;
+  [
+    () => !!historyCollectPreparing.value && historyCollectCurrent(historyCollectPreparing.value),
+    () => !!historyCollectReturn.value && historyCollectCurrent(historyCollectReturn.value),
+  ],
+  ([preparing, active]) => {
+    if (!preparing) historyCollectPreparing.value = undefined;
     if (
-      active &&
-      !historyCollectCurrent(active) &&
+      !active &&
+      historyCollectReturn.value &&
       playlistDialog.value?.kind === 'tracks' &&
       playlistDialog.value.downloadCollection?.origin === 'history'
     )
@@ -3096,9 +3106,14 @@ watch(
   },
   { flush: 'sync' },
 );
-async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLElement) {
+async function openHistoryCollection(
+  target: HistoryCollectTarget,
+  opener: HTMLElement,
+  row?: HistoryRowMenuVisit,
+) {
   const route = music.page.value;
   const snapshot = recent.page.value;
+  const epoch = music.account.value.epoch;
   if (
     historyCollectPreparing.value ||
     playlistDialog.value ||
@@ -3106,6 +3121,9 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
     route.kind !== 'history' ||
     route.scope !== 'song' ||
     (route.batch === true) !== (target.kind === 'selected') ||
+    (target.kind === 'row'
+      ? !row || row.routeIdentity !== route || row.epoch !== epoch || !row.live()
+      : row) ||
     snapshot?.kind !== 'song' ||
     snapshot.revision !== target.revision ||
     recent.loading.value ||
@@ -3113,9 +3131,14 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
   )
     return;
   const wanted = target.kind === 'selected' ? new Set(target.ids) : undefined;
-  const rows = wanted ? snapshot.entries.filter((row) => wanted.has(row.id)) : snapshot.entries;
+  const rows =
+    target.kind === 'row'
+      ? historyBrowseSongCollectionRows(snapshot, target)
+      : wanted
+        ? snapshot.entries.filter((entry) => wanted.has(entry.id))
+        : snapshot.entries;
   if (
-    !rows.length ||
+    !rows?.length ||
     (target.kind === 'selected' &&
       (rows.length !== target.ids.length || rows.some((row, i) => row.id !== target.ids[i])))
   )
@@ -3124,9 +3147,28 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
     loginOpen.value = true;
     return;
   }
-  if (loginOpen.value || accountsOpen.value || document.querySelector('dialog[open]')) return;
+  const anotherModal = () =>
+    !!(
+      playlistDialog.value ||
+      loginOpen.value ||
+      accountsOpen.value ||
+      (row && (downloadDialog.value || modalDepth.value)) ||
+      document.querySelector('dialog[open]')
+    );
+  if (anotherModal()) return;
+  if (row) opener.focus({ preventScroll: true });
   const focus = document.activeElement;
-  const visit: HistoryCollectVisit = { route, snapshot, epoch: music.account.value.epoch, opener };
+  const visit: HistoryCollectVisit = { route, snapshot, epoch, opener, row };
+  let interrupted = false;
+  const stop =
+    row &&
+    watch(
+      [playlistDialog, loginOpen, accountsOpen, downloadDialog, modalDepth],
+      () => {
+        if (anotherModal()) interrupted = true;
+      },
+      { flush: 'sync' },
+    );
   historyCollectPreparing.value = visit;
   historyCollectStatus.value = undefined;
   const current = () =>
@@ -3134,10 +3176,8 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
     historyCollectCurrent(visit) &&
     opener.isConnected &&
     focus === document.activeElement &&
-    !playlistDialog.value &&
-    !loginOpen.value &&
-    !accountsOpen.value &&
-    !document.querySelector('dialog[open]');
+    !interrupted &&
+    !anotherModal();
   try {
     const result = await core.historyCollectPrepare(visit.epoch, target);
     const { receipt, canCreate, selectedCount, songIds } = result.value;
@@ -3170,6 +3210,7 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
       historyCollectStatus.value = { visit, message: '所选播放记录没有可收藏的歌曲。' };
       return;
     }
+    stop?.();
     historyCollectReturn.value = visit;
     playlistDialog.value = {
       kind: 'tracks',
@@ -3187,6 +3228,7 @@ async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLE
     if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
     else historyCollectStatus.value = { visit, message: issue.message, failed: true };
   } finally {
+    stop?.();
     if (historyCollectPreparing.value === visit) historyCollectPreparing.value = undefined;
   }
 }
@@ -3314,6 +3356,10 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
 function playlistCollectionFallback() {
   const visit = historyCollectReturn.value;
   if (visit) {
+    if (visit.row && music.page.value === visit.route && music.account.value.epoch === visit.epoch)
+      return document.querySelector<HTMLElement>(
+        '.history-page[data-history-view="browse"] .catalog-tabs [aria-current="page"]',
+      );
     return (
       visit.opener
         .closest('.history-page')

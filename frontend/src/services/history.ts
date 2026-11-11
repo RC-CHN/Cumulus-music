@@ -51,9 +51,11 @@ export interface HistorySelectionScope {
   revision: string;
   ids: string[];
 }
+export type HistoryCollectRowTarget = { kind: 'row' } & Omit<HistoryRowMenuTarget, 'history_kind'>;
 export type HistoryCollectTarget =
   | { kind: 'all'; revision: string }
-  | ({ kind: 'selected' } & HistorySelectionScope);
+  | ({ kind: 'selected' } & HistorySelectionScope)
+  | HistoryCollectRowTarget;
 export interface HistoryCollectPlan {
   receipt: string | null;
   canCreate: boolean;

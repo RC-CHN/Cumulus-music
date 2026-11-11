@@ -13,11 +13,14 @@ const ADD: &str = "/api/v1/playlist/manipulate/tracks";
 #[derive(Default)]
 struct State {
     calls: Vec<Value>,
+    rights: Vec<Vec<String>>,
     members: BTreeMap<String, Vec<String>>,
 }
 
-#[derive(Default)]
-pub struct Fixture(Mutex<State>);
+pub struct Fixture {
+    row_menu: bool,
+    state: Mutex<State>,
+}
 
 fn playlist(id: &str, owner: u64, special: u8, name: &str, songs: &[String]) -> Value {
     json!({"id":id,"userId":owner,"creator":{"userId":owner,"nickname":"合成创作者"},
@@ -52,9 +55,20 @@ fn song(id: u64) -> Value {
 }
 
 impl Fixture {
+    pub fn new(row_menu: bool) -> Self {
+        Self {
+            row_menu,
+            state: Mutex::new(State::default()),
+        }
+    }
+
     pub fn report(&self) -> Value {
-        let state = self.0.lock().unwrap();
-        json!({"calls":state.calls,"members":state.members})
+        let state = self.state.lock().unwrap();
+        let mut report = json!({"calls":state.calls,"members":state.members});
+        if self.row_menu {
+            report["rights"] = json!(state.rights);
+        }
+        report
     }
 
     pub fn response(&self, path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {
@@ -67,7 +81,7 @@ impl Fixture {
         if path == DETAIL && !matches!(args["id"].as_str(), Some("81" | "82" | "83" | "91")) {
             return None;
         }
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         let bad = || Error::Response("unexpected history song collection fixture request");
         Some((|| {
             if cached {
@@ -86,6 +100,9 @@ impl Fixture {
                             .any(|id| !matches!(id.as_str(), "1" | "2" | "3" | "4" | "5" | "6"))
                     {
                         return Err(bad());
+                    }
+                    if self.row_menu {
+                        state.rights.push(ids.clone());
                     }
                     let rows: Vec<_> = ids
                         .iter()
@@ -141,15 +158,17 @@ impl Fixture {
     }
 
     pub fn add(&self, path: &str, args: Value) -> Result<Value> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         state
             .calls
             .push(json!({"kind":"guarded_add","path":path,"args":args}));
         let bad = || Error::Response("unexpected ordered history collection add");
         let id = args["pid"].as_str().ok_or_else(bad)?;
-        let songs = match id {
-            "81" => vec!["5", "4", "2", "1"],
-            "82" => vec!["1", "4"],
+        let songs = match (self.row_menu, id) {
+            (false, "81") => vec!["5", "4", "2", "1"],
+            (false, "82") => vec!["1", "4"],
+            (true, "81") => vec!["4", "1"],
+            (true, "82") => vec!["5"],
             _ => return Err(bad()),
         };
         if path != ADD

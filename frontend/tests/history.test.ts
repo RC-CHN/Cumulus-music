@@ -14,6 +14,7 @@ import {
 import {
   historyBrowseMenuIds,
   historyBrowseRemovalIds,
+  historyBrowseSongCollectionRows,
   historyBrowseSongMenuBlocked,
   historyBrowseTableGroup,
   historyBrowseVoiceDownloadTracks,
@@ -376,6 +377,62 @@ test('history menu keeps the table group separate and deletes only the clicked r
   assert.deepEqual(historyBrowseRemovalIds('outside', group), []);
   assert.deepEqual(historyBrowseMenuIds(selection, 'outside'), []);
   assert.deepEqual(historyBrowseRemovalIds('outside', []), ['outside']);
+});
+
+test('history song row collection uses gesture order instead of display order or the outside clicked row', () => {
+  const snapshot = page('song');
+  snapshot.entries = ['1', '2', '3'].map((id) => ({
+    id,
+    resource: {
+      kind: 'song',
+      track: {
+        id,
+        name: id,
+        artists: [],
+        album: '',
+        coverUrl: null,
+        durationMs: 1000,
+        fee: 0,
+        local: false,
+        missing: false,
+      },
+    },
+    playedAt: 1,
+    device: '',
+    origin: 'remote',
+    playProgress: null,
+    listened: null,
+  }));
+  const target = {
+    kind: 'row' as const,
+    revision: snapshot.revision,
+    clicked_id: '2',
+    selected_ids: ['3', '1'],
+  };
+  assert.deepEqual(
+    historyBrowseSongCollectionRows(snapshot, target)?.map(({ id }) => id),
+    ['3', '1'],
+  );
+  assert.deepEqual(
+    historyBrowseSongCollectionRows(snapshot, { ...target, selected_ids: [] })?.map(({ id }) => id),
+    ['2'],
+  );
+  assert.equal(
+    historyBrowseSongCollectionRows(snapshot, { ...target, selected_ids: ['1', '1'] }),
+    undefined,
+  );
+  assert.equal(
+    historyBrowseSongCollectionRows(snapshot, { ...target, selected_ids: ['1', '99'] }),
+    undefined,
+  );
+  assert.equal(
+    historyBrowseSongCollectionRows(snapshot, { ...target, clicked_id: '99' }),
+    undefined,
+  );
+  assert.equal(
+    historyBrowseSongCollectionRows(snapshot, { ...target, revision: 'replaced' }),
+    undefined,
+  );
 });
 
 test('history voice row download resolves the frozen gesture and rejects a mismatched episode', () => {
