@@ -21,6 +21,15 @@ export function albumLink(id: string): string {
   return /^\d+$/.test(id) ? `https://music.163.com/album?id=${id}` : '';
 }
 
+export interface CatalogMvShare {
+  id: string;
+  name: string;
+  creator: string;
+}
+export function mvPublicLink(id: string | null | undefined): string | null {
+  return id && /^[1-9]\d{0,19}$/.test(id) ? `https://music.163.com/mv?id=${id}` : null;
+}
+
 /** Official AlbumCard keeps the primary artist first when present in the list. */
 export function albumCredits(album: AlbumCard): ArtistReference[] {
   const primary = album.primaryArtist;

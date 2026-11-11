@@ -15,6 +15,7 @@ import {
   searchCurrentVoiceId,
   searchVoiceSelection,
   searchVoiceProgram,
+  searchResourceShare,
 } from '../src/services/searchCards.ts';
 import type { CoreClient, TrackView } from '../src/services/contracts.ts';
 import type { SearchItem, SearchSection } from '../src/services/search.ts';
@@ -58,6 +59,48 @@ test('ordinary search links use the observed public program even without a playa
   const malformed = { ...row, voice: { ...row.voice, id: '21&uid=7' } };
   assert.equal(searchVoiceProgram('all', { ...section, items: [malformed] }, malformed), undefined);
 });
+test('MV sharing requires an observed ordinary MV and uses its native identity', () => {
+  const row = {
+    kind: 'mv',
+    mv: {
+      id: 'display',
+      kind: 'mv',
+      mvId: '601',
+      title: '合成 MV',
+      artists: [{ name: '合成歌手' }],
+    },
+  } as Extract<SearchItem, { kind: 'mv' }>;
+  const section: SearchSection = {
+    id: 'search_block_video:7',
+    title: 'MV',
+    category: 'mvs',
+    items: [row],
+  };
+  const share = {
+    kind: 'mv',
+    link: 'https://music.163.com/mv?id=601',
+    resource: { id: '601', name: '合成 MV', creator: '合成歌手' },
+  };
+  assert.deepEqual(searchResourceShare('all', section, row), share);
+  assert.deepEqual(searchResourceShare('mvs', { ...section, id: 'MV' }, row), share);
+  assert.equal(searchResourceShare('all', section, { ...row }), undefined);
+  assert.equal(
+    searchResourceShare('all', { ...section, id: 'search_block_best_match:0' }, row),
+    undefined,
+  );
+  assert.equal(searchResourceShare('albums', section, row), undefined);
+  for (const candidate of [
+    { ...row, mv: { ...row.mv, kind: 'video' as const } },
+    { ...row, mv: { ...row.mv, mvId: '601&userid=7' } },
+    { ...row, mv: { ...row.mv, mvId: null } },
+  ]) {
+    assert.equal(
+      searchResourceShare('mvs', { ...section, items: [candidate] }, candidate),
+      undefined,
+    );
+  }
+});
+
 test('artist covers select the native resolver and albums keep their own snapshots', async () => {
   const calls: unknown[] = [];
   const core = {

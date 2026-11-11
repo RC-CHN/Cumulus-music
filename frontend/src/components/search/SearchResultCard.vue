@@ -17,7 +17,12 @@ import SearchArtistCredits from './SearchArtistCredits.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import { artistCardMenu, type ArtistCardRequest } from '../../services/artistCards';
-import { albumCardDate, albumLink, type AlbumCardRequest } from '../../services/catalogCards';
+import {
+  albumCardDate,
+  albumLink,
+  mvPublicLink,
+  type AlbumCardRequest,
+} from '../../services/catalogCards';
 import {
   searchAlbumAlias,
   searchAlbumCredits,
@@ -32,7 +37,7 @@ import {
   searchVideoCoverStats,
   type SearchPendingVoiceToggle,
   type SearchQueueRequest,
-  type SearchVoiceLinkRequest,
+  type SearchResourceLinkRequest,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import { useCore } from '../../services/core';
@@ -48,6 +53,7 @@ const props = defineProps<{
   podcastNextEnabled?: boolean;
   voiceNext?: 'ready' | 'disabled';
   voiceLinks?: boolean;
+  mvLinkEpoch?: string;
   voiceMenuEpoch?: string;
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
@@ -68,7 +74,7 @@ const emit = defineEmits<{
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queue: [request: SearchQueueRequest];
   queueVoice: [id: string];
-  voiceLink: [request: SearchVoiceLinkRequest];
+  resourceLink: [request: SearchResourceLinkRequest];
   voiceMenuError: [message: string];
   voiceMenuPlay: [target: SearchVoiceMenuTarget];
   playlistDownload: [playlist: PlaylistView];
@@ -131,21 +137,25 @@ watch(
   [() => props.item, () => props.voiceMenuEpoch],
   () => {
     voiceMenu.value = undefined;
-    if (props.voiceMenuEpoch || voiceLinkMenuItem) menu.value?.close();
+    if (props.voiceMenuEpoch || resourceLinkMenuItem) menu.value?.close();
   },
   { flush: 'sync' },
 );
-let voiceLinkMenuItem: SearchItem | undefined;
+let resourceLinkMenuItem: SearchItem | undefined;
 let podcastMenuItem: SearchItem | undefined;
 function captureActionMenu() {
-  voiceLinkMenuItem = props.voiceLinks && props.item.kind === 'voice' ? props.item : undefined;
+  resourceLinkMenuItem =
+    (props.voiceLinks && props.item.kind === 'voice') ||
+    (props.mvLinkEpoch && props.item.kind === 'mv')
+      ? props.item
+      : undefined;
   podcastMenuItem = podcastRow.value && props.item.kind === 'podcast' ? props.item : undefined;
 }
 watch(
-  [() => props.item, () => props.voiceLinks],
+  [() => props.item, () => props.voiceLinks, () => props.mvLinkEpoch],
   () => {
-    if (!voiceLinkMenuItem) return;
-    voiceLinkMenuItem = undefined;
+    if (!resourceLinkMenuItem) return;
+    resourceLinkMenuItem = undefined;
     menu.value?.close();
   },
   { flush: 'sync' },
@@ -242,6 +252,9 @@ const playlistSubscribe = computed(() =>
     : undefined,
 );
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
+const mvLink = computed(
+  () => props.mvLinkEpoch && mvPublicLink(searchMvPlaybackTarget(props.item)),
+);
 const videoStats = computed(() => searchVideoCoverStats(props.item));
 const videoStatsId = useId();
 const playlistCountId = useId();
@@ -380,6 +393,12 @@ const items = computed<MenuItem[]>(() => {
           },
         ]
       : []),
+    ...(mvLink.value
+      ? [
+          { key: 'share', label: '分享…', icon: 'share' },
+          { key: 'copy', label: '复制链接', icon: 'copy' },
+        ]
+      : []),
     ...(props.item.kind === 'voice' && props.voiceLinks
       ? [
           {
@@ -426,7 +445,7 @@ function selectMenuAction(key: string) {
   if (
     !target ||
     !epoch ||
-    voiceLinkMenuItem !== item ||
+    resourceLinkMenuItem !== item ||
     !voiceMenu.value ||
     !voiceMenuLive(item, epoch, target) ||
     !canPlay.value ||
@@ -502,12 +521,14 @@ function action(key: string, gesture: SearchPodcastRowGesture = 'menu') {
     emit('playlistLink', props.item.playlist, key);
   } else if (
     (key === 'share' || key === 'copy') &&
-    props.voiceLinks &&
-    props.item.kind === 'voice' &&
-    voiceLinkMenuItem === props.item
+    ((props.item.kind === 'voice' && props.voiceLinks) ||
+      (props.item.kind === 'mv' && mvLink.value)) &&
+    resourceLinkMenuItem === props.item
   ) {
-    voiceLinkMenuItem = undefined;
-    emit('voiceLink', { item: props.item, action: key, anchor: actionAnchor() });
+    const epoch = props.item.kind === 'mv' ? props.mvLinkEpoch : props.voiceMenuEpoch;
+    resourceLinkMenuItem = undefined;
+    if (epoch)
+      emit('resourceLink', { item: props.item, epoch, action: key, anchor: actionAnchor() });
   } else if (
     key === 'download-playlist' &&
     props.item.kind === 'playlist' &&

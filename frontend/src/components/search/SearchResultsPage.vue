@@ -38,7 +38,6 @@ import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
-import { podcastProgramPublicLink, type PodcastProgramShare } from '../../services/podcast';
 import ModalTransition from '../ModalTransition.vue';
 import TrackShareDialog from '../TrackShareDialog.vue';
 import TrackTable from '../TrackTable.vue';
@@ -52,10 +51,12 @@ import GuestSearchResult from './GuestSearchResult.vue';
 import {
   searchCardIsCurrent,
   searchVoiceLinkSection,
-  searchVoiceProgram,
+  searchMvLinkSection,
+  searchResourceShare,
   type SearchPendingVoiceToggle,
   type SearchQueueRequest,
-  type SearchVoiceLinkRequest,
+  type SearchResourceLinkRequest,
+  type SearchResourceShare,
 } from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const motion = useMotion();
@@ -484,19 +485,19 @@ let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
 let activeCategory = '';
 let observer: ResizeObserver | undefined;
 let hotDeparture: HTMLButtonElement | undefined;
-interface VoiceLinkOwner {
+interface ResourceLinkOwner {
   epoch: string;
   generation: number;
   panel: HTMLElement;
   sectionId: string;
-  request: SearchVoiceLinkRequest;
+  request: SearchResourceLinkRequest;
 }
-const voiceLinkOwner = shallowRef<VoiceLinkOwner>();
-const voiceLinkShare = shallowRef<{ program: PodcastProgramShare; canCopy: () => boolean }>();
-const voiceLinkStatus = ref('');
-const voiceLinkRestoreFocus = ref(false);
-let voiceLinkAnchor: HTMLElement | null = null;
-function voiceLinkCurrent(owner: VoiceLinkOwner) {
+const resourceLinkOwner = shallowRef<ResourceLinkOwner>();
+const resourceLinkShare = shallowRef<{ target: SearchResourceShare; canCopy: () => boolean }>();
+const resourceLinkStatus = ref('');
+const resourceLinkRestoreFocus = ref(false);
+let resourceLinkAnchor: HTMLElement | null = null;
+function resourceLinkCurrent(owner: ResourceLinkOwner) {
   if (
     props.account.status !== 'authenticated' ||
     props.account.epoch !== owner.epoch ||
@@ -508,47 +509,45 @@ function voiceLinkCurrent(owner: VoiceLinkOwner) {
   )
     return false;
   const section = view.value?.sections.find((section) => section.id === owner.sectionId);
-  return !!section && !!searchVoiceProgram(category.value, section, owner.request.item);
+  return !!section && !!searchResourceShare(category.value, section, owner.request.item);
 }
-function clearVoiceLink(restoreFocus = false) {
-  voiceLinkRestoreFocus.value = restoreFocus;
-  voiceLinkOwner.value = undefined;
-  voiceLinkShare.value = undefined;
-  voiceLinkStatus.value = '';
+function clearResourceLink(restoreFocus = false) {
+  resourceLinkRestoreFocus.value = restoreFocus;
+  resourceLinkOwner.value = undefined;
+  resourceLinkShare.value = undefined;
+  resourceLinkStatus.value = '';
 }
 watch(
-  () => !!voiceLinkOwner.value && voiceLinkCurrent(voiceLinkOwner.value),
+  () => !!resourceLinkOwner.value && resourceLinkCurrent(resourceLinkOwner.value),
   (current) => {
-    if (!current && voiceLinkOwner.value) clearVoiceLink();
+    if (!current && resourceLinkOwner.value) clearResourceLink();
   },
   { flush: 'sync' },
 );
-async function activateVoiceLink(section: SearchSection, request: SearchVoiceLinkRequest) {
+async function activateResourceLink(section: SearchSection, request: SearchResourceLinkRequest) {
   if (!panel.value || !request.anchor || !panel.value.contains(request.anchor)) return;
   const owner = {
-    epoch: props.account.epoch,
+    epoch: request.epoch,
     generation: loadGeneration,
     panel: panel.value,
     sectionId: section.id,
     request,
   };
-  const program = searchVoiceProgram(category.value, section, request.item);
-  if (!program || !voiceLinkCurrent(owner)) return;
-  const link = podcastProgramPublicLink(program.id);
-  if (!link) return;
-  clearVoiceLink();
-  voiceLinkOwner.value = owner;
-  const current = () => voiceLinkOwner.value === owner && voiceLinkCurrent(owner);
+  const target = searchResourceShare(category.value, section, request.item);
+  if (!target || !resourceLinkCurrent(owner)) return;
+  clearResourceLink();
+  resourceLinkOwner.value = owner;
+  const current = () => resourceLinkOwner.value === owner && resourceLinkCurrent(owner);
   if (request.action === 'share') {
-    voiceLinkAnchor = request.anchor;
-    voiceLinkShare.value = { program, canCopy: current };
+    resourceLinkAnchor = request.anchor;
+    resourceLinkShare.value = { target, canCopy: current };
     return;
   }
   try {
-    await core.copyText(link);
-    if (current()) voiceLinkStatus.value = '链接已复制';
+    await core.copyText(target.link);
+    if (current()) resourceLinkStatus.value = '链接已复制';
   } catch {
-    if (current()) voiceLinkStatus.value = '复制失败，请重试';
+    if (current()) resourceLinkStatus.value = '复制失败，请重试';
   }
 }
 function trackFocusKey(row?: HTMLElement | null) {
@@ -734,7 +733,7 @@ async function restore() {
   maybeMore();
 }
 async function load(reuse = false) {
-  clearVoiceLink();
+  clearResourceLink();
   restoring = true;
   cancelAnimationFrame(frame);
   clearTimeout(scrollDeadline);
@@ -835,7 +834,7 @@ watch(
   { immediate: true },
 );
 onBeforeUnmount(() => {
-  clearVoiceLink();
+  clearResourceLink();
   checkpoint(true, hotDeparture, activeCategory === 'all' && props.detailDeparture());
   loadGeneration++;
   observer?.disconnect();
@@ -883,12 +882,13 @@ onBeforeUnmount(() => {
         {{ cardQueueFeedback }}
       </p>
       <p
-        v-if="voiceLinkStatus"
+        v-if="resourceLinkStatus"
         class="search-voice-next-notice"
         role="status"
         data-search-voice-link-status
+        :data-search-mv-link-status="resourceLinkOwner?.request.item.kind === 'mv' ? '' : undefined"
       >
-        {{ voiceLinkStatus }}
+        {{ resourceLinkStatus }}
       </p>
     </div>
     <div class="search-results-toolbar">
@@ -1275,6 +1275,11 @@ onBeforeUnmount(() => {
                 :voice-links="
                   account.status === 'authenticated' && searchVoiceLinkSection(category, section)
                 "
+                :mv-link-epoch="
+                  account.status === 'authenticated' && searchMvLinkSection(category, section)
+                    ? account.epoch
+                    : undefined
+                "
                 :voice-menu-epoch="
                   account.status === 'authenticated' && searchVoiceLinkSection(category, section)
                     ? account.epoch
@@ -1315,8 +1320,8 @@ onBeforeUnmount(() => {
                 "
                 @queue="emit('queueCard', $event)"
                 @queue-voice="emit('queueVoice', $event)"
-                @voice-link="activateVoiceLink(section, $event)"
-                @voice-menu-error="voiceLinkStatus = $event"
+                @resource-link="activateResourceLink(section, $event)"
+                @voice-menu-error="resourceLinkStatus = $event"
                 @voice-menu-play="emit('voiceMenuPlay', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
@@ -1379,15 +1384,18 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
     <ModalTransition
-      :return-focus="() => voiceLinkAnchor"
-      :restore-focus="voiceLinkRestoreFocus"
+      :return-focus="() => resourceLinkAnchor"
+      :restore-focus="resourceLinkRestoreFocus"
       :fallback-focus="() => tabs?.querySelector<HTMLElement>('[aria-selected=true]') ?? null"
     >
       <TrackShareDialog
-        v-if="voiceLinkShare"
-        :program="voiceLinkShare.program"
-        :can-copy="voiceLinkShare.canCopy"
-        @close="clearVoiceLink(voiceLinkShare.canCopy())"
+        v-if="resourceLinkShare"
+        :program="
+          resourceLinkShare.target.kind === 'voice' ? resourceLinkShare.target.resource : undefined
+        "
+        :mv="resourceLinkShare.target.kind === 'mv' ? resourceLinkShare.target.resource : undefined"
+        :can-copy="resourceLinkShare.canCopy"
+        @close="clearResourceLink(resourceLinkShare.canCopy())"
       />
     </ModalTransition>
   </section>

@@ -1189,10 +1189,49 @@
           document.activeElement===artist(),'Back restores the exact MV artist credit');
         await capture('search_mv_artist_'+category);
       }
+      const link='https://music.163.com/mv?id=601', mvLinks=[];
+      const menu=()=>one('.action-menu[role="menu"]:not([inert])');
+      const shareDialog=()=>one('dialog.track-share-dialog[open]:not([inert])');
+      async function clipboardLink(){
+        window.__searchClipboardAck=null;
+        await emit('search-clipboard-check',{expected:link});
+        await wait(()=>window.__searchClipboardAck!==null,'native MV clipboard reply');
+        assert(window.__searchClipboardAck,'native clipboard holds the public MV link only');
+      }
+      async function checkMvLink(category, action){
+        const opener=mvCard()?.querySelector('.search-card-open');
+        assert(opener&&!opener.disabled,'valid ordinary MV result');
+        opener.scrollIntoView({block:'center'});
+        opener.focus({preventScroll:true});
+        opener.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        await wait(menu,'MV context menu opens');
+        const entry=name=>menu()?.querySelector(`[data-menu-key="${name}"]:not(:disabled)`);
+        assert(entry('copy')&&entry('share'),'ordinary MV menu exposes copy and share');
+        if(action==='copy')await capture('search_mv_links_'+category);
+        click(entry(action));
+        if(action==='share'){
+          await wait(shareDialog,'MV share opens a local dialog');
+          assert(shareDialog().querySelector('[aria-label="MV分享链接"]')?.value===link,'the dialog uses the native MV identity');
+          await capture('search_mv_links_'+category);
+          click(button('复制链接',shareDialog()));
+          await wait(()=>shareDialog()?.querySelector('[role="status"]')?.textContent.trim()==='链接已复制','dialog clipboard confirmed');
+          await clipboardLink();
+          click(button('关闭分享',shareDialog()));
+          await wait(()=>!shareDialog()&&document.activeElement===opener,'share restores exact MV focus');
+        }else{
+          await wait(()=>one('[data-search-mv-link-status]')?.textContent.trim()==='链接已复制'&&
+            document.activeElement===opener,'direct copy and focus');
+          assert(!shareDialog(),'direct copy opens no dialog');
+          await clipboardLink();
+        }
+        mvLinks.push({category,action,link});
+      }
       await checkMvArtist('all');
       await verifyPrivilegeRefreshes(1);
+      await checkMvLink('all','copy');
       await choose('mvs');
       await checkMvArtist('mvs');
+      await checkMvLink('mvs','share');
       const card=mvCard();
       const trigger=button('播放 MV 合成 MV 1',card);
       const cue=card?.querySelector('.search-video-play-glyph');
@@ -1247,8 +1286,14 @@
       const invalid=one('.search-video-card');
       assert(invalid?.querySelector('.search-card-open')?.disabled&&!invalid.querySelector('.search-video-play-glyph'),
         'opaque non-MV result stays disabled with no Play cue');
+      invalid.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+      await wait(menu,'opaque result context menu');
+      assert(!menu().querySelector('[data-menu-key="copy"],[data-menu-key="share"]'),
+        'an opaque video has no MV copy or share action');
+      key(menu(),'Escape');
+      await wait(()=>!menu(),'opaque result menu closed');
       await capture('search_non_mv_target_disabled');
-      await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,privilegeRefreshes,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,mvLinks,privilegeRefreshes,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPodcastFollowProof){

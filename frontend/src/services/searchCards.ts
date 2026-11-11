@@ -8,12 +8,18 @@ import {
   type Quality,
 } from './player.ts';
 import type { SearchCategory, SearchItem, SearchSection } from './search.ts';
-import { albumCredits, catalogResourceSelection } from './catalogCards.ts';
+import {
+  albumCredits,
+  catalogResourceSelection,
+  mvPublicLink,
+  type CatalogMvShare,
+} from './catalogCards.ts';
 import { podcastProgramPublicLink, type PodcastProgramShare } from './podcast.ts';
 import { searchLiteral } from './searchMatch.ts';
 
-export interface SearchVoiceLinkRequest {
-  item: Extract<SearchItem, { kind: 'voice' }>;
+export interface SearchResourceLinkRequest {
+  item: Extract<SearchItem, { kind: 'voice' | 'mv' }>;
+  epoch: string;
   action: 'share' | 'copy';
   anchor: HTMLElement | null;
 }
@@ -39,6 +45,42 @@ export function searchVoiceProgram(
     return undefined;
   const { id, name, creator } = item.voice;
   return { id, name, creator };
+}
+
+export function searchMvLinkSection(category: SearchCategory, section: SearchSection) {
+  return (
+    section.category === 'mvs' &&
+    (category === 'mvs' || (category === 'all' && section.id.startsWith('search_block_video:')))
+  );
+}
+
+export type SearchResourceShare =
+  | { kind: 'voice'; resource: PodcastProgramShare; link: string }
+  | { kind: 'mv'; resource: CatalogMvShare; link: string };
+
+export function searchResourceShare(
+  category: SearchCategory,
+  section: SearchSection,
+  item: SearchItem,
+): SearchResourceShare | undefined {
+  if (item.kind === 'voice') {
+    const program = searchVoiceProgram(category, section, item);
+    const link = program && podcastProgramPublicLink(program.id);
+    return program && link ? { kind: 'voice', resource: program, link } : undefined;
+  }
+  if (!searchMvLinkSection(category, section) || !section.items.includes(item)) return;
+  const id = searchMvPlaybackTarget(item);
+  const link = mvPublicLink(id);
+  if (!id || !link || item.kind !== 'mv') return;
+  return {
+    kind: 'mv',
+    link,
+    resource: {
+      id,
+      name: item.mv.title,
+      creator: item.mv.artists.map((artist) => artist.name).join(' / '),
+    },
+  };
 }
 
 export function searchCardKey(item: SearchItem): string {

@@ -620,11 +620,14 @@ def main():
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchMvVerified'] and complete['searchMvArtistVerified']
-        assert complete['stageCount'] == 7
-        for prefix, name in enumerate(('artist_all', 'artist_mvs', 'play_target'), start=1):
+        assert complete['stageCount'] == 9
+        link = 'https://music.163.com/mv?id=601'
+        assert complete['mvLinks'] == [dict(category='all', action='copy', link=link),
+                                       dict(category='mvs', action='share', link=link)]
+        for prefix, name in enumerate(('artist_all', 'links_all', 'artist_mvs', 'links_mvs', 'play_target'), start=1):
             assert not json.loads((first / f'ux_{prefix:02}_search_mv_{name}.json').read_text(encoding='utf-8'))['searchMvCalls']
-        played = json.loads((first / 'ux_06_search_mv_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
-        category = json.loads((first / 'ux_04_search_mv_category_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
+        played = json.loads((first / 'ux_08_search_mv_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
+        category = json.loads((first / 'ux_06_search_mv_category_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
         assert played[:len(category)] == category
         details = [call for call in played if call['path'] == '/api/mlog/detail/v1']
         assert details and all(call['args'] == {'id': '601', 'type': '2'} for call in details)
@@ -643,9 +646,9 @@ def main():
                           for id_ in ids]}
         assert complete['privilegeRefreshes'] == [typed] * 3, complete['privilegeRefreshes']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (9 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True,
-                              searchMvArtistVerified=True, mvPrivilegeRefreshes=3, stageCount=7)))
+                              searchMvArtistVerified=True, mvPrivilegeRefreshes=3, stageCount=9)))
         return
     if args.podcast_follow:
         first = root / 'first'
