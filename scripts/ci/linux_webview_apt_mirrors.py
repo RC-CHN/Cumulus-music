@@ -1,6 +1,6 @@
 """Bound package acquisition on the known GitHub Ubuntu 24.04 mirror preset."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import stat
 import subprocess
@@ -16,6 +16,7 @@ CANONICAL = b'https://archive.ubuntu.com/ubuntu/'
 SECURITY = b'https://security.ubuntu.com/ubuntu/'
 AZURE_FIRST = AZURE + b'\tpriority:1\n' + CANONICAL + b'\tpriority:2\n' + SECURITY + b'\tpriority:3\n'
 CANONICAL_FIRST = AZURE + b'\tpriority:2\n' + CANONICAL + b'\tpriority:1\n' + SECURITY + b'\tpriority:3\n'
+SECURITY_FIRST = AZURE + b'\tpriority:3\n' + CANONICAL + b'\tpriority:2\n' + SECURITY + b'\tpriority:1\n'
 
 
 class AptDeadline(RuntimeError):
@@ -53,19 +54,27 @@ def supports_fallback(env):
 
 
 @contextmanager
-def canonical_priority(workspace):
-    """Switch only the two existing priorities on this dedicated runner."""
+def mirror_priority(workspace, label, priorities):
+    """Temporarily reorder only the runner's three existing mirror URLs."""
     if MIRRORS.read_bytes() != AZURE_FIRST:
         raise ValueError('runner APT mirror preset changed during acquisition')
     backup = workspace / 'apt-mirrors.original'
-    alternative = workspace / 'apt-mirrors.canonical-first'
-    alternative.write_bytes(CANONICAL_FIRST)
+    alternative = workspace / f'apt-mirrors.{label}-first'
+    alternative.write_bytes(priorities)
     subprocess.run(['sudo', 'cp', '-p', '--', MIRRORS, backup], check=True)
     try:
         subprocess.run(['sudo', 'cp', '--', alternative, MIRRORS], check=True)
         yield
     finally:
         subprocess.run(['sudo', 'cp', '-p', '--', backup, MIRRORS], check=True)
+
+
+def security_priority(workspace):
+    return mirror_priority(workspace, 'security', SECURITY_FIRST)
+
+
+def canonical_priority(workspace):
+    return mirror_priority(workspace, 'canonical', CANONICAL_FIRST)
 
 
 def deadline_command(args, limit):
@@ -79,27 +88,32 @@ def deadline_command(args, limit):
 
 
 @contextmanager
-def acquire(update, prepare, download, reset, fallback):
-    """The only retry occurs before installation, on a real deadline."""
-    if fallback is None:
+def acquire(update, prepare, download, reset, security_fallback, canonical_fallback=None):
+    """Bound each pre-install acquisition; installation is never retried."""
+    if security_fallback is None:
         update(None)
         prepare()
         yield False
         return
-    try:
-        update(UPDATE_DEADLINE)
-        prepare()
-        download(DOWNLOAD_DEADLINE)
-    except AptDeadline as error:
-        print(f'{error}; retry with the existing Canonical mirror first', flush=True)
-        # The next signed index can select different archives. Discard both
-        # partial and finalized first-plan bytes and independently admit any
-        # candidate artifact again against the new plan.
+    attempts = [('Azure', nullcontext), ('Security', security_fallback)]
+    if canonical_fallback is not None:
+        attempts.append(('Canonical', canonical_fallback))
+    for index, (_, context) in enumerate(attempts):
+        with context():
+            try:
+                update(UPDATE_DEADLINE)
+                prepare()
+                download(DOWNLOAD_DEADLINE)
+            except AptDeadline as error:
+                if index + 1 == len(attempts):
+                    raise
+                print(f'{error}; retry with the existing {attempts[index + 1][0]} mirror first',
+                      flush=True)
+            else:
+                # Keep that mirror ordering through installation. Exceptions
+                # raised by the caller are outside the acquisition handler.
+                yield True
+                return
+        # Restore priorities before resetting partial and finalized old-plan
+        # bytes. Every retry runs strict APT update and a fresh admission plan.
         reset()
-        with fallback():
-            update(UPDATE_DEADLINE)
-            prepare()
-            download(DOWNLOAD_DEADLINE)
-            yield True
-    else:
-        yield True

@@ -12,7 +12,9 @@ import subprocess
 import tempfile
 import time
 
-from linux_webview_apt_mirrors import AptDeadline, acquire, canonical_priority, deadline_command, supports_fallback
+from linux_webview_apt_mirrors import (
+    AptDeadline, acquire, canonical_priority, deadline_command, security_priority, supports_fallback,
+)
 from linux_webview_probe_artifact import run_identity
 
 
@@ -219,11 +221,21 @@ def install(args):
             subprocess.run(['sudo', 'rm', '-rf', '--', archives], check=True)
             subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
 
-        fallback = (lambda: canonical_priority(workspace)) if supports_fallback(env) else None
-        if fallback is None:
+        security_fallback = canonical_fallback = None
+        if supports_fallback(env):
+            # The two archive endpoints have both timed out on hosted jobs.
+            # Try the already configured HTTPS Security mirror before giving
+            # Canonical-first its final bounded acquisition.
+            def security_fallback():
+                return security_priority(workspace)
+
+            def canonical_fallback():
+                return canonical_priority(workspace)
+        else:
             print('APT mirror watchdog: runner preset unsupported; normal APT acquisition', flush=True)
         try:
-            with acquire(update, prepare, download, reset, fallback) as downloaded:
+            with acquire(update, prepare, download, reset, security_fallback,
+                         canonical_fallback) as downloaded:
                 if args.publish:
                     if not downloaded:
                         download(None)

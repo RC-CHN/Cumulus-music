@@ -10,8 +10,9 @@ from unittest.mock import patch
 
 from linux_webview_apt import timed
 from linux_webview_apt_mirrors import (
-    AZURE_FIRST, CANONICAL_FIRST, DOWNLOAD_DEADLINE, UPDATE_DEADLINE,
+    AZURE_FIRST, CANONICAL_FIRST, DOWNLOAD_DEADLINE, SECURITY_FIRST, UPDATE_DEADLINE,
     AptDeadline, acquire, canonical_priority, deadline_command, is_signed_noble_source,
+    security_priority,
 )
 
 
@@ -40,68 +41,119 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
                     raise fail
             return call
 
-        @contextmanager
-        def alternate():
-            events.append('canonical first')
-            try:
-                yield
-            finally:
-                events.append('original priorities restored')
+        def alternate(name):
+            @contextmanager
+            def context():
+                events.append(f'{name} first')
+                try:
+                    yield
+                finally:
+                    events.append(f'{name} priorities restored')
+            return context
 
         args = (operation('update', fail_update), lambda: events.append('fresh cache plan'),
                 operation('download-only', fail_download), lambda: events.append('discard archives'))
-        return args, alternate, events
+        return args, alternate('security'), alternate('canonical'), events
 
     def test_download_timeout_revalidates_in_fresh_cache_before_single_install(self):
-        args, alternate, events = self.fixture(fail_download=AptDeadline('download', DOWNLOAD_DEADLINE))
-        with acquire(*args, alternate) as ready:
+        args, security, canonical, events = self.fixture(
+            fail_download=AptDeadline('download', DOWNLOAD_DEADLINE))
+        with acquire(*args, security, canonical) as ready:
             self.assertTrue(ready)
             events.append('normal install')
         self.assertEqual(events, [
             ('update', UPDATE_DEADLINE), 'fresh cache plan', ('download-only', DOWNLOAD_DEADLINE),
-            'discard archives', 'canonical first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
-            ('download-only', DOWNLOAD_DEADLINE), 'normal install', 'original priorities restored',
+            'discard archives', 'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
+            ('download-only', DOWNLOAD_DEADLINE), 'normal install', 'security priorities restored',
         ])
 
     def test_update_timeout_never_admits_old_plan_and_unknown_preset_keeps_normal_apt(self):
-        args, alternate, events = self.fixture(fail_update=AptDeadline('update', UPDATE_DEADLINE))
-        with acquire(*args, alternate):
+        args, security, canonical, events = self.fixture(
+            fail_update=AptDeadline('update', UPDATE_DEADLINE))
+        with acquire(*args, security, canonical):
             events.append('normal install')
         self.assertEqual(events[:5], [('update', UPDATE_DEADLINE), 'discard archives',
-                                     'canonical first', ('update', UPDATE_DEADLINE), 'fresh cache plan'])
-        args, _, events = self.fixture()
+                                     'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan'])
+        args, _, _, events = self.fixture()
         with acquire(*args, None) as ready:
             self.assertFalse(ready)
             events.append('normal install')
         self.assertEqual(events, [('update', None), 'fresh cache plan', 'normal install'])
 
     def test_fast_azure_path_does_not_touch_mirror_configuration(self):
-        args, alternate, events = self.fixture()
-        with acquire(*args, alternate) as ready:
+        args, security, canonical, events = self.fixture()
+        with acquire(*args, security, canonical) as ready:
             self.assertTrue(ready)
             events.append('normal install')
         self.assertEqual(events, [('update', UPDATE_DEADLINE), 'fresh cache plan',
                                   ('download-only', DOWNLOAD_DEADLINE), 'normal install'])
 
     def test_signature_or_other_apt_failure_is_not_treated_as_a_timeout(self):
-        args, alternate, events = self.fixture(fail_update=subprocess.CalledProcessError(100, 'apt-get'))
-        with self.assertRaises(subprocess.CalledProcessError), acquire(*args, alternate):
+        args, security, canonical, events = self.fixture(
+            fail_update=subprocess.CalledProcessError(100, 'apt-get'))
+        with self.assertRaises(subprocess.CalledProcessError), acquire(*args, security, canonical):
             self.fail('cannot install after an APT failure')
         self.assertEqual(events, [('update', UPDATE_DEADLINE)])
 
-    def test_second_timeout_stops_without_install_or_second_retry(self):
-        args, alternate, events = self.fixture()
+    def test_second_timeout_restores_security_then_tries_canonical_once(self):
+        args, security, canonical, events = self.fixture()
+
+        def download(limit):
+            events.append(('download-only', limit))
+            if events.count(('download-only', limit)) < 3:
+                raise AptDeadline('download', limit)
+
+        with acquire(args[0], args[1], download, args[3], security, canonical) as ready:
+            self.assertTrue(ready)
+            events.append('normal install')
+        self.assertEqual(events, [
+            ('update', UPDATE_DEADLINE), 'fresh cache plan', ('download-only', DOWNLOAD_DEADLINE),
+            'discard archives', 'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
+            ('download-only', DOWNLOAD_DEADLINE), 'security priorities restored',
+            'discard archives', 'canonical first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
+            ('download-only', DOWNLOAD_DEADLINE), 'normal install', 'canonical priorities restored',
+        ])
+
+    def test_final_timeout_stops_without_install_or_fourth_attempt(self):
+        args, security, canonical, events = self.fixture()
 
         def timeout(limit):
             events.append(('download-only', limit))
             raise AptDeadline('download', limit)
 
-        with self.assertRaises(AptDeadline), acquire(args[0], args[1], timeout, args[3], alternate):
-            self.fail('cannot install after a second timeout')
+        with self.assertRaises(AptDeadline), acquire(
+                args[0], args[1], timeout, args[3], security, canonical):
+            self.fail('cannot install after the third timeout')
+        self.assertEqual(events.count(('download-only', DOWNLOAD_DEADLINE)), 3)
+        self.assertEqual(events.count('discard archives'), 2)
+        self.assertEqual(events.count('security first'), 1)
         self.assertEqual(events.count('canonical first'), 1)
-        self.assertEqual(events[-1], 'original priorities restored')
+        self.assertEqual(events[-1], 'canonical priorities restored')
 
-    def test_alternate_keeps_both_mirrors_and_restores_bytes_after_failure(self):
+    def test_fallback_signature_error_or_install_failure_never_reaches_next_mirror(self):
+        for fail_install in (False, True):
+            with self.subTest(fail_install=fail_install):
+                args, security, canonical, events = self.fixture()
+
+                def update(limit):
+                    events.append(('update', limit))
+                    if 'security first' not in events:
+                        raise AptDeadline('update', limit)
+                    if not fail_install:
+                        raise subprocess.CalledProcessError(100, 'apt-get')
+
+                # Even an AptDeadline from outside acquisition is not
+                # classified for a retry, since installation may have begun.
+                error = AptDeadline if fail_install else subprocess.CalledProcessError
+                with self.assertRaises(error), acquire(
+                        update, args[1], args[2], args[3], security, canonical):
+                    events.append('normal install')
+                    raise AptDeadline('install fixture', 1)
+                self.assertNotIn('canonical first', events)
+                self.assertEqual(events.count('discard archives'), 1)
+                self.assertEqual(events[-1], 'security priorities restored')
+
+    def test_alternates_keep_all_mirrors_and_restore_bytes_after_failure(self):
         with tempfile.TemporaryDirectory() as work:
             root = Path(work)
             path = root / 'mirrors.txt'
@@ -113,12 +165,16 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
 
             with patch('linux_webview_apt_mirrors.MIRRORS', path), patch(
                     'linux_webview_apt_mirrors.subprocess.run', side_effect=fake_cp):
-                with self.assertRaisesRegex(RuntimeError, 'failed install'), canonical_priority(root):
-                    self.assertEqual(path.read_bytes(), CANONICAL_FIRST)
-                    raise RuntimeError('failed install')
+                for priority, preset in [(security_priority, SECURITY_FIRST),
+                                         (canonical_priority, CANONICAL_FIRST)]:
+                    with self.assertRaisesRegex(RuntimeError, 'failed install'), priority(root):
+                        self.assertEqual(path.read_bytes(), preset)
+                        raise RuntimeError('failed install')
+                    self.assertEqual(path.read_bytes(), AZURE_FIRST)
             self.assertEqual(path.read_bytes(), AZURE_FIRST)
-        self.assertEqual([line.split(b'\t')[0] for line in AZURE_FIRST.splitlines()],
-                         [line.split(b'\t')[0] for line in CANONICAL_FIRST.splitlines()])
+        urls = [line.split(b'\t')[0] for line in AZURE_FIRST.splitlines()]
+        for preset in (CANONICAL_FIRST, SECURITY_FIRST):
+            self.assertEqual(urls, [line.split(b'\t')[0] for line in preset.splitlines()])
 
     def test_only_runner_ubuntu_signed_mirror_stanzas_are_eligible(self):
         self.assertTrue(is_signed_noble_source(SOURCE))

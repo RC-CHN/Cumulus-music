@@ -744,3 +744,15 @@ Windows 原生测试目标选择试验（手动）
   目录组未通过依赖安装，无法测量其实际界面耗时；不以本失败轮宣称完整 CI 已提速。
 - 43030226595 的 CI gate 在 31:54 报失败；最后通过的是 Windows library-local，
   +31:49 完成。所有 Windows 作业通过，七个 Linux APT 作业及一项独立时钟探针失败。
+
+连续超时后的第三条 Ubuntu 镜像路径
+- 43035683973 在同一 Ubuntu runner 镜像上，六个 Linux 构建前置都先后耗尽 Azure 与
+  Canonical 的更新期限。日志显示两条尝试逐套件等到超时，尚未轮到已有的 HTTPS
+  Security 镜像；实际应用与 WebView 检查未执行。
+- 保留原镜像配置的主路径；遇到下载或更新超时，先让已配置的 Security 镜像优先，
+  再以 Canonical 优先做最后一次尝试。不改域名集合、Noble suites、Ubuntu 签名密钥或
+  校验策略。每轮重新执行严格索引更新和归档校验，清空上轮临时归档，最终恢复原优先级。
+  签名或安装失败不重试，不因回退而跳过任何构建、测试或发布门槛。
+- 本机使用 Ubuntu 系统归档密钥验证了 Security HTTPS 提供的 noble、noble-updates、
+  noble-backports、noble-security 四份 InRelease，签名均为 Ubuntu Archive Automatic
+  Signing Key (2018)；这不代表相同网址在受影响的 GitHub runner 上已可达。
