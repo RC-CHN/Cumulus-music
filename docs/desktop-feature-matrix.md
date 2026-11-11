@@ -65,6 +65,14 @@ WebKitGTK 检查点及截图。私有 FileManager1 收到三次精确路径：�
 等长改写保留结束曲，均无目标在线授权。证据在
 `.build/ui-proof/phase305-natural-eof-download/`，Windows 结果待 CI。
 
+[单曲／歌词搜索内联译名](search-lyrics-ui-contracts.txt)的六个 Linux WebKitGTK
+状态确认歌名、歌手和专辑的译名位置、标记、准确详情跳转与返回焦点。合并后的
+前端另通过歌词组选曲九态和 X11 真实鼠标拖入原生播放队列十二态，见
+`.build/ui-proof/phase314-integrated/`。滚动条点击边界由宽窗和窄窗单独复验。
+[Windows 持有句柄的本地 WAV 音效](ordinary-native-local-equalizer-proof.txt)已接入
+现有播放与回退，GNU 交叉检查通过；实际 Windows WebView2、固定 NTFS 下替换
+同名路径后的定位及播完仍由对应源码的 Windows CI 验证。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。
