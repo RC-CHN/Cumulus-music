@@ -5,14 +5,18 @@ use super::{
         PurchasedOptions, PurchasedQuality, Receipt, explicit_continuation,
     },
 };
-use cumulus_core::client::{
-    ClientError, MusicClient,
-    dto::{
-        CurrentSongDownloadCommand as NativeCommand, CurrentSongDownloadReply,
-        CurrentSongDownloadTarget, PlaylistCollectSort,
+use cumulus_core::{
+    Error,
+    client::{
+        ClientError, MusicClient,
+        dto::{
+            CurrentSongDownloadCommand as NativeCommand, CurrentSongDownloadReply,
+            CurrentSongDownloadTarget, PlaylistCollectSort,
+        },
     },
 };
 use serde::Deserialize;
+use tauri::Manager;
 
 #[derive(Deserialize)]
 #[serde(
@@ -142,6 +146,27 @@ pub(crate) async fn player_current_song_download<R: tauri::Runtime>(
         .player_current_song_download(&epoch, &target, command.into())
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub(crate) async fn open_current_song_purchased_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    epoch: String,
+    target: CurrentSongDownloadTarget,
+    offer: Receipt,
+) -> Result<(), ClientError> {
+    require_main(&window)?;
+    let app = window.app_handle().clone();
+    let offer = String::from(offer);
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = app
+            .state::<MusicClient>()
+            .current_song_purchased_quality_guide(&epoch, &target, &offer)?;
+        crate::browser::launch(url)
+    })
+    .await
+    .map_err(|_| ClientError::from(Error::State("browser worker stopped")))?
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

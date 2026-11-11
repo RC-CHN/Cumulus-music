@@ -529,6 +529,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_chorus,
                 player::player_comment_count,
                 player::current_song_download::player_current_song_download,
+                player::current_song_download::open_current_song_purchased_quality_guide,
                 player::song_share::player_song_share_prepare,
                 player::song_share::player_song_share_choose,
                 player::song_share::player_song_share_cancel,
