@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 
 from motion_smoke import launch
 
@@ -33,6 +34,7 @@ def main():
         'control': [['assignment', 2]],
     }
     receipts = {}
+    dismissed = []
     for mode, count in counts.items():
         state = root / ('assigned' if mode == 'reopen' else mode)
         state.mkdir(exist_ok=True)
@@ -49,14 +51,27 @@ def main():
             directory.mkdir(parents=True, mode=0o700, exist_ok=True)
             env[variable] = str(directory)
         output = state / ('reopen' if mode == 'reopen' else 'first')
-        with (root / f'{mode}.log').open('x', encoding='utf-8') as log:
-            status = launch(args.binary.resolve(strict=True), env, log, output, args.screenshots)
+        log_path = root / f'{mode}.log'
+        try:
+            with log_path.open('x', encoding='utf-8') as log:
+                status = launch(args.binary.resolve(strict=True), env, log, output,
+                                args.screenshots, acknowledge_receipts=True)
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            stages = sorted(path.name for path in output.glob('*.json'))
+            tail = log_path.read_text(encoding='utf-8', errors='replace')[-2048:]
+            raise AssertionError(f'welfare mode {mode} did not exit; stages: {stages}; log: {tail}') from exc
         failed = output / 'failed.json'
         assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
         assert status == 0, (mode, status)
         receipt = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert receipt['ok'] and receipt['mode'] == mode
         assert receipt['realMusicRequests'] == receipt['remoteAccountWrites'] == 0
+        assert receipt['accountDialogDismissed'] == (mode in ('guest', 'control')), receipt
+        if receipt['accountDialogDismissed']:
+            dismissed.append(mode)
+        player = receipt['nativePlayer']
+        assert player['state'] == 'idle' and player['queueLen'] == 0, receipt
+        assert player['playId'] is None and player['track'] is None, receipt
         assert receipt['memberWelfareFixture'] == {
             'trace': traces[mode], 'oldReplyReturned': mode == 'assigned',
         }, receipt
@@ -65,6 +80,8 @@ def main():
         receipts[mode] = receipt['memberWelfareFixture']
     report = {'ok': True, 'actualWebView': True, 'states': sum(counts.values()),
               'screenshots': sum(counts.values()) if args.screenshots else 0,
+              'normalExitModes': list(receipts), 'accountDialogsDismissed': dismissed,
+              'nativePlayerRemainedIdle': True,
               'realMusicRequests': 0, 'remoteAccountWrites': 0, 'synthetic': receipts}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

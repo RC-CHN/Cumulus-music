@@ -126,6 +126,15 @@ Cumulus：账号菜单到福利清单的只读范围
   scripts/ci/member_welfare_smoke.py（ux_ui_probe + custom-protocol）。
   同一原生宿主另通过 10 个既有侧栏实验菜单回归检查
   `.build/member-welfare-sidebar-regression/report.json`。
+- GitHub Windows catalog-discovery 运行 43035683973、作业 130579574746
+  的诊断 13863953542 显示待遇组、重开和访客已记录成功，访客的进程没有退出，
+  对照组未开始。探针现在等待界面回执后再关闭登录或切换账号窗口，核对卸载和焦点
+  回昵称；只有实测播放器空闲、队列为空且没有当前曲目时，探针才直接请求正常退出。
+  仍需由进程退出码及全部四组的结果共同通过；本次日志没有定位到旧进程退出卡在
+  播放器 Stop 还是窗口清理，新探针会记录退出阶段以便复查。
+  更新后的原生宿主在本机 Linux WebKitGTK 通过 8 态，四组正常退出、访客和对照
+  弹窗均关闭并恢复焦点、播放器一直空闲。报告：
+  `.build/ui-proof/welfare-exit-lifecycle-verified/report.json`。Windows 仍待 CI 验证。
 - 未来只有恢复可证明的同版本安全目标，才独立实现用户明确确认后的原生浏览器交接；
   测试必须覆盖任意域、协议、凭据和重定向拒绝，不能用允许任意福利 URL 的办法承接。
 - WPS 单独保留边界：Windows 的真实只读注册表投影技术上可实现且可用临时

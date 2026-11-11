@@ -10,6 +10,7 @@
   const dialog = () => one('.member-welfare-dialog[open]:not([inert])');
   const current = () => one('dialog.account-dialog[open]:not([inert])');
   const login = () => one('dialog.login-dialog[open]:not([inert])');
+  let accountDialogDismissed = false;
   const assert = (condition, reason) => { if (!condition) throw Error(reason); };
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const wait = async (predicate, reason) => {
@@ -74,10 +75,17 @@
     if (mode === 'guest' || mode === 'control') {
       if (mode === 'control') await wait(async () => (await trace()).length === 1, 'non-treatment experiment read');
       assert(!account().hasAttribute('aria-haspopup'), 'guest/control use their existing account action');
+      const accountDialog = mode === 'guest' ? login : current;
       click(account());
-      await wait(mode === 'guest' ? login : current, 'existing login or switch-account action');
+      const opened = await wait(accountDialog, 'existing login or switch-account action');
       assert(!menu() && !entry() && !dialog(), 'no welfare exposure');
       await snap(mode);
+      // Keep the open-dialog sample, then release the modal and its login
+      // flow before asking the native host to shut down.
+      opened.dispatchEvent(new Event('cancel', { cancelable: true }));
+      await wait(() => !opened.isConnected && document.activeElement === account(),
+        'dismissal removes the dialog and returns focus to the account button');
+      accountDialogDismissed = true;
     } else {
       await wait(() => account()?.getAttribute('aria-haspopup') === 'menu', 'unique treatment assignment');
       assert((await trace()).length === 1 && !menu() && !dialog(), 'no welfare list prefetch before menu open');
@@ -123,7 +131,8 @@
         await wait(() => !dialog() && document.activeElement === account(), 'close button returns current focus');
       }
     }
-    await send('complete', { ok: true, realMusicRequests: 0, remoteAccountWrites: 0 });
+    await send('complete', { ok: true, realMusicRequests: 0, remoteAccountWrites: 0,
+      accountDialogDismissed });
   } catch (error) {
     await send('failed', { ok: false, error: String(error), stack: String(error.stack) });
   }

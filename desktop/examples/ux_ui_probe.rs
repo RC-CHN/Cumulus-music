@@ -2225,9 +2225,25 @@ fn main() {
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {
                         if stage=="complete" { queue_more_fixture::phase_milestone("complete_written"); }
+                        let welfare = member_welfare_fixture::enabled();
+                        if welfare && stage == "complete"
+                            && value["nativePlayer"]["state"] == "idle"
+                            && value["nativePlayer"]["queueLen"] == 0
+                            && value["nativePlayer"]["playId"].is_null()
+                            && value["nativePlayer"]["track"].is_null()
+                        {
+                            // This account-only proof starts no media. Do not
+                            // enqueue an unrelated Stop on its idle audio actor
+                            // between the terminal receipt and the normal exit.
+                            eprintln!("welfare proof: terminal receipt saved; requesting exit with idle player");
+                            handle.exit(0);
+                            return;
+                        }
                         queue_more_fixture::phase_milestone("shutdown_stop_enter");
+                        if welfare { eprintln!("welfare proof: stopping player before {stage} exit"); }
                         let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
                         queue_more_fixture::phase_milestone("shutdown_stop_returned");
+                        if welfare { eprintln!("welfare proof: requesting {stage} exit"); }
                         handle.exit(if stage=="complete" {0} else {1});
                     }
                 });
