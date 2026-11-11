@@ -85,16 +85,37 @@
     }, 'sealed account');
     epoch = account.epoch;
     click(await wait(localNav, 'local navigation'));
-    const indexed = await wait(async () => {
+    async function indexedFixture() {
       const page = await invoke('local_page', { query: { keyword: '', sort: 'title', descending: true,
         group: 'list', groupKey: null, includeMissing: true, offset: 0, limit: 200, revision: null } });
       return page.roots.length === 1 && page.roots[0].status === 'ready' && page.tracks[0];
-    }, 'indexed local fixture');
+    }
+    const indexed = await wait(indexedFixture, 'indexed local fixture');
     localId = indexed.track.id;
-    const page = (await invoke('playlist_page', { id: '11', page: { offset: 0, limit: 1 } })).value;
-    const seeded = await invoke('mutate_playlist_local', { epoch, id: '11', revision: page.playlistLocal.revision,
-      change: { op: 'add', rows: [{ id: localId, revision: indexed.revision }] } });
-    assert(seeded.value.changed, 'one known device member');
+    await wait(() => one('.local-tracks tbody tr[data-local-id]')?.dataset.localId === localId,
+      'local page shows the exact native fixture');
+    step = 'seed exact local member';
+    await wait(async () => {
+      const current = await indexedFixture();
+      if (!current) return false;
+      assert(current.track.id === localId && current.revision === indexed.revision,
+        'the fixture is still the same indexed file');
+      const page = (await invoke('playlist_page', { id: '11', page: { offset: 0, limit: 1 } })).value;
+      assert(page.playlist.owned && !page.playlist.favorite && !page.playlistLocal.hasMembers,
+        'fixture starts without a local member');
+      try {
+        const seeded = await invoke('mutate_playlist_local', { epoch, id: '11', revision: page.playlistLocal.revision,
+          change: { op: 'add', rows: [{ id: localId, revision: indexed.revision }] } });
+        assert(seeded.epoch === epoch && seeded.value.changed, 'one known device member seeded once');
+        return true;
+      } catch (error) {
+        // Only the native pre-commit lock rejection is retryable here. The
+        // monitor may start another scan after we observed the root as ready.
+        if (error?.code === 'busy') return false;
+        throw error;
+      }
+    }, 'local index lock is available for the fixture');
+    step = 'paused mixed playback baseline';
     const group = await wait(createdGroup, 'created sidebar');
     if (group.getAttribute('aria-expanded') === 'false') click(group);
     group.closest('header').scrollIntoView({ block: 'start', behavior: 'instant' });

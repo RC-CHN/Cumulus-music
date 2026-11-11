@@ -27,7 +27,11 @@
   async function openClear(together){click(button('清空',panel()));await wait(()=>modal(),'confirmation');assert(!!one('.queue-clear-together')===together,'captured room warning');assert(document.activeElement===button('取消',modal()),'cancel receives initial focus');}
   async function cancel(){click(button('取消',modal()));await wait(()=>!one('.queue-clear-dialog'),'cancel finished');assert(document.activeElement===(button('清空',panel()).disabled?button('关闭播放队列',panel()):button('清空',panel())),'cancel return focus');}
   async function create(peer=false){
-    click(button('创建房间'));await wait(async()=>{const v=await room();return v.attached&&v.targetId&&!v.pending.length&&v.connection.state==='connected';},'room attached');
+    const createControl=()=>one('.together-page')&&button('创建房间',one('.together-page'));
+    // A cached empty room can render while the route refresh still owns the
+    // mutation gate. Use the real enabled control after that refresh finishes.
+    await wait(()=>{const n=createControl();return n&&!n.disabled&&!n.closest('[inert],.page-leave-active');},'room create available after refresh');
+    click(createControl());await wait(async()=>{const v=await room();return v.attached&&v.targetId&&!v.pending.length&&v.connection.state==='connected';},'room attached');
     if(peer){await fixture('peer');await wait(async()=>{const v=await room();return v.sharedPhase==='applied'&&v.room.members.length===2;},'synthetic peer joined');}
     await wait(async()=>{const q=await client.playerQueue(epoch);return !q.clearContext.issue;},'clear policy ready');
   }
