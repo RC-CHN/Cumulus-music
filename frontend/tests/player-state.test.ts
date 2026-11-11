@@ -2246,7 +2246,20 @@ test('typed copyright skip notices expire separately and cannot replay across a 
     t.mock.timers.tick(1);
     assert.deepEqual(f.player.ordinarySkipNotices.value, [id2]);
 
+    f.player.hoverSkipNotice(id2, true);
+    original(event(id2, '1', 3000));
+    t.mock.timers.tick(3100);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id2], 'hover suspends only this timer');
+    f.player.hoverSkipNotice(id2, false);
+    t.mock.timers.tick(2999);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id2]);
+    t.mock.timers.tick(1);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, []);
+
+    original(event(id2, '1', 3000));
+    f.player.hoverSkipNotice(id2, true);
     await f.player.connect(account('2'));
+    f.player.hoverSkipNotice(id2, false);
     original(event(id3, '2', 3000));
     assert.deepEqual(f.player.ordinarySkipNotices.value, []);
     receivers[1]!(event(id3, '2', 200));

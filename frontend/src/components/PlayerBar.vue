@@ -36,6 +36,7 @@ import {
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadState';
 import { useQueueMoreTip } from '../composables/useQueueMoreTip';
+import PlaybackSkipToast from './PlaybackSkipToast.vue';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
@@ -1003,17 +1004,11 @@ watch(
         "
       />
     </div>
+    <PlaybackSkipToast
+      :notices="player.ordinarySkipNotices.value"
+      @hover="player.hoverSkipNotice"
+    />
     <div class="player-feedback-stack">
-      <TransitionGroup name="playback-feedback">
-        <div
-          v-for="id in player.ordinarySkipNotices.value"
-          :key="id"
-          class="playback-message ordinary-skip-notice"
-          role="status"
-        >
-          <span>已为您自动跳过不能播放的歌曲</span>
-        </div>
-      </TransitionGroup>
       <Transition name="playback-feedback">
         <div v-if="downloadNotice" class="playback-message player-download-notice" role="status">
           <span>{{ downloadNotice }}</span>

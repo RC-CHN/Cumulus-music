@@ -1,6 +1,6 @@
 // Passive WebView witness only. Never emits a player notice or changes CSS/IPC.
 window.__observeOrdinarySkipNotice = () => {
-  const selector = '.playerbar .ordinary-skip-notice';
+  const selector = '.ordinary-skip-layer .ordinary-skip-notice';
   const expectedText = '已为您自动跳过不能播放的歌曲';
   const records = new Map();
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -72,6 +72,10 @@ window.__observeOrdinarySkipNotice = () => {
     const pad = Number.parseFloat(style.paddingLeft);
     const x = box.left + Math.min(4, pad / 2), y = box.top + box.height / 2;
     const rgb = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(style.backgroundColor);
+    assert(Math.abs(box.left + box.width / 2 - innerWidth / 2) <= 1 &&
+      Math.abs(y - innerHeight / 2) <= 1 && Math.abs(box.height - 44) <= 1 &&
+      pad === 20 && style.fontSize === '14px' && style.color === 'rgb(255, 255, 255)' &&
+      style.backgroundColor === 'rgb(45, 45, 56)', 'centered official toast geometry and palette');
     assert(pad >= 4 && document.elementFromPoint(x, y) === node && rgb &&
       style.backgroundImage === 'none', 'notice has an uncovered solid compositor sample');
     return {

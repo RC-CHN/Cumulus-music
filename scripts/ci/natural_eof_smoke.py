@@ -190,7 +190,7 @@ def check(directory, case, capture, windows):
     for name, stage in zip(names, stages, strict=True):
         sources = ['.sidebar-caption', '.playerbar']
         if skip and name == 'ux_02_after':
-            sources.append('.playerbar .ordinary-skip-notice')
+            sources.append('.ordinary-skip-layer .ordinary-skip-notice')
         assert [sample['source'] for sample in stage['paintSamples']] == sources, stage
         if capture:
             paint = read(directory / ('paint-' + name + '.json'))

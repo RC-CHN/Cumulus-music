@@ -85,7 +85,7 @@ def check(directory, group, capture):
     assert screenshots == (2 if capture else 0)
     if group == 't1':
         assert [sample['source'] for sample in after['paintSamples']] == [
-            '.playerbar .ordinary-skip-notice',
+            '.ordinary-skip-layer .ordinary-skip-notice',
         ], after
         if capture:
             paint = read(directory / 'paint-ux_02_after.json')

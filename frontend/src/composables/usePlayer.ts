@@ -68,11 +68,23 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     searchQueueAdded.value = false;
   }
   const ordinarySkipNotices = shallowRef<string[]>([]);
-  const skipNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const skipNoticeTimers = new Map<string, ReturnType<typeof setTimeout> | undefined>();
+  function removeSkipNotice(id: string) {
+    clearTimeout(skipNoticeTimers.get(id));
+    skipNoticeTimers.delete(id);
+    ordinarySkipNotices.value = ordinarySkipNotices.value.filter((old) => old !== id);
+  }
   function clearSkipNotices() {
     for (const timer of skipNoticeTimers.values()) clearTimeout(timer);
     skipNoticeTimers.clear();
     ordinarySkipNotices.value = [];
+  }
+  function hoverSkipNotice(id: string, entered: boolean) {
+    if (!skipNoticeTimers.has(id)) return;
+    const timer = skipNoticeTimers.get(id);
+    if (entered === (timer === undefined)) return;
+    clearTimeout(timer);
+    skipNoticeTimers.set(id, entered ? undefined : setTimeout(() => removeSkipNotice(id), 3000));
   }
   function showSkipNotice(event: Extract<PlayerUpdate, { kind: 'ordinary_copyright_skip' }>) {
     const { id, remainingMs } = event;
@@ -85,16 +97,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       skipNoticeTimers.has(id)
     )
       return;
-    function remove(key: string) {
-      clearTimeout(skipNoticeTimers.get(key));
-      skipNoticeTimers.delete(key);
-      ordinarySkipNotices.value = ordinarySkipNotices.value.filter((old) => old !== key);
-    }
-    if (ordinarySkipNotices.value.length >= 16) remove(ordinarySkipNotices.value[0]!);
+    if (ordinarySkipNotices.value.length >= 16) removeSkipNotice(ordinarySkipNotices.value[0]!);
     ordinarySkipNotices.value = [...ordinarySkipNotices.value, id];
     skipNoticeTimers.set(
       id,
-      setTimeout(() => remove(id), remainingMs),
+      setTimeout(() => removeSkipNotice(id), remainingMs),
     );
   }
   const error = computed(() => reported.value?.message ?? '');
@@ -1494,6 +1501,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueCurrent,
     error,
     ordinarySkipNotices,
+    hoverSkipNotice,
     searchQueueAdded,
     errorCode,
     canRetry,

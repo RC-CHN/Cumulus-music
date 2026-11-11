@@ -68,8 +68,12 @@ Cumulus 仅在原有可信 M119 / 已签名 t1 判定和原生队列 CAS 都接�
 晚到的失败仍走正常音频错误，不改提示成错误或权限成功。
 原生发送固定种类、随机单次 ID、账号代数及 3 秒内剩余时长，走已有主窗口
 watch_player Channel；无历史重放、网络请求、原始资源或文案输入。其他窗口无此
-Channel 分支。当前 UI 用已存在的底栏提示容器呈现原文，随到期或换账号/连接清除，
-保留动效设置；不称像素位置与官方一致。
+Channel 分支。M/308 的调用交给 M/3:67–68 的全局通知，M/3:13146–13159
+默认把容器放在 body。原包 CSS c312fd27b392865ceeed.css 中，通知在视口正中，
+44px 高、深底白字、20px 水平内边距，入场 300ms、退场 200ms，平移和淡入淡出。
+Cumulus 用同样的布局和动效，继续使用非打断的 status 通知，并尊重减少动态效果。
+首次显示只接受原生回执剩余时间；按 M/3:12984–12997、13068–13076，悬停时
+暂停本地倒计时，移开重新计 3 秒。账号或连接更换时立即撤销，悬停也不能保留旧提示。
 
 M/308:5807–5809 → M/148:88–90 → M/4:16185–16205 的
 audioplayer.onFetchPreloadInfo 另走 M/163:670–755；相邻行可能在 EOF 之前已经被
@@ -109,3 +113,8 @@ audioplayer.onFetchPreloadInfo 另走 M/163:670–755；相邻行可能在 EOF �
 - 证据 .build/ui-proof/phase68-natural-eof-r3/report.json 与
   .build/ui-proof/phase68-minibar-notice-r2/report.json。真实 libmpv null，合成权限与文件，
   无真实账号操作。独立迷你窗、专有替代弹窗及真实服务分组另验。
+- 居中样式在 Linux WebKitGTK/libmpv null 实窗重放：自然结束和手动下一首各
+  显示一次，节点分别在 3236／3247 ms 后卸载；对照组没有提示。窗口坐标、44 px
+  高度、20 px 内边距、颜色和画面取样均通过。截图与回执位于
+  .build/ui-proof/phase277-centered-skip-toast/；悬停、离开计时和切换账号由
+  frontend/tests/player-state.test.ts 的可控时钟验证，Windows 实窗另验。
