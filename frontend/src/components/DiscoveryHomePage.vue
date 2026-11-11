@@ -20,6 +20,7 @@ const emit = defineEmits<{
   playPlaylist: [id: string];
   privacy: [];
   rankings: [];
+  playlistSquare: [];
   openRank: [card: RankingCard];
 }>();
 const root = ref<HTMLElement>();
@@ -155,7 +156,7 @@ onBeforeUnmount(() => observer?.disconnect());
           <div class="discovery-home-block-heading">
             <h2>
               <button
-                class="discovery-home-rank-title"
+                class="discovery-home-section-link"
                 type="button"
                 data-home-card="rankings:home"
                 @click="emit('rankings')"
@@ -182,7 +183,19 @@ onBeforeUnmount(() => observer?.disconnect());
           :aria-label="section.title"
         >
           <div class="discovery-home-block-heading">
-            <h2>{{ section.title }}</h2>
+            <h2>
+              <button
+                v-if="section.kind === 'playlists' || section.kind === 'radar'"
+                class="discovery-home-section-link"
+                type="button"
+                :data-home-card="section.kind + ':square'"
+                @focus="viewport.focus = section.kind + ':square'"
+                @click="emit('playlistSquare')"
+              >
+                {{ section.title }} <Icon name="back" />
+              </button>
+              <template v-else>{{ section.title }}</template>
+            </h2>
             <div
               v-if="railBounds.get(section.kind)?.previous || railBounds.get(section.kind)?.next"
             >

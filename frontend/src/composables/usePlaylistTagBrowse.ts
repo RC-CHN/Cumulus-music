@@ -20,6 +20,7 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
   const category = ref('');
   let epoch = '',
     generation = 0;
+  let lastChoiceTag = '';
   const saved = new Map<string, TagSnapshot>();
   const items = computed(() => data.value?.items ?? null);
   const essential = computed(() => data.value?.essential);
@@ -90,6 +91,7 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
     if (epoch !== owner) {
       epoch = owner;
       saved.clear();
+      lastChoiceTag = '';
     }
     category.value = next ?? '';
     data.value = next ? saved.get(next) : undefined;
@@ -107,6 +109,12 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
     category,
     enter,
     load,
+    rememberChoiceTag(owner: string, tag: string) {
+      if (owner && epoch === owner) lastChoiceTag = tag;
+    },
+    bareChoiceTag(owner: string) {
+      return owner && epoch === owner && saved.has(lastChoiceTag) ? lastChoiceTag : '推荐';
+    },
     saveScroll(tag: string, scroll: number) {
       if (tag === category.value && data.value) data.value.scroll = scroll;
     },

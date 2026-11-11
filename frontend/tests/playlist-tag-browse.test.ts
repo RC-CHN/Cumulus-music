@@ -56,3 +56,28 @@ test('an old tag read cannot publish into a different account or tag', async () 
   await read;
   assert.deepEqual(model.items.value, []);
 });
+
+test('a bare square link retains only a confirmed same-account choice category', async () => {
+  const model = usePlaylistTagBrowse({
+    playlistTagPage: async (epoch, query) => {
+      if (query.kind === 'category' && query.tag === '失败') throw Error('not loaded');
+      return { epoch, value: { items: [], remainingIds: [] } };
+    },
+  });
+  model.enter('one', null);
+  assert.equal(model.bareChoiceTag('one'), '推荐');
+  model.rememberChoiceTag('one', '官方');
+  assert.equal(model.bareChoiceTag('one'), '推荐');
+  await model.enter('one', '官方');
+  model.enter('one', null);
+  await model.enter('one', '轻音乐');
+  assert.equal(model.bareChoiceTag('one'), '官方', 'non-choice tag read does not replace it');
+  model.rememberChoiceTag('one', '失败');
+  await model.enter('one', '失败');
+  assert.equal(model.bareChoiceTag('one'), '推荐');
+  model.rememberChoiceTag('one', '官方');
+  assert.equal(model.bareChoiceTag('other'), '推荐');
+  model.enter('other', null);
+  await model.enter('other', '官方');
+  assert.equal(model.bareChoiceTag('other'), '推荐', 'switching accounts also forgets the choice');
+});

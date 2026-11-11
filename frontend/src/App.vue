@@ -1487,6 +1487,10 @@ function openDiscoveryHomeRanking(card: RankingCard) {
         : { kind: 'song_sales' },
     );
 }
+function openDiscoveryHomePlaylistSquare() {
+  if (music.page.value.kind !== 'discovery_home' || !music.signedIn.value) return;
+  openChoicePlaylistSquare();
+}
 function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSection) {
   if (music.page.value.kind !== 'discovery_home' || !music.signedIn.value) return;
   const target = card.target;
@@ -4940,6 +4944,25 @@ function openRelationCard(card: ProfileRelationCard) {
   else music.navigate({ kind: 'playlist_creator', id: card.id });
 }
 const playlistTagBrowse = usePlaylistTagBrowse(core);
+function openChoicePlaylistSquare() {
+  music.navigate({
+    kind: 'playlist_tag',
+    tag: playlistTagBrowse.bareChoiceTag(music.account.value.epoch),
+    choice: true,
+  });
+}
+function navigateChoiceTab(target: Page) {
+  if (target.kind === 'playlist_tag') openChoicePlaylistSquare();
+  else music.navigate(target);
+}
+function choosePlaylistCategory(tag: string) {
+  const route = music.page.value;
+  if (route.kind !== 'playlist_tag') return;
+  const next = { kind: 'playlist_tag', tag, choice: route.choice } as const;
+  if (!route.choice) return music.navigate(next);
+  // Official PagePlaylistSquare dispatches setSelectedTag within the route.
+  music.replace(next);
+}
 const playlistTopTags = usePlaylistTopTags(
   core,
   () => account.value,
@@ -4989,12 +5012,14 @@ watch(
     () => account.value.epoch,
     () => account.value.status,
     () => (page.value.kind === 'playlist_tag' ? page.value.tag : null),
+    () => page.value.kind === 'playlist_tag' && page.value.choice === true,
   ],
-  ([epoch, status, tag]) => {
+  ([epoch, status, tag, choice]) => {
     void playlistTagBrowse.enter(
       status === 'authenticated' ? epoch : '',
       tag === '推荐' ? null : tag,
     );
+    if (choice && tag && status === 'authenticated') playlistTagBrowse.rememberChoiceTag(epoch, tag);
   },
   { immediate: true, flush: 'sync' },
 );
@@ -7213,7 +7238,7 @@ onUnmounted(() => {
                 v-if="!initializing && (page.kind === 'ordinary_essential' || page.choice)"
                 :page="page"
                 :zones="verticalZone.menu.value"
-                @navigate="music.navigate"
+                @navigate="navigateChoiceTab"
               />
               <LocalPage
                 ref="localPageRef"
@@ -7399,6 +7424,7 @@ onUnmounted(() => {
                 :current-playlist-id="currentPlaylistId"
                 :playback-state="playbackState"
                 @rankings="openRanking({ kind: 'home' })"
+                @playlist-square="openDiscoveryHomePlaylistSquare"
                 @open-rank="openDiscoveryHomeRanking"
                 @open="openDiscoveryHomeCard"
                 @play-playlist="playRankingPlaylist"
@@ -7888,9 +7914,7 @@ onUnmounted(() => {
                 :current="currentOrigin?.kind === 'playlist' ? currentOrigin.id : undefined"
                 :playing="player.playing.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
-                @category="
-                  (tag) => music.navigate({ kind: 'playlist_tag', tag, choice: page.choice })
-                "
+                @category="choosePlaylistCategory"
                 @essential="(tag) => music.navigate({ kind: 'playlist_essential', tag })"
                 @play="playRankingPlaylist"
                 @settings="openPodcastPrivacy"

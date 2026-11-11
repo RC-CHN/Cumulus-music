@@ -25,14 +25,14 @@
   margin: 0;
   font-size: 18px;
 }
-.discovery-home-rank-title {
+.discovery-home-section-link {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font: inherit;
   padding: 0;
 }
-.discovery-home-rank-title .icon {
+.discovery-home-section-link .icon {
   width: 16px;
   height: 16px;
   transform: rotate(180deg);
