@@ -2312,6 +2312,23 @@ impl Api for MusicHttpClient {
         })
     }
 
+    fn player_song_download_picker_credential_revision(&self) -> Result<Option<String>> {
+        let Some(revision) = self.player_song_purchase_credential_revision()? else {
+            return Ok(None);
+        };
+        self.require_playlist_write_target(
+            GuardedPlaylistAdd::PATH,
+            &revision,
+            [
+                PLAYER_SONG_PURCHASE_DETAIL_PATH,
+                "/api/user/playlist/v2",
+                "/api/v6/playlist/detail",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
     fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
         let revision = self
             .song_card_download_scope_revision()?

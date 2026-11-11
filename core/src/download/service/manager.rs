@@ -48,6 +48,11 @@ pub(crate) trait ScopedTaskLease {
     /// Called inside the task insert transaction, with the source held until
     /// commit. Read only through this transaction, never the store itself.
     fn verify(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()>;
+
+    /// Last source fence after staging the SQLite row, before commit.
+    fn before_commit(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -413,6 +418,20 @@ impl DownloadService {
         cancelled: &AtomicBool,
         committed: impl FnOnce(),
     ) -> Result<DownloadTask> {
+        self.create_guarded_song_with_scope(
+            song_id, options, permission, cancelled, None, committed,
+        )
+    }
+
+    pub(crate) fn create_guarded_song_with_scope(
+        &self,
+        song_id: &Value,
+        options: DownloadOptions,
+        permission: &dyn Fn() -> Result<()>,
+        cancelled: &AtomicBool,
+        scope: Option<&dyn ScopedTaskAdmission>,
+        committed: impl FnOnce(),
+    ) -> Result<DownloadTask> {
         let _directory = directory_gate::lock(&self.store, &self.owner)?;
         let task = self.create_configured(
             song_id,
@@ -423,7 +442,7 @@ impl DownloadService {
                 permission: Some(permission),
                 catalog_unique: true,
                 cancelled: Some(cancelled),
-                ..Default::default()
+                scope,
             },
         )?;
         committed();
@@ -582,6 +601,9 @@ impl DownloadService {
                 }
                 task.dispatch = Some(Dispatch::new(Dispatch::reserve(tx, owner)?, 0));
                 tx.put(owner, KIND, &task.id, &serde_json::to_value(&*task)?)?;
+                if let Some(lease) = &lease {
+                    lease.before_commit()?;
+                }
                 fence.check_cancelled()
             })
         })?;

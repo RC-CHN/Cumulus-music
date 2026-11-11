@@ -866,6 +866,12 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Current playback's native purchase, picker list, and playlist write
+    /// must agree on one authenticated credential revision.
+    fn player_song_download_picker_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }

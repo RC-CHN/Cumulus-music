@@ -364,6 +364,27 @@ impl PlaylistService {
         .await
     }
 
+    /// Current-song download: only the verified creation journal supplies a
+    /// writable destination, under the same lock as its detail and add.
+    pub(crate) async fn guarded_add_created_song(
+        &self,
+        token: &SessionToken,
+        creation: &str,
+        song: &str,
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::Created(creation),
+            &[song.into()],
+            operation_id,
+            permission,
+            |api| api.song_card_playlist_scope_revision(),
+        )
+        .await
+    }
+
     pub(crate) async fn guarded_collect_songs(
         &self,
         token: &SessionToken,

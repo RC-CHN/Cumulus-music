@@ -5,9 +5,9 @@ use cumulus_core::{client::CurrentSongPurchase, storage::StateStore};
 
 #[derive(Default)]
 pub(super) struct Server {
-    revision: AtomicU64,
-    mode: AtomicU64,
-    observed: Mutex<Vec<Vec<String>>>,
+    pub(super) revision: AtomicU64,
+    pub(super) mode: AtomicU64,
+    pub(super) observed: Mutex<Vec<Vec<String>>>,
 }
 
 impl Server {
@@ -29,8 +29,8 @@ impl Server {
                 json!({
                     "id": id,
                     "st": if mode == 6 { -200 } else { 0 },
-                    "fee": 4,
-                    "payed": if mode == 1 { 1 } else { 2 },
+                    "fee": if mode == 9 { 0 } else { 4 },
+                    "payed": match mode { 1 => 1, 9 => 0, _ => 2 },
                     "dl": 128000,
                     "maxbr": 999000,
                     "flag": 1 << 12,

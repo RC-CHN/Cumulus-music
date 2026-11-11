@@ -23,11 +23,17 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+#[derive(Clone, Copy)]
+pub(super) enum Rights {
+    Ordinary,
+    Purchased(Offer),
+}
+
 pub(super) struct Candidate {
     api: Arc<dyn Api>,
     revision: String,
     id: String,
-    offer: Offer,
+    rights: Rights,
     picker_collectable: bool,
 }
 
@@ -92,8 +98,23 @@ impl Candidate {
         {
             return None;
         }
+        let rights = if let Some(offer) = Offer::from_privilege(privilege) {
+            Rights::Purchased(offer)
+        } else if privilege["payed"].as_u64() == Some(0)
+            && privilege["fee"].as_i64() == Some(0)
+            && privilege["st"].as_i64().is_some_and(|status| status >= 0)
+            && privilege["dl"].as_u64().is_some_and(|level| level > 0)
+            && !js_truthy(&privilege["bd"])
+            && ["payed", "fee"].into_iter().all(|key| {
+                song["privilege"][key].is_null() || song["privilege"][key].as_u64() == Some(0)
+            })
+        {
+            Rights::Ordinary
+        } else {
+            return None;
+        };
         Some(Self {
-            offer: Offer::from_privilege(privilege)?,
+            rights,
             picker_collectable: download_picker_collectable(
                 &json!({"id": id, "privilege": privilege}),
             ),
@@ -105,19 +126,19 @@ impl Candidate {
 }
 
 #[derive(Clone)]
-struct Observation {
-    account: SessionToken,
-    api: Weak<dyn Api>,
-    revision: String,
-    selection: u64,
-    play_id: String,
-    entry_id: String,
-    song_id: String,
-    offer: Offer,
-    picker_collectable: bool,
+pub(super) struct Observation {
+    pub(super) account: SessionToken,
+    pub(super) api: Weak<dyn Api>,
+    pub(super) revision: String,
+    pub(super) selection: u64,
+    pub(super) play_id: String,
+    pub(super) entry_id: String,
+    pub(super) song_id: String,
+    pub(super) rights: Rights,
+    pub(super) picker_collectable: bool,
 }
 
-fn ordinary_entry<'a>(
+pub(super) fn ordinary_entry<'a>(
     state: &'a PlaybackSnapshot,
     account: &SessionToken,
     id: &str,
@@ -167,13 +188,13 @@ impl Host {
                 play_id: play_id.clone(),
                 entry_id: entry_id.into(),
                 song_id: candidate.id,
-                offer: candidate.offer,
+                rights: candidate.rights,
                 picker_collectable: candidate.picker_collectable,
             });
         }
     }
 
-    fn current(
+    pub(super) fn current(
         &self,
         account: &SessionToken,
         selection: u64,
@@ -194,7 +215,7 @@ impl Host {
             .cloned())
     }
 
-    fn retire(&self, record: &Observation) {
+    pub(super) fn retire(&self, record: &Observation) {
         if let Ok(mut slot) = self.0.lock()
             && slot.as_ref().is_some_and(|current| {
                 current.account == record.account
@@ -248,6 +269,9 @@ impl MusicClient {
         else {
             return Ok(None);
         };
+        let Rights::Purchased(offer) = record.rights else {
+            return Ok(None);
+        };
         let eligible = |state: &PlaybackSnapshot| {
             matches!(
                 state.state,
@@ -283,7 +307,7 @@ impl MusicClient {
             if !eligible(&state) {
                 return Ok(None);
             }
-            let qualities = record.offer.qualities(vivid_available(groups.as_ref()));
+            let qualities = offer.qualities(vivid_available(groups.as_ref()));
             if qualities.is_empty() {
                 Ok(None)
             } else {

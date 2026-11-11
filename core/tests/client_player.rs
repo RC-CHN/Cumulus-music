@@ -72,6 +72,7 @@ struct Backend {
     vinyl_comment_release: Notify,
     player_song_share: player_song_share::Server,
     player_song_purchase: player_song_purchase::Server,
+    current_song_download: current_song_download::Server,
 }
 impl Api for Backend {
     fn player_song_purchase_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
@@ -94,6 +95,46 @@ impl Api for Backend {
                 .await?;
             Ok(self.player_song_purchase.annotate(ids, reply))
         })
+    }
+
+    fn player_song_download_picker_credential_revision(
+        &self,
+    ) -> cumulus_core::Result<Option<String>> {
+        self.song_card_playlist_scope_revision()
+    }
+
+    fn song_card_playlist_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self
+            .current_song_download
+            .revision(self.player_song_purchase.revision()))
+    }
+
+    fn song_card_playlist_create_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        self.song_card_playlist_scope_revision()
+    }
+
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::GuardedPlaylistAdd,
+        permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
+        dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(
+            self.current_song_download
+                .add(write, permission, dispatched),
+        )
+    }
+
+    fn request_guarded_playlist_create<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::GuardedPlaylistCreate,
+        permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
+        dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(
+            self.current_song_download
+                .create(write, permission, dispatched),
+        )
     }
 
     fn player_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
@@ -254,6 +295,9 @@ impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
+            if let Some(response) = self.current_song_download.read(path, &payload, cache) {
+                return response;
+            }
             if let Some(value) = self.vinyl_composer.response(path, &payload).await {
                 assert!(!cache);
                 return value;
@@ -526,6 +570,9 @@ mod artist_search_cover;
 
 #[path = "client_player/player_song_share.rs"]
 mod player_song_share;
+
+#[path = "client_player/current_song_download.rs"]
+mod current_song_download;
 
 #[path = "client_player/player_song_purchase.rs"]
 mod player_song_purchase;

@@ -97,3 +97,42 @@ async fn player_purchase_detail_proves_exact_existing_wire_and_retires_rotating_
         );
     }
 }
+
+#[test]
+fn current_song_picker_does_not_inherit_a_separate_playlist_list_cookie() {
+    const COLLECT: &str = "/api/user/playlist/v2";
+    let root = tempfile::tempdir().unwrap();
+    let (api, http, credentials) = vinyl_http_with_credentials(
+        root.path(),
+        &["MUSIC_U=synthetic-player-picker; Path=/; Secure"],
+        std::iter::empty::<HttpResponse>(),
+    );
+    let original = api
+        .player_song_purchase_credential_revision()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        api.player_song_download_picker_credential_revision()
+            .unwrap(),
+        Some(original.clone())
+    );
+    let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, COLLECT).unwrap();
+    credentials
+        .record_response(
+            &target,
+            &["MUSIC_U=synthetic-list-only; Path=/eapi/user/playlist/v2; Secure".into()],
+            None,
+            &original,
+        )
+        .unwrap();
+    assert!(
+        api.player_song_purchase_credential_revision()
+            .unwrap()
+            .is_some()
+    );
+    assert!(matches!(
+        api.player_song_download_picker_credential_revision(),
+        Err(Error::CredentialChanged)
+    ));
+    assert!(http.calls().is_empty());
+}

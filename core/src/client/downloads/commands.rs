@@ -1,6 +1,8 @@
 use super::*;
 use crate::{
-    download::service::{CatalogAdmission, DownloadAction, DownloadOptions, DownloadStatus},
+    download::service::{
+        CatalogAdmission, DownloadAction, DownloadOptions, DownloadStatus, ScopedTaskAdmission,
+    },
     protocol::api::identifier,
 };
 use serde_json::json;
@@ -22,6 +24,39 @@ impl MusicClient {
         permission: impl Fn() -> Result<()> + Send + 'static,
         on_commit: impl FnOnce() + Send + 'static,
     ) -> Result<DownloadResult> {
+        self.start_guarded_song_download_inner(epoch, id, options, permission, on_commit, None)
+            .await
+    }
+
+    pub(in crate::client) async fn start_scoped_song_download(
+        &self,
+        epoch: &str,
+        id: String,
+        options: DownloadOptions,
+        permission: impl Fn() -> Result<()> + Send + 'static,
+        on_commit: impl FnOnce() + Send + 'static,
+        scope: impl ScopedTaskAdmission + Send + 'static,
+    ) -> Result<DownloadResult> {
+        self.start_guarded_song_download_inner(
+            epoch,
+            id,
+            options,
+            permission,
+            on_commit,
+            Some(Box::new(scope)),
+        )
+        .await
+    }
+
+    async fn start_guarded_song_download_inner(
+        &self,
+        epoch: &str,
+        id: String,
+        options: DownloadOptions,
+        permission: impl Fn() -> Result<()> + Send + 'static,
+        on_commit: impl FnOnce() + Send + 'static,
+        scope: Option<Box<dyn ScopedTaskAdmission + Send>>,
+    ) -> Result<DownloadResult> {
         let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
         let runtime = tokio::runtime::Handle::current();
@@ -29,24 +64,36 @@ impl MusicClient {
         let _retire = Retire(cancelled.clone());
         let task = tokio::task::spawn_blocking(move || {
             host.prepare_runtime(&context)?;
-            let task = context.service.create_guarded_song(
-                &json!(id),
-                options,
-                &|| {
-                    if super::song_status::download_state(
-                        &context.store,
-                        &context.owner,
-                        &id,
-                        crate::storage::PlaybackDownloadKind::Song,
-                    )? != super::SongDownloadState::None
-                    {
-                        return Err(Error::State("song already has a download"));
-                    }
-                    permission()
-                },
-                &cancelled,
-                on_commit,
-            )?;
+            let check = || {
+                if super::song_status::download_state(
+                    &context.store,
+                    &context.owner,
+                    &id,
+                    crate::storage::PlaybackDownloadKind::Song,
+                )? != super::SongDownloadState::None
+                {
+                    return Err(Error::State("song already has a download"));
+                }
+                permission()
+            };
+            let task = if let Some(scope) = scope.as_deref() {
+                context.service.create_guarded_song_with_scope(
+                    &json!(id),
+                    options,
+                    &check,
+                    &cancelled,
+                    Some(scope),
+                    on_commit,
+                )
+            } else {
+                context.service.create_guarded_song(
+                    &json!(id),
+                    options,
+                    &check,
+                    &cancelled,
+                    on_commit,
+                )
+            }?;
             let _runtime = runtime.enter();
             host.kick(&context)?;
             Ok::<_, Error>(task)
