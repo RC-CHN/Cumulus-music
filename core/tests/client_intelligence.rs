@@ -316,3 +316,169 @@ async fn restored_active_intelligence_has_a_distinct_mini_family_and_leaves_thro
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn history_play_all_keeps_active_intelligence_on_denial_then_restores_ordinary_mode() {
+    use cumulus_core::{
+        account::AccountSession,
+        client::dto::PlaySelection,
+        history::{HistoryKind, HistoryRecord, HistoryService},
+        membership::Quality,
+        playback::{controller::PlaybackStatus, intelligence::IntelligencePhase},
+        protocol::api::{Api, ApiFuture},
+    };
+    use serde_json::{Value, json};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn song(id: &Value) -> Value {
+        json!({"id":id,"name":format!("history {id}"),"dt":120000})
+    }
+
+    struct HistoryApi {
+        audio: Arc<Backend>,
+        admit_history: AtomicBool,
+    }
+
+    impl Api for HistoryApi {
+        fn request<'a>(
+            &'a self,
+            path: &'a str,
+            payload: Value,
+            eapi: bool,
+        ) -> ApiFuture<'a, Value> {
+            match path {
+                "/api/v3/song/detail" => Box::pin(async move {
+                    let ids: Vec<Value> = serde_json::from_str(payload["c"].as_str().unwrap())?;
+                    Ok(
+                        json!({"code":200,"songs":ids.iter().map(|row|song(&row["id"])).collect::<Vec<_>>()}),
+                    )
+                }),
+                "/api/song/enhance/privilege" => Box::pin(async move {
+                    let ids: Vec<String> = serde_json::from_str(payload["ids"].as_str().unwrap())?;
+                    let admit = self.admit_history.load(Ordering::SeqCst);
+                    let rows: Vec<_> = ids
+                        .iter()
+                        .map(|id| {
+                            let allowed = admit && matches!(id.as_str(), "41" | "42");
+                            json!({"id":id,"pl":if allowed {128000} else {0}})
+                        })
+                        .collect();
+                    Ok(json!({"code":200,"data":rows}))
+                }),
+                _ => self.audio.request(path, payload, eapi),
+            }
+        }
+    }
+
+    let f = Fixture::persistent();
+    f.command(replace(&[7, 8, 9])).await.unwrap();
+    f.command(Cmd::Mode(PlaybackMode::Sequential))
+        .await
+        .unwrap();
+    let id = act(&f, begin(8, true))
+        .await
+        .unwrap()
+        .intelligence
+        .unwrap()
+        .id;
+    act(&f, complete(&id, &[90])).await.unwrap();
+    f.command(Cmd::Stop).await.unwrap();
+
+    let api = Arc::new(HistoryApi {
+        audio: f.api.clone(),
+        admit_history: AtomicBool::new(false),
+    });
+    let session = Arc::new(AccountSession::new(api.clone(), Some(f.store.clone())));
+    session
+        .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
+        .unwrap();
+    let client = MusicClient::with_session(
+        session.clone(),
+        ProfileRegistry::open(f.temp.path(), ApiOrigin::Pc).unwrap(),
+    )
+    .with_audio_factory(|| Ok(audio_engine(Arc::new(Device::default()))));
+    let epoch = client.account().unwrap().epoch;
+    client
+        .player_action(&epoch, PlayerAction::Play)
+        .await
+        .unwrap();
+    let paused = client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(paused.intelligence, Some(IntelligencePhase::Active));
+    assert_eq!(paused.mode, PlaybackMode::OrderLoop);
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    let stored = || {
+        f.store
+            .get("9", "playback-intelligence-v1", "session")
+            .unwrap()
+    };
+    let active = stored().unwrap();
+    assert_eq!(active["last_mode"], "sequential");
+
+    let kind = HistoryKind::Song;
+    let history = HistoryService::new(session.clone()).unwrap();
+    for (id, at) in [("41", 500), ("42", 400)] {
+        history
+            .record_for(
+                &session.token().unwrap(),
+                kind,
+                HistoryRecord::local(kind, song(&json!(id)), at).unwrap(),
+            )
+            .unwrap();
+    }
+    let revision = client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value
+        .revision;
+    let selection = || PlaySelection::HistoryPlayAll {
+        history_kind: kind,
+        revision: revision.clone(),
+        quality: Quality::Standard,
+    };
+    let ticket = || {
+        client
+            .prepare_play_selection(&epoch, &paused.queue_revision, paused.play_id.as_deref())
+            .unwrap()
+    };
+    assert!(matches!(
+        client
+            .commit_prepared_selection(&epoch, &ticket(), selection())
+            .await,
+        Err(Error::State("history selection has no playable resources"))
+    ));
+    let still_paused = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(still_paused.intelligence, paused.intelligence);
+    assert_eq!(still_paused.queue_revision, paused.queue_revision);
+    assert_eq!(still_paused.play_id, paused.play_id);
+    assert_eq!(still_paused.position, paused.position);
+    assert_eq!(still_paused.state, paused.state);
+    assert_eq!(stored(), Some(active));
+
+    api.admit_history.store(true, Ordering::SeqCst);
+    let started = client
+        .commit_prepared_selection(&epoch, &ticket(), selection())
+        .await
+        .unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_eq!(started.mode, PlaybackMode::Sequential);
+    assert_eq!(started.track.unwrap().id, "41");
+    assert_ne!(started.play_id, paused.play_id);
+    assert!(started.intelligence.is_none());
+    assert!(stored().is_none());
+    let queue = client.player_queue(&epoch).await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["41", "42"]
+    );
+    let persisted = f.store.get("9", "playback", "queue").unwrap().unwrap();
+    assert_eq!(persisted["mode"], "sequential");
+    assert!(persisted["intelligence"].is_null());
+}

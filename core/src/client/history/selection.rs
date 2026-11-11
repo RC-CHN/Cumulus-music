@@ -1,3 +1,5 @@
+mod alternatives;
+
 use super::super::MusicClient;
 use crate::{
     Error, Result,
@@ -32,6 +34,7 @@ enum SelectionMode {
     Direct,
     BatchAdd,
     BatchPlay,
+    PlayAll,
 }
 
 impl MusicClient {
@@ -59,17 +62,13 @@ impl MusicClient {
                 "history batch requires songs or episodes",
             ));
         }
+        let mode = match (play, &selection.rows) {
+            (true, SelectionRows::All) => SelectionMode::PlayAll,
+            (true, SelectionRows::Ids(_)) => SelectionMode::BatchPlay,
+            (false, _) => SelectionMode::BatchAdd,
+        };
         let (resources, _, source) = self
-            .history_selection_inner(
-                token,
-                selection,
-                attempt,
-                if play {
-                    SelectionMode::BatchPlay
-                } else {
-                    SelectionMode::BatchAdd
-                },
-            )
+            .history_selection_inner(token, selection, attempt, mode)
             .await?;
         Ok((resources, source))
     }
@@ -103,7 +102,9 @@ impl MusicClient {
         }
         let chosen = match rows {
             SelectionRows::All => {
-                if mode != SelectionMode::BatchAdd || index != 0 || snapshot.entries.len() > 50_300
+                if !matches!(mode, SelectionMode::BatchAdd | SelectionMode::PlayAll)
+                    || index != 0
+                    || snapshot.entries.len() > 50_300
                 {
                     return Err(Error::InvalidInput("invalid full history action"));
                 }
@@ -140,14 +141,8 @@ impl MusicClient {
         };
         let (resources, index, source) = match kind {
             HistoryKind::Song => (
-                self.history_songs(
-                    token,
-                    &chosen,
-                    quality,
-                    &guard,
-                    mode != SelectionMode::Direct,
-                )
-                .await?,
+                self.history_songs(token, &chosen, quality, &guard, mode)
+                    .await?,
                 index,
                 json!({"kind":"history","history_kind":"song","scene":"history"}),
             ),
@@ -214,8 +209,14 @@ impl MusicClient {
                         let source = json!({"kind":if kind==HistoryKind::Album{"album"}else{"playlist"},"id":row.id,
                             "scene":"history","history_resource":row.resource});
                         (
-                            self.history_songs(token, &records, quality, &guard, false)
-                                .await?,
+                            self.history_songs(
+                                token,
+                                &records,
+                                quality,
+                                &guard,
+                                SelectionMode::Direct,
+                            )
+                            .await?,
                             0,
                             source,
                         )
@@ -274,13 +275,14 @@ impl MusicClient {
         rows: &[HistoryRecord],
         quality: Quality,
         guard: &(impl Fn() -> Result<()> + Sync),
-        check_download_rights: bool,
+        mode: SelectionMode,
     ) -> Result<Vec<Value>> {
-        let offline = check_download_rights
+        let offline = (mode != SelectionMode::Direct)
             .then(|| crate::download::offline::OfflineLibrary::new(self.session.clone()))
             .transpose()?;
         let mut resources = Vec::with_capacity(rows.len());
         let mut online = Vec::new();
+        let mut alternatives = Vec::new();
         for row in rows {
             guard()?;
             if let Some(id) = row.resource["local_id"].as_str() {
@@ -297,8 +299,17 @@ impl MusicClient {
                     Ok(serde_json::to_value(resource)?)
                 })
                 .await
-                .map_err(|_| Error::State("local history selection stopped"))??;
-                resources.push(resource);
+                .map_err(|_| Error::State("local history selection stopped"))?;
+                guard()?;
+                match resource {
+                    Ok(resource) => resources.push(resource),
+                    Err(error)
+                        if mode == SelectionMode::PlayAll && unavailable_local_row(&error) =>
+                    {
+                        resources.push(json!({"missing":true}));
+                    }
+                    Err(error) => return Err(error),
+                }
             } else {
                 self.session.with_token(token, |_| Ok(()))?;
                 // Use a verified completed download when it still exists. A
@@ -355,12 +366,31 @@ impl MusicClient {
                 .map(|p| Ok((identifier(&p["id"])?, p)))
                 .collect::<Result<BTreeMap<_, _>>>()?;
             for ((slot, id), song) in chunk.iter().zip(songs.songs) {
+                let alternate = (mode == SelectionMode::PlayAll)
+                    .then(|| alternatives::declared(id, song.as_ref(), privileges.get(id)))
+                    .flatten();
                 let song = song
                     .as_ref()
                     .map(super::super::mapping::song_metadata)
                     .transpose()?;
                 resources[*slot] = json!({"id":id,"level":quality.as_str(),"dt":song.as_ref().map(|s|&s["dt"]),
                     "missing":song.is_none(),"song":song,"privilege":privileges.get(id),"trial_mode":-1});
+                if let Some(id) = alternate {
+                    alternatives.push((*slot, id));
+                }
+            }
+        }
+        if !alternatives.is_empty() {
+            let ids: Vec<_> = alternatives.iter().map(|(_, id)| id.clone()).collect();
+            let replacements = self
+                .session
+                .run_for(token, |api, _| alternatives::resolve(api, &ids, quality))
+                .await?;
+            guard()?;
+            for (slot, id) in alternatives {
+                if let Some(resource) = replacements.get(&id) {
+                    resources[slot] = resource.clone();
+                }
             }
         }
         Ok(resources)
@@ -403,4 +433,16 @@ impl MusicClient {
         guard()?;
         Ok(resources)
     }
+}
+
+fn unavailable_local_row(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::State(
+            "local track is not available"
+                | "local track is unavailable"
+                | "local source changed; rescan before playing"
+                | "local history file changed; select it from the library"
+        )
+    ) || matches!(error, Error::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
 }

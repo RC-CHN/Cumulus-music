@@ -290,6 +290,11 @@ impl Actor {
                 .queue
                 .intelligence_session()
                 .and_then(|s| s.operation_id.clone()),
+            intelligence_last_mode: self
+                .queue
+                .intelligence_session()
+                .filter(|session| session.context.active())
+                .map(|session| session.last_mode),
             equalizer: crate::effects::equalizer::EqualizerSnapshot {
                 source_bypassed: self.loaded.is_some()
                     && self.equalizer.source_bypassed

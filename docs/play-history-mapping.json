@@ -314,6 +314,37 @@
         "Only positively authorized ordinary and purchased catalogue downloads; no automatic paid checkout or local/cloud promotion",
         "A catalogue anchor must be verified even when excluded from downloads; collection and download order come from separate native projections"
       ]
+    },
+    {
+      "feature": "Play all recent songs or voices from the complete native snapshot",
+      "official": [
+        "HistoryPlay.jsx:294–347; M3102:1599–1643",
+        "M3085:205–219,431–453,483–489; M59:117–175; M308:3167–3208; M1384:5267–5271,5366"
+      ],
+      "rust": [
+        "core/src/client/history/selection.rs",
+        "core/src/client/history/selection/alternatives.rs",
+        "core/src/client/player/history_batch/play_all.rs",
+        "core/src/playback/controller/remote.rs",
+        "core/src/catalog/same_recording.rs"
+      ],
+      "ui": [
+        "frontend/src/components/HistoryPage.vue header Play All",
+        "frontend/src/App.vue preparation binds route, account and native history revision",
+        "desktop prepared selection IPC history_play_all"
+      ],
+      "tests": [
+        "core/tests/client_history.rs full replacement, denial, same-recording lookup and deduplication",
+        "core/tests/client_fm/history_play_all.rs old mode, stale backup and atomic cleanup",
+        "core/tests/client_intelligence.rs failed and successful replacement",
+        "core/tests/pc_experiment_transport/history_shuffle.rs exact voice checkpoint",
+        "scripts/ci/history_header_smoke.py actual WebView playback and queue replacement"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase296-history-play-all-final/audit.json: 11 WebKitGTK checkpoints and PNGs; zero filtered rows still replace an incumbent two-song queue with all 100 ordered voices and start native null playback; Windows CI pending",
+      "boundaries": [
+        "No same-name or MV fallback, no privilege-only replacement without matching song metadata",
+        "Native file, download and service media authorization still apply; room stays isolated"
+      ]
     }
   ],
   "alternativeClientSources": [],

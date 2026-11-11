@@ -494,7 +494,7 @@ export type PlaySelection =
       quality: Quality;
     }
   | {
-      kind: 'history_add_all';
+      kind: 'history_add_all' | 'history_play_all';
       history_kind: 'song' | 'voice';
       revision: string;
       quality: Quality;

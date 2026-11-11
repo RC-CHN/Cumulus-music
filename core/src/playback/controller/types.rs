@@ -65,6 +65,8 @@ pub struct PlaybackSnapshot {
     pub fm: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligenceContext>,
     pub intelligence_operation: Option<String>,
+    /// Ordinary mode held by the currently active intelligence session.
+    pub(crate) intelligence_last_mode: Option<PlaybackMode>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub bound_parametric: Option<super::parametric::ParametricBindingStatus>,
     /// Public catalogue identity for the confirmed binding, including source bypass.
@@ -172,6 +174,9 @@ pub struct HistoryQueueUpdate {
     pub(crate) expected: PlaybackFence,
     pub(crate) queue: QueueSnapshot,
     pub(crate) start: bool,
+    pub(crate) play_all: bool,
+    /// Exact account-local ordinary backup observed when replacing an FM queue.
+    pub(crate) fm_backup_queue: Option<Value>,
     pub(crate) was_empty: bool,
     pub(crate) kind: crate::history::HistoryKind,
     pub(crate) revision: String,
@@ -300,7 +305,7 @@ pub enum PlaybackCommand {
         liked_visit: Option<crate::podcast::LikedPageQueueFence>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
-    ApplyHistoryBatch(HistoryQueueUpdate),
+    ApplyHistoryBatch(Box<HistoryQueueUpdate>),
     ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.

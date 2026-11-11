@@ -1,6 +1,7 @@
 //! CAS-protected publication of queue, quality and coordinator ownership.
 use super::*;
 use crate::{
+    history::{HistoryKind, HistoryService},
     playback::{controller::FmRestore, engine::Cancellation},
     playlist::offline_snapshot::PlaylistQueueBinding,
     podcast::LikedPageQueueFence,
@@ -17,6 +18,11 @@ enum SideEffect<'a> {
     CachedPlaylist(&'a PlaylistQueueBinding, &'a Cancellation),
     LikedPage(&'a LikedPageQueueFence),
     TogetherExternal(&'a str),
+    HistoryPlayAll {
+        kind: HistoryKind,
+        revision: &'a str,
+        fm_backup: Option<&'a Value>,
+    },
 }
 
 struct FmCommit<'a> {
@@ -26,6 +32,37 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    /// Commit the native header replacement without restoring a separate
+    /// intermediate queue. The caller holds the account and room fences.
+    pub(crate) fn install_history_play_all(
+        &mut self,
+        candidate: QueueSnapshot,
+        owner: &str,
+        kind: HistoryKind,
+        revision: &str,
+        fm_backup: Option<&Value>,
+    ) -> Result<()> {
+        if self.owner != owner || (!self.is_fm() && fm_backup.is_some()) {
+            return Err(Error::QueueChanged);
+        }
+        candidate.validate()?;
+        for item in &candidate.items {
+            super::super::PlaybackConstraint::from_resource(&item.resource)?;
+        }
+        let release_fm = Self::releases_fm(&candidate, self.is_fm());
+        self.commit_owned_with_side_effect(
+            candidate,
+            release_fm,
+            None,
+            None,
+            SideEffect::HistoryPlayAll {
+                kind,
+                revision,
+                fm_backup,
+            },
+        )
+    }
+
     /// The caller holds the current account and active liked visit through
     /// this operation. Do not use a Cancellation callback inside SQLite.
     pub(crate) fn install_liked_page(
@@ -419,6 +456,18 @@ impl PlaybackQueue {
                 {
                     return Err(Error::QueueChanged);
                 }
+                if let SideEffect::HistoryPlayAll {
+                    kind,
+                    revision,
+                    fm_backup,
+                } = side_effect
+                    && (HistoryService::snapshot_in(tx, &self.owner, kind)?.revision != revision
+                        || (self.is_fm()
+                            && tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)?.as_ref()
+                                != fm_backup))
+                {
+                    return Err(Error::QueueChanged);
+                }
                 if let SideEffect::LikedPage(visit) = side_effect {
                     visit.verify_generation(tx, &self.owner)?;
                 }
@@ -528,7 +577,9 @@ impl PlaybackQueue {
                 if changed
                     || !matches!(
                         &side_effect,
-                        SideEffect::CachedPlaylist(..) | SideEffect::LikedPage(_)
+                        SideEffect::CachedPlaylist(..)
+                            | SideEffect::LikedPage(_)
+                            | SideEffect::HistoryPlayAll { .. }
                     )
                 {
                     self.revision = revision;

@@ -14,6 +14,7 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -26,6 +27,11 @@ struct Backend {
     voice_rights: Mutex<Vec<u64>>,
     media_sources: Mutex<Vec<Value>>,
     deny: AtomicBool,
+    blocked_songs: Mutex<Vec<String>>,
+    recording_links: Mutex<BTreeMap<String, String>>,
+    recording_reads: Mutex<Vec<Value>>,
+    recording_detail_failure: AtomicBool,
+    recording_detail_missing: AtomicBool,
     hold: AtomicBool,
     resume_books: AtomicBool,
     around_missing: AtomicBool,
@@ -65,14 +71,44 @@ impl Api for Backend {
                         self.release.notified().await;
                     }
                     let ids: Vec<Value> = serde_json::from_str(p["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":ids.iter().map(|v|song(&v["id"])).collect::<Vec<_>>()})
+                    let links = self.recording_links.lock().unwrap();
+                    if p["trialMode"] == -1 && !links.is_empty() {
+                        assert!(ids.iter().all(|row| row["v"] == 0));
+                        self.recording_reads.lock().unwrap().push(p);
+                        if self.recording_detail_failure.load(Ordering::SeqCst) {
+                            return Err(Error::Transport("same recording detail failed".into()));
+                        }
+                        if self.recording_detail_missing.load(Ordering::SeqCst) {
+                            json!({"code":200,"songs":[],"privileges":[]})
+                        } else {
+                            json!({"code":200,
+                                "songs":ids.iter().map(|row|song(&row["id"])).collect::<Vec<_>>(),
+                                "privileges":ids.iter().map(|row|json!({"id":row["id"],"pl":320000})).collect::<Vec<_>>()})
+                        }
+                    } else {
+                        json!({"code":200,"songs":ids.iter().map(|v| {
+                            let mut metadata = song(&v["id"]);
+                            if let Some(next) = v["id"].as_str().and_then(|id| links.get(id)) {
+                                metadata["noCopyrightRcmd"] = json!({"type":1,"songId":next});
+                            }
+                            metadata
+                        }).collect::<Vec<_>>()})
+                    }
                 }
                 "/api/song/enhance/privilege" => {
                     if self.deny.load(Ordering::SeqCst) {
                         return Err(Error::Transport("privilege read failed".into()));
                     }
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"data":ids.into_iter().map(|id|json!({"id":id,"pl":320000})).collect::<Vec<_>>()})
+                    let blocked = self.blocked_songs.lock().unwrap();
+                    json!({"code":200,"data":ids.into_iter().map(|id| {
+                        let pl = if id.as_str().is_some_and(|id| blocked.iter().any(|row| row == id)) {
+                            0
+                        } else {
+                            320000
+                        };
+                        json!({"id":id,"pl":pl})
+                    }).collect::<Vec<_>>()})
                 }
                 "/api/album/privilege" => {
                     json!({"code":200,"data":[{"id":1,"pl":320000},{"id":2,"pl":320000}]})
@@ -1765,6 +1801,173 @@ async fn history_batch_rejects_unordered_or_retired_selection_without_a_queue_ch
                 .unwrap()
                 .iter()
                 .any(|p| p == "/api/song/enhance/player/url/v1")
+        );
+    }
+}
+
+#[tokio::test]
+async fn history_play_all_replaces_from_native_survivors_but_keeps_the_queue_when_all_are_blocked()
+{
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let kind = HistoryKind::Song;
+    seed_history_batch(&f, kind, &[(1, 500), (2, 400), (3, 300), (4, 200)]);
+    f.client
+        .play_selection(
+            &epoch,
+            f.selection(kind, vec!["1".into(), "4".into()]).await,
+        )
+        .await
+        .unwrap();
+    f.client
+        .player_action(&epoch, PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    let paused = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let revision = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value
+        .revision;
+    let selection = || PlaySelection::HistoryPlayAll {
+        history_kind: kind,
+        revision: revision.clone(),
+        quality: Quality::Standard,
+    };
+    let ticket = || {
+        f.client
+            .prepare_play_selection(&epoch, &paused.queue_revision, paused.play_id.as_deref())
+            .unwrap()
+    };
+    assert!(
+        serde_json::from_value::<PlaySelection>(json!({
+            "kind":"history_play_all","history_kind":"song","revision":revision,
+            "quality":"standard","ids":["3"]
+        }))
+        .is_err()
+    );
+    assert!(matches!(
+        f.client.play_selection(&epoch, selection()).await,
+        Err(Error::InvalidInput(_))
+    ));
+    f.api.calls.lock().unwrap().clear();
+    *f.api.blocked_songs.lock().unwrap() = ["1", "2", "3", "4"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(&epoch, &ticket(), selection())
+            .await,
+        Err(Error::State("history selection has no playable resources"))
+    ));
+    let still_paused = f.client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(still_paused.queue_revision, paused.queue_revision);
+    assert_eq!(still_paused.play_id, paused.play_id);
+    assert_eq!(still_paused.state, paused.state);
+    assert_eq!(still_paused.position, paused.position);
+    assert_eq!(history_batch_ids(&f).await, ["1", "4"]);
+    assert_eq!(
+        *f.api.calls.lock().unwrap(),
+        ["/api/v3/song/detail", "/api/song/enhance/privilege"]
+    );
+
+    *f.api.blocked_songs.lock().unwrap() = vec!["1".into(), "4".into()];
+    let started = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket(), selection())
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(started.state).unwrap(), "playing");
+    assert_eq!(started.track.unwrap().id, "2");
+    assert_ne!(started.play_id, paused.play_id);
+    assert_eq!(history_batch_ids(&f).await, ["2", "3"]);
+}
+
+#[tokio::test]
+async fn history_play_all_verifies_same_recordings_before_replacing_and_deduplicating() {
+    for missing in [false, true] {
+        let f = fixture(true);
+        let epoch = f.epoch();
+        let kind = HistoryKind::Song;
+        seed_history_batch(&f, kind, &[(1, 500), (2, 400), (3, 300), (4, 200)]);
+        f.client
+            .play_selection(&epoch, f.selection(kind, vec!["4".into()]).await)
+            .await
+            .unwrap();
+        let paused = f
+            .client
+            .player_action(&epoch, PlayerAction::Pause { paused: true })
+            .await
+            .unwrap();
+        let revision = f
+            .client
+            .history_page(&epoch, kind, false)
+            .await
+            .unwrap()
+            .value
+            .revision;
+        let selection = || PlaySelection::HistoryPlayAll {
+            history_kind: kind,
+            revision: revision.clone(),
+            quality: Quality::Standard,
+        };
+        let ticket = || {
+            f.client
+                .prepare_play_selection(&epoch, &paused.queue_revision, paused.play_id.as_deref())
+                .unwrap()
+        };
+        *f.api.blocked_songs.lock().unwrap() = vec!["1".into(), "4".into()];
+        *f.api.recording_links.lock().unwrap() =
+            BTreeMap::from([("1".into(), "3".into()), ("4".into(), "3".into())]);
+        f.api.media_sources.lock().unwrap().clear();
+        if !missing {
+            f.api.recording_detail_failure.store(true, Ordering::SeqCst);
+            assert!(matches!(
+                f.client
+                    .commit_prepared_selection(&epoch, &ticket(), selection())
+                    .await,
+                Err(Error::Transport(_))
+            ));
+            let unchanged = f.client.player_snapshot(&epoch).await.unwrap();
+            assert_eq!(unchanged.play_id, paused.play_id);
+            assert_eq!(unchanged.queue_revision, paused.queue_revision);
+            assert!(f.api.media_sources.lock().unwrap().is_empty());
+            f.api
+                .recording_detail_failure
+                .store(false, Ordering::SeqCst);
+        }
+        f.api
+            .recording_detail_missing
+            .store(missing, Ordering::SeqCst);
+        let started = f
+            .client
+            .commit_prepared_selection(&epoch, &ticket(), selection())
+            .await
+            .unwrap();
+        let expected = if missing { ["2", "3"] } else { ["3", "2"] };
+        assert_eq!(started.track.unwrap().id, expected[0]);
+        assert_eq!(history_batch_ids(&f).await, expected);
+        let media = f.api.media_sources.lock().unwrap();
+        assert_eq!(media.first(), Some(&json!(expected[0])));
+        assert!(
+            media
+                .iter()
+                .all(|id| { id.as_str().is_some_and(|id| expected.contains(&id)) })
+        );
+        let expected_read = json!({
+            "c":serde_json::to_string(&[json!({"id":"3","v":0}),json!({"id":"3","v":0})]).unwrap(),
+            "trialMode":-1
+        });
+        assert_eq!(
+            *f.api.recording_reads.lock().unwrap(),
+            vec![expected_read; if missing { 1 } else { 2 }]
         );
     }
 }

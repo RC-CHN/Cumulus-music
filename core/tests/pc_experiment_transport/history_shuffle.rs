@@ -1,4 +1,4 @@
-//! Closed signed-PC fixture for the one native resume anchor in History Add.
+//! Closed signed-PC fixtures for native resume anchors in history queue actions.
 use super::{ASSIGNMENT_PATH, HttpResponse, playback, reply, vinyl_http_with_credentials};
 use cumulus_core::{
     Error,
@@ -29,14 +29,36 @@ fn voice(id: u64) -> Value {
 
 #[tokio::test]
 async fn history_shuffle_requires_the_first_programs_current_account_checkpoint() {
-    for (case, owner, media, group, enabled, anchored) in [
-        ("matched", OWNER, "151", "t1", true, true),
-        ("other-account", "72", "151", "t1", true, false),
-        ("wrong-main-track", OWNER, "251", "t1", true, false),
-        ("setting-off", OWNER, "151", "t1", false, false),
-        ("retired-during-read", OWNER, "151", "t1", true, false),
-        ("known-control", OWNER, "151", "c", true, true),
-    ] {
+    history_resume_cases(
+        &[
+            ("matched", OWNER, "151", "t1", true, true),
+            ("other-account", "72", "151", "t1", true, false),
+            ("wrong-main-track", OWNER, "251", "t1", true, false),
+            ("setting-off", OWNER, "151", "t1", false, false),
+            ("retired-during-read", OWNER, "151", "t1", true, false),
+            ("known-control", OWNER, "151", "c", true, true),
+        ],
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn history_play_all_voice_checkpoint_survives_the_switch_to_sequential() {
+    history_resume_cases(
+        &[
+            ("matched", OWNER, "151", "t1", true, true),
+            ("setting-off", OWNER, "151", "t1", false, false),
+        ],
+        true,
+    )
+    .await;
+}
+
+type ResumeCase<'a> = (&'a str, &'a str, &'a str, &'a str, bool, bool);
+
+async fn history_resume_cases(cases: &[ResumeCase<'static>], play_all: bool) {
+    for &(case, owner, media, group, enabled, anchored) in cases {
         let root = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
         let store = registry.store();
@@ -99,11 +121,15 @@ async fn history_shuffle_requires_the_first_programs_current_account_checkpoint(
             .unwrap();
         client.refresh_pc_presentation().await.unwrap();
         for (id, at) in [(51, 200), (52, 100)] {
+            let mut row = voice(id);
+            if play_all {
+                row["categoryId"] = json!(1);
+            }
             history
                 .record_for(
                     &token,
                     HistoryKind::Voice,
-                    HistoryRecord::local(HistoryKind::Voice, voice(id), at).unwrap(),
+                    HistoryRecord::local(HistoryKind::Voice, row, at).unwrap(),
                 )
                 .unwrap();
         }
@@ -140,20 +166,26 @@ async fn history_shuffle_requires_the_first_programs_current_account_checkpoint(
             .await
             .unwrap();
         assert_eq!(queue.queue_len, 0);
+        assert_eq!(queue.mode, PlaybackMode::Random);
         let ticket = client
             .prepare_play_selection(&epoch, &queue.queue_revision, queue.play_id.as_deref())
             .unwrap();
+        let selection = if play_all {
+            serde_json::from_value(json!({
+                "kind":"history_play_all","history_kind":"voice",
+                "revision":snapshot.revision,"quality":"standard",
+            }))
+            .unwrap()
+        } else {
+            PlaySelection::HistoryAdd {
+                history_kind: HistoryKind::Voice,
+                revision: snapshot.revision,
+                ids: vec!["51".into(), "52".into()],
+                quality: Quality::Standard,
+            }
+        };
         let result = client
-            .commit_prepared_selection(
-                &epoch,
-                &ticket,
-                PlaySelection::HistoryAdd {
-                    history_kind: HistoryKind::Voice,
-                    revision: snapshot.revision,
-                    ids: vec!["51".into(), "52".into()],
-                    quality: Quality::Standard,
-                },
-            )
+            .commit_prepared_selection(&epoch, &ticket, selection)
             .await;
         if case == "retired-during-read" {
             assert!(matches!(
@@ -170,7 +202,12 @@ async fn history_shuffle_requires_the_first_programs_current_account_checkpoint(
         }
         let result = result.unwrap();
         assert!(result.error.is_none(), "{case}");
-        assert_eq!(result.mode, PlaybackMode::Random, "{case}");
+        let expected_mode = if play_all {
+            PlaybackMode::Sequential
+        } else {
+            PlaybackMode::Random
+        };
+        assert_eq!(result.mode, expected_mode, "{case}");
         let selected = result
             .track
             .as_ref()
@@ -180,7 +217,11 @@ async fn history_shuffle_requires_the_first_programs_current_account_checkpoint(
             assert_eq!(selected, "51", "{case}");
             assert_eq!(result.position, Some(41.0), "{case}");
         } else {
-            assert!(["51", "52"].contains(&selected), "{case}");
+            if play_all {
+                assert_eq!(selected, "51", "{case}");
+            } else {
+                assert!(["51", "52"].contains(&selected), "{case}");
+            }
             assert_eq!(result.position, Some(0.0), "{case}");
         }
         let queue = client.player_queue(&epoch).await.unwrap();
@@ -194,6 +235,11 @@ async fn history_shuffle_requires_the_first_programs_current_account_checkpoint(
         );
         let calls = http.calls();
         let rights = calls.iter().position(|call| call.path == RIGHTS).unwrap();
+        if play_all {
+            assert_eq!(identifier(&calls[rights].payload["voiceId"]).unwrap(), "51");
+            let url = calls.iter().find(|call| call.path == URL).unwrap();
+            assert_eq!(url.payload["ids"], r#"["151"]"#);
+        }
         let settings = calls
             .iter()
             .enumerate()

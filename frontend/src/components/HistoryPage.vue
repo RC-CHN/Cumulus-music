@@ -321,7 +321,7 @@ function play(entry?: HistoryEntry) {
 }
 async function runQueueAction(action: HistoryQueueAction) {
   const snapshot = page.value;
-  const all = action.kind === 'add-all';
+  const all = action.kind === 'add-all' || action.kind === 'play-all';
   if (
     !snapshot ||
     (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
@@ -344,6 +344,7 @@ async function runQueueAction(action: HistoryQueueAction) {
     if (
       (await props.batchSelection(snapshot.kind, snapshot.revision, action)) &&
       action.kind !== 'play' &&
+      action.kind !== 'play-all' &&
       current()
     )
       addNotice.value = '已添加到播放列表';
@@ -351,7 +352,11 @@ async function runQueueAction(action: HistoryQueueAction) {
     if (!current()) return;
     const issue = failure(cause);
     if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
-    batchError.value = issue.message;
+    batchError.value =
+      action.kind === 'play-all' &&
+      ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+        ? '播放记录或播放状态已更新，请重新点击「播放全部」。'
+        : issue.message;
   }
 }
 function downloadSelected(event: MouseEvent) {
@@ -534,9 +539,10 @@ function keyboard(event: KeyboardEvent) {
     <div class="history-tools">
       <button
         v-if="listKind && !batchMode"
-        class="primary"
-        :disabled="!playable || loading || busy || !entries.some((e) => historyLabel(e).available)"
-        @click="play()"
+        type="button"
+        class="primary history-play-all"
+        :disabled="!playable || loading || busy || page?.kind !== kind || !page?.entries.length"
+        @click="runQueueAction({ kind: 'play-all' })"
       >
         <Icon name="play" />播放全部
       </button>

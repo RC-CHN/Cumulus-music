@@ -16,6 +16,7 @@
   const active = () => text(one(`${tabs} [aria-current]`)) ?? page()?.dataset.historyCategory;
   const filter = () => one('[aria-label="筛选播放记录"]', page());
   const trigger = () => one('[data-history-menu] button.menu-trigger', page());
+  const playAll = () => one('.history-play-all', page());
   const menu = () => one('[role="menu"][aria-label="更多播放记录操作"]:not([inert])');
   const item = key => one(`[data-menu-key="${key}"]`, menu() ?? null);
   const menuKeys = () => all('[role="menuitem"]', menu() ?? null).map(node => node.dataset.menuKey);
@@ -199,6 +200,7 @@
       'explicit clear empties only the synthetic song history');
     assert(same(tracks(await queue()), songQueue), 'clearing history preserves the current playback queue');
     assert(trigger()?.disabled, 'no header action on empty native history');
+    assert(playAll()?.disabled, 'empty native history disables Play All');
     await capture('song_cleared', { historySize: 0, emptyMenuDisabled: true });
 
     const hidden = [];
@@ -206,6 +208,7 @@
       ['歌单', 'playlist'], ['专辑', 'album']]) {
       await tab(label, kind);
       assert(!trigger(), 'header queue actions are absent from ' + kind);
+      assert(!playAll(), 'header Play All is absent from ' + kind);
       hidden.push(kind);
     }
     await capture('other_categories', { withoutQueueMenu: hidden });
@@ -234,6 +237,37 @@
     }, 'empty queue starts the first program from the full voice list');
     assert(started.playId !== held.playId, 'empty-queue Add creates a new native playback');
     await capture('voice_add_all_started', { nativeVoiceOrder: order }, 'playing');
+
+    // Seed an independent song queue after the Add All proof. The history route and
+    // its zero-match filter stay open; the seed cannot alter voice history.
+    const incumbentQueue = ['song:900', 'song:903'];
+    await invoke('play_selection', { epoch, selection: {
+      kind: 'songs', ids: ['900', '903'], index: 1, quality: 'standard',
+    } });
+    const previous = await wait(async () => {
+      const state = await player(), current = await queue();
+      if (state.state !== 'playing' || state.position <= .25 || state.track?.voiceId ||
+          state.track?.id !== '903' || !same(tracks(current), incumbentQueue) ||
+          state.queueRevision !== current.revision || state.entryId !== current.current) return;
+      return { ...decoder(state), revision: current.revision, queueIds: tracks(current) };
+    }, 'independent song incumbent in its own queue');
+    const source = await wait(async () => {
+      if (!settled() || visibleRows() || filter()?.value !== '不存在的节目' || !ready(playAll())) return;
+      const current = await history('voice');
+      const ids = current.entries.map(row => `voice:${row.id}`);
+      return same(ids, order) && ids;
+    }, 'zero-match voice filter leaves full native source available for Play All');
+    assert(text(playAll()) === '播放全部', 'official header Play All label');
+    click(playAll());
+    await wait(async () => {
+      const state = await player(), current = await queue();
+      return state.state === 'playing' && state.position > .25 && state.playId !== previous.playId &&
+        state.queueRevision === current.revision && state.entryId === current.current &&
+        `voice:${state.track?.voiceId}` === source[0] &&
+        state.track?.id === String(Number(state.track.voiceId) + 1000) &&
+        same(tracks(current), source);
+    }, 'Play All replaces the incumbent with the complete unfiltered voice list');
+    await capture('voice_play_all_replaced', { incumbent: previous, nativeVoiceOrder: source }, 'playing');
     await emit('complete', { ok: true, stages: names });
   } catch (error) {
     await emit('failed', {

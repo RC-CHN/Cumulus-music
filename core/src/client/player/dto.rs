@@ -397,6 +397,11 @@ pub enum PlaySelection {
         revision: String,
         quality: Quality,
     },
+    HistoryPlayAll {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        quality: Quality,
+    },
     HistoryBatchPlay {
         history_kind: crate::history::HistoryKind,
         revision: String,

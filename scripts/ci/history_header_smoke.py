@@ -1,4 +1,4 @@
-"""Verify Recently Played header actions in a sealed Linux WebView."""
+"""Verify Recently Played header actions through the desktop WebView."""
 
 import argparse
 from contextlib import closing
@@ -11,12 +11,13 @@ import sqlite3
 import sys
 
 from motion_smoke import launch
+from playback_power_smoke import windows_runtime
 
 
 STAGES = [
     'song_filtered_menu', 'song_add_all', 'song_batch', 'song_batch_back', 'song_clear_confirmation',
     'song_clear_cancelled', 'song_cleared', 'other_categories', 'voice_empty_filter_menu',
-    'voice_add_all_started',
+    'voice_add_all_started', 'voice_play_all_replaced',
 ]
 MENU = ['add-all', 'batch', 'clear']
 
@@ -30,7 +31,7 @@ def projected(tracks):
             else f"song:{row['track']['id']}" for row in tracks]
 
 
-def audit(output, database, screenshots):
+def audit(output, database, screenshots, runtime=None):
     complete = read(output / 'complete.json')
     assert complete['ok'] and complete['stages'] == STAGES and complete['syntheticHistoryWrites'] == 1
     names = [f'ux_{index:02d}_{name}' for index, name in enumerate(STAGES, 1)]
@@ -100,8 +101,22 @@ def audit(output, database, screenshots):
     assert player['state'] == 'playing' and player['playId'] != held['playId']
     assert player['track']['voiceId'] == voice_id and player['track']['id'] == str(int(voice_id) + 1000)
 
-    locale = read(output / 'locale.json')
-    assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
+    replaced = states['voice_play_all_replaced']
+    previous = replaced['incumbent']
+    assert previous['queueIds'] == ['song:900', 'song:903'] and previous['mediaId'] == '903'
+    assert previous['state'] == 'playing' and previous['position'] > .25
+    assert replaced['category'] == '声音' and replaced['filter'] == voice['filter']
+    assert replaced['visibleRows'] == replaced['checkedRows'] == 0
+    assert replaced['queueIds'] == replaced['nativeVoiceOrder'] == voice['nativeVoiceOrder']
+    player = replaced['nativePlayer']
+    assert player['epoch'] == previous['epoch'] and player['state'] == 'playing'
+    assert player['playId'] != previous['playId'] and player['entryId'] != previous['entryId']
+    assert replaced['nativeQueue']['revision'] != previous['revision']
+    assert player['track']['voiceId'] == voice_id and player['track']['id'] == str(int(voice_id) + 1000)
+
+    if runtime is None:
+        locale = read(output / 'locale.json')
+        assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
     with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
         rows = connection.execute(
             "SELECT owner, value FROM state WHERE kind='play-history-mutations-v1'"
@@ -110,10 +125,15 @@ def audit(output, database, screenshots):
     operation = json.loads(rows[0][1])
     assert operation['kind'] == 'song' and operation['action'] == {'kind': 'clear'}
     assert operation['phase'] == 'confirmed' and operation['remote_planned']
-    return dict(ok=True, actualLinuxWebView=True, nativeNullPlayback=True, stages=len(names),
-                screenshots=hashes, songsInserted=300, voicesStartedFromFullList=100,
-                syntheticHistoryWrites=1, realMusicRequests=0, realAccountWrites=0,
-                locale=locale, network='loopback-only')
+    report = dict(ok=True, nativeNullPlayback=True, stages=len(names), screenshots=hashes,
+                  songsInserted=300, voicesStartedFromFullList=100,
+                  voicesReplacingIncumbentFromFullList=len(replaced['queueIds']),
+                  syntheticHistoryWrites=1, realMusicRequests=0, realAccountWrites=0)
+    if runtime is None:
+        report.update(actualLinuxWebView=True, locale=locale, network='loopback-only')
+    else:
+        report.update(actualWebView='WebView2', runtime=runtime, network='synthetic-transports-only')
+    return report
 
 
 def main():
@@ -121,25 +141,46 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
-    parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--runtime', type=Path, help='same-run staged Windows native media directory')
+    parser.add_argument('--screenshots', action='store_true', help='capture GTK screenshots on Linux')
     args = parser.parse_args()
-    if not sys.platform.startswith('linux') or not os.environ.get('DISPLAY', '').startswith(':'):
-        parser.error('a Linux X11 WebView session is required')
-    if ({name for _, name in socket.if_nameindex()} != {'lo'}
-            or len(Path('/proc/net/route').read_text(encoding='ascii').splitlines()) != 1):
-        parser.error('use a sealed network namespace containing only loopback')
-    os.environ['GDK_BACKEND'] = 'x11'
+    windows = sys.platform == 'win32'
+    if windows:
+        if not args.runtime or args.screenshots:
+            parser.error('Windows requires --runtime; GTK screenshots are Linux only')
+    elif sys.platform.startswith('linux'):
+        if args.runtime:
+            parser.error('--runtime identifies the staged Windows native media directory')
+        if not os.environ.get('DISPLAY', '').startswith(':'):
+            parser.error('a Linux X11 WebView session is required')
+        if ({name for _, name in socket.if_nameindex()} != {'lo'}
+                or len(Path('/proc/net/route').read_text(encoding='ascii').splitlines()) != 1):
+            parser.error('use a sealed network namespace containing only loopback')
+        os.environ['GDK_BACKEND'] = 'x11'
+    else:
+        parser.error('this WebView proof supports Linux and Windows')
     binary = args.binary.resolve(strict=True)
+    runtime = None
+    if windows:
+        stage, runtime = windows_runtime(binary, args.runtime)
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700)
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/history_header_ui_probe.js'
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith('CUMULUS_')}
-    env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11', CUMULUS_PROOF_DIR=str(root / 'run'),
+    if windows:
+        env = {key: value for key, value in env.items()
+               if not key.upper().startswith('WEBVIEW2_') and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
+        env['MPV_DLL_DIR_CUMULUS'] = str(stage)
+        profile_dirs = ('APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP')
+    else:
+        env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+        profile_dirs = ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR')
+    env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_HISTORY_PROOF='1', CUMULUS_HISTORY_HEADER_PROOF='1',
                CUMULUS_UX_SCRIPT=str(source.resolve(strict=True)))
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
+    for key in profile_dirs:
         path = root / key
         path.mkdir(mode=0o700)
         env[key] = str(path)
@@ -149,7 +190,7 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), read(failed) if failed.exists() else None
     assert status == 0, f'native probe exit {status}'
-    report = audit(output, root / 'run/state/core.sqlite3', args.screenshots)
+    report = audit(output, root / 'run/state/core.sqlite3', args.screenshots, runtime=runtime)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

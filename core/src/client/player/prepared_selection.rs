@@ -171,7 +171,7 @@ impl MusicClient {
             token,
             prepared,
             update.expected.clone(),
-            PlaybackCommand::ApplyHistoryBatch(update),
+            PlaybackCommand::ApplyHistoryBatch(Box::new(update)),
             source,
         )
         .await
@@ -297,6 +297,7 @@ impl MusicClient {
                 | PlaySelection::HistoryRadioMenu { .. }
                 | PlaySelection::HistoryAdd { .. }
                 | PlaySelection::HistoryAddAll { .. }
+                | PlaySelection::HistoryPlayAll { .. }
                 | PlaySelection::HistoryBatchPlay { .. }
                 | PlaySelection::Songs { .. }
         ) {

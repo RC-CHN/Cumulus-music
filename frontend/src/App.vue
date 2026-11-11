@@ -719,30 +719,45 @@ async function selectHistoryBatch(
 ) {
   const route = music.page.value;
   const owner = music.account.value.epoch;
+  const all = action.kind === 'add-all' || action.kind === 'play-all';
+  const playAll = action.kind === 'play-all';
   const routeCurrent = () =>
     route.kind === 'history' &&
     route.scope === kind &&
-    (route.batch === true) === (action.kind !== 'add-all') &&
+    (route.batch === true) === !all &&
     music.page.value === route &&
     music.account.value.epoch === owner;
   const current = () =>
-    routeCurrent() && recent.page.value?.kind === kind && recent.page.value.revision === revision;
-  if (!current()) return false;
-  const result = await player.prepareSelectionForPage(async () => {
-    if (!current()) throw { code: 'stale', message: '播放记录已更新' };
-    const source = {
-      history_kind: kind,
-      revision,
-      quality: player.view.value?.qualityPreferences.quality ?? ('standard' as const),
-    };
-    if (action.kind === 'add-all') return { kind: 'history_add_all', ...source };
-    return {
-      kind: action.kind === 'play' ? 'history_batch_play' : 'history_add',
-      ...source,
-      ids: action.ids,
-    };
-  });
-  return !!result && routeCurrent();
+    routeCurrent() &&
+    recent.page.value?.kind === kind &&
+    recent.page.value.revision === revision &&
+    (!playAll || (!recent.loading.value && !recent.busy.value));
+  const stale = { code: 'stale', message: '播放记录已更新', retryable: false };
+  if (!current()) {
+    if (playAll && routeCurrent()) throw stale;
+    return false;
+  }
+  try {
+    const result = await player.prepareSelectionForPage(async (epoch) => {
+      if (!current() || epoch !== owner) throw stale;
+      const source = {
+        history_kind: kind,
+        revision,
+        quality: player.view.value?.qualityPreferences.quality ?? ('standard' as const),
+      };
+      if (action.kind === 'add-all') return { kind: 'history_add_all', ...source };
+      if (action.kind === 'play-all') return { kind: 'history_play_all', ...source };
+      return {
+        kind: action.kind === 'play' ? 'history_batch_play' : 'history_add',
+        ...source,
+        ids: action.ids,
+      };
+    });
+    return !!result && routeCurrent();
+  } catch (error) {
+    if (!playAll || routeCurrent()) throw error;
+    return false;
+  }
 }
 function openHistoryVoiceDownload(target: HistorySelectionScope) {
   const route = music.page.value;

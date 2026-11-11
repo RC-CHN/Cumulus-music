@@ -413,7 +413,7 @@ impl Actor {
             }
             PlaybackCommand::ApplyHistoryBatch(update) => {
                 let authority = &request.guard.as_ref().expect("guarded history batch").1;
-                self.apply_history_batch(update, &request.reply, authority)
+                self.apply_history_batch(*update, &request.reply, authority)
                     .await
                     .map(|value| options = value)
             }

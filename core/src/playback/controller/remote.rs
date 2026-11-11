@@ -232,8 +232,7 @@ impl Actor {
         reply: &Response,
         authority: &crate::playback::engine::Cancellation,
     ) -> Result<Option<LoadOptions>> {
-        if self.queue.is_fm()
-            || self.queue.intelligence_context().is_some()
+        if (!update.play_all && (self.queue.is_fm() || self.queue.intelligence_context().is_some()))
             || self.pending.is_some()
             || self.quality_task.is_some()
             || update.queue.fm_source.is_some()
@@ -242,7 +241,7 @@ impl Actor {
             return Err(Error::MutationBusy);
         }
         if self.queue.is_empty() != update.was_empty
-            || (!update.start && update.was_empty)
+            || (!update.start && (update.was_empty || update.play_all))
             || (update.start && update.queue.selected().is_none())
             || (!update.start && self.queue.selected() != update.queue.selected())
         {
@@ -252,7 +251,7 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         authority.check()?;
-        let retained = if update.start && self.state.active() {
+        let retained = if update.start && !update.play_all && self.state.active() {
             self.loaded.as_ref().and_then(|loaded| {
                 let mut selected = update.queue.selected()?;
                 if self.queue.selected().as_ref() != Some(&loaded.item)
@@ -290,29 +289,46 @@ impl Actor {
                 .ok_or(Error::QueueChanged)?;
             *selected = retained.clone();
         }
-        let store = self.session.persistent_store()?;
-        crate::history::HistoryService::new(self.session.clone())?.with_matching_revision(
-            &self.token,
-            update.kind,
-            &update.revision,
-            |owner| {
-                if let Some(binding) = &update.shuffle_anchor {
-                    if !update.start
-                        || update.kind != crate::history::HistoryKind::Voice
-                        || update.queue.mode != crate::playback::PlaybackMode::Random
-                        || !update
-                            .queue
-                            .selected()
-                            .is_some_and(|item| binding.anchor.matches(&item.resource))
-                    {
-                        return Err(Error::QueueChanged);
-                    }
-                    binding.setting.check()?;
-                    binding.anchor.require_current(&store, owner)?;
+        let session = self.session.clone();
+        let store = session.persistent_store()?;
+        let publish = |owner: &str| {
+            if let Some(binding) = &update.shuffle_anchor {
+                if !update.start
+                    || update.kind != crate::history::HistoryKind::Voice
+                    || (!update.play_all
+                        && update.queue.mode != crate::playback::PlaybackMode::Random)
+                    || !update
+                        .queue
+                        .selected()
+                        .is_some_and(|item| binding.anchor.matches(&item.resource))
+                {
+                    return Err(Error::QueueChanged);
                 }
+                binding.setting.check()?;
+                binding.anchor.require_current(&store, owner)?;
+            }
+            if update.play_all {
+                self.queue.install_history_play_all(
+                    update.queue,
+                    owner,
+                    update.kind,
+                    &update.revision,
+                    update.fm_backup_queue.as_ref(),
+                )
+            } else {
                 self.queue.install(update.queue)
-            },
-        )?;
+            }
+        };
+        if update.play_all {
+            session.with_local_owner(&self.token, publish)?;
+        } else {
+            crate::history::HistoryService::new(session)?.with_matching_revision(
+                &self.token,
+                update.kind,
+                &update.revision,
+                publish,
+            )?;
+        }
         if let Some(retained) = retained {
             self.loaded.as_mut().expect("retained history decoder").item = retained;
             if self.state == PlaybackStatus::Paused {

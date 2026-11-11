@@ -34,6 +34,8 @@ fn fixture() -> (
 
 #[path = "client_fm/chorus.rs"]
 mod chorus;
+#[path = "client_fm/history_play_all.rs"]
+mod history_play_all;
 
 #[path = "support/fm_feedback_client.rs"]
 mod feedback_tests;

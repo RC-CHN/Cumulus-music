@@ -1,4 +1,5 @@
-//! M3085 history Add and Play use the M1384 ordinary queue insertion.
+//! M3085 history queue gestures share the guarded ordinary queue commit.
+mod play_all;
 mod shuffle;
 use super::{MusicClient, PlayerResourceKind, PlayerView, identity, mapping, project};
 use crate::{
@@ -31,7 +32,10 @@ impl MusicClient {
         let controller = self.player.controller().await?;
         let (before, queue) = controller.queue_with_state(token).await?;
         prepared.check(self, &before)?;
-        if before.fm || queue.intelligence.is_some() {
+        let kind = selection.kind;
+        let full_list = matches!(selection.rows, SelectionRows::All);
+        let play_all = full_list && play;
+        if !play_all && (before.fm || queue.intelligence.is_some()) {
             return Err(Error::State("history batch requires an ordinary queue"));
         }
         if matches!(
@@ -40,8 +44,15 @@ impl MusicClient {
         ) {
             return Err(Error::MutationBusy);
         }
-        let kind = selection.kind;
-        let full_list = matches!(selection.rows, SelectionRows::All);
+        let (replacement_mode, fm_backup_queue) = if play_all && before.fm {
+            let store = self.session.persistent_store()?;
+            let backup = self.session.with_local_owner(token, |owner| {
+                store.get(owner, "playback", crate::playback::FM_BACKUP_QUEUE)
+            })?;
+            (play_all::fm_return_mode(backup.as_ref())?, backup)
+        } else {
+            (before.intelligence_last_mode.unwrap_or(queue.mode), None)
+        };
         let revision = selection.revision.to_owned();
         let (resources, source) = self
             .history_selection_for_queue(token, selection, prepared.observed, play)
@@ -54,11 +65,10 @@ impl MusicClient {
         // Selected Add carries the first selected voice as its resource.
         // Header Add All has resource {}, and M3085 instead takes the first
         // listData ID as its explicit start without a radio bookmark lookup.
-        let shuffle_anchor = if was_empty
-            && !play
-            && !full_list
-            && queue.mode == PlaybackMode::Random
-            && kind == HistoryKind::Voice
+        // Header Play All suppresses the default list-head playId, but its
+        // real first voice resource can still supply a same-episode bookmark.
+        let shuffle_anchor = if kind == HistoryKind::Voice
+            && (play_all || was_empty && !play && !full_list && queue.mode == PlaybackMode::Random)
         {
             match resources.first() {
                 Some(first) => {
@@ -71,19 +81,33 @@ impl MusicClient {
             None
         };
         pending.check()?;
-        let queue = plan(
-            queue,
-            resources,
-            source,
-            start,
-            full_list && was_empty,
-            shuffle_anchor.as_ref().map(|binding| &binding.anchor),
-            &mut rand::rng(),
-        )?;
+        let anchor = shuffle_anchor.as_ref().map(|binding| &binding.anchor);
+        let queue = if play_all {
+            play_all::plan(
+                kind,
+                replacement_mode,
+                resources,
+                source,
+                anchor,
+                &mut rand::rng(),
+            )?
+        } else {
+            plan(
+                queue,
+                resources,
+                source,
+                start,
+                full_list && was_empty,
+                anchor,
+                &mut rand::rng(),
+            )?
+        };
         let update = HistoryQueueUpdate {
             expected: before.fence(),
             queue,
             start,
+            play_all,
+            fm_backup_queue,
             was_empty,
             kind,
             revision,
@@ -119,7 +143,7 @@ impl MusicClient {
             });
             self.submit_selection_with_source(
                 token,
-                PlaybackCommand::ApplyHistoryBatch(update),
+                PlaybackCommand::ApplyHistoryBatch(Box::new(update)),
                 prepared.observed,
                 None,
                 Some(prepared),
@@ -139,6 +163,20 @@ fn history_key(row: &Value) -> Option<(PlayerResourceKind, &str)> {
     identity::collection_key(row, identity::kind(row) == PlayerResourceKind::Downloaded)
 }
 
+fn retain_admitted(resources: &mut Vec<Value>) {
+    resources.retain(|row| {
+        let Some((kind, _)) = history_key(row) else {
+            return false;
+        };
+        row["missing"] != true
+            && (kind != PlayerResourceKind::Catalog || mapping::online_play_all_eligible(row))
+    });
+    let mut seen = HashSet::new();
+    resources.retain(|row| {
+        history_key(row).is_some_and(|(kind, id)| seen.insert((kind, id.to_owned())))
+    });
+}
+
 fn plan(
     mut queue: QueueSnapshot,
     mut resources: Vec<Value>,
@@ -153,17 +191,7 @@ fn plan(
         .first()
         .and_then(history_key)
         .map(|(kind, id)| (kind, id.to_owned()));
-    resources.retain(|row| {
-        let Some((kind, _)) = history_key(row) else {
-            return false;
-        };
-        row["missing"] != true
-            && (kind != PlayerResourceKind::Catalog || mapping::online_play_all_eligible(row))
-    });
-    let mut seen = HashSet::new();
-    resources.retain(|row| {
-        history_key(row).is_some_and(|(kind, id)| seen.insert((kind, id.to_owned())))
-    });
+    retain_admitted(&mut resources);
     let incumbent = queue.selected();
     let incumbent_key = incumbent
         .as_ref()

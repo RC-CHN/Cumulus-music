@@ -255,6 +255,11 @@ impl From<Error> for ClientError {
                 Error::StaleResponse | Error::Cancelled => {
                     ("stale", "操作已取消或账号已切换", false)
                 }
+                Error::State("history selection has no playable resources") => (
+                    "history_unplayable",
+                    "当前播放记录中没有可播放的内容",
+                    false,
+                ),
                 Error::InvalidInput("download selection exceeds 5000 items") => (
                     "invalid_input",
                     "当前播放列表最多容纳 5000 首，请先缩小下载搜索范围",
