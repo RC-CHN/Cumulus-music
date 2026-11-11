@@ -26,6 +26,7 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 #[derive(Default)]
 struct Service {
     legacy: bool,
+    ordinary: bool,
     inner: fixture::Service,
     validations: AtomicUsize,
     searches: AtomicUsize,
@@ -125,6 +126,8 @@ impl HttpBackend for Service {
                 return Ok(fixture::reply(
                     if count == 0 {
                         json!({"code":200,"data":{"action":1}})
+                    } else if self.ordinary {
+                        json!({"code":200,"data":{"title":"合成失效标题","message":"合成会话已经失效 <img>"}})
                     } else {
                         json!({"code":200,"data":{"action":2,"followAction":1,"title":"请重新确认登录","message":"登录状态已失效，请重新登录"}})
                     },
@@ -166,8 +169,14 @@ fn main() {
         )
         .unwrap();
     let legacy = std::env::var_os("CUMULUS_PROOF_LEGACY").is_some();
+    let ordinary = std::env::var_os("CUMULUS_PROOF_ORDINARY_EXPIRY").is_some();
+    assert!(
+        !(legacy && ordinary),
+        "choose a single interception scenario"
+    );
     let service = Arc::new(Service {
         legacy,
+        ordinary,
         ..Default::default()
     });
     let queue_store = Arc::new(StateStore::open(root.join("state")).unwrap());
@@ -203,6 +212,7 @@ fn main() {
    value["realMusicNetworkRequests"]=json!(0);
    value["nativeAccount"]=serde_json::to_value(account).unwrap();
    value["legacyPolicy"]=json!(legacy);
+   value["ordinaryJskExpiry"]=json!(ordinary);
    if legacy {value["queueCounts"]=json!(["2","3","local-guest"].map(|owner|cumulus_core::playback::PlaybackQueue::new(Some(queue_store.clone()),owner).unwrap().len()));}
    value["validationRequests"]=json!(service.validations.load(Ordering::SeqCst));
    value["searchRequests"]=json!(service.searches.load(Ordering::SeqCst));
@@ -222,6 +232,6 @@ fn main() {
    if stage=="complete"||stage=="failed" {handle.exit(if stage=="complete"&&value["ok"]==true {0}else{1});}
    else {handle.get_webview_window("main").unwrap().eval(format!("window.__authAck={};",json!(stage))).unwrap();}
   });Ok(())
- }).on_page_load(move |webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(format!("window.__interceptionLegacy={legacy};\n{}",include_str!("login_interception_ui_probe.js"))).unwrap();}})
+ }).on_page_load(move |webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(format!("window.__interceptionLegacy={legacy};\nwindow.__interceptionOrdinary={ordinary};\n{}",include_str!("login_interception_ui_probe.js"))).unwrap();}})
  .run(tauri::generate_context!()).expect("login interception UI proof");
 }

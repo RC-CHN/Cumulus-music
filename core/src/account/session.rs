@@ -41,6 +41,7 @@ pub struct SessionSnapshot {
     pub profile: Option<Value>,
     pub login_notice: Option<LoginNotice>,
     pub(crate) classic_remove_guide: Option<String>,
+    pub(crate) live_jsk_expiry: bool,
 }
 
 /// Only the current account's verified entitlement changes cross this boundary.
@@ -67,6 +68,7 @@ struct SessionState {
     guest_ready: bool,
     login_notice: Option<LoginNotice>,
     classic_remove_guide: Option<ClassicRemoveGuide>,
+    live_jsk_expiry: bool,
     initial_restore_generation: Option<u64>,
     quick_exchange_generation: Option<u64>,
     artist_login: Option<ArtistLogin>,
@@ -95,6 +97,7 @@ impl SessionState {
     fn invalidate(&mut self, status: SessionStatus) -> Result<()> {
         self.generation = next_generation(self.generation)?;
         self.classic_remove_guide = None;
+        self.live_jsk_expiry = false;
         self.uid = None;
         self.profile = None;
         self.artist_login = None;
@@ -145,6 +148,7 @@ impl AccountSession {
                 guest_ready: false,
                 login_notice: None,
                 classic_remove_guide: None,
+                live_jsk_expiry: false,
                 initial_restore_generation: None,
                 quick_exchange_generation: None,
                 artist_login: None,
@@ -504,6 +508,7 @@ impl AccountSession {
         state.guest_ready = false;
         state.login_notice = None;
         state.classic_remove_guide = None;
+        state.live_jsk_expiry = false;
         state.changes.send_replace(state.token());
         Ok(())
     }
@@ -534,6 +539,7 @@ impl AccountSession {
                 .classic_remove_guide
                 .as_ref()
                 .and_then(|guide| guide.offer(state.generation)),
+            live_jsk_expiry: state.live_jsk_expiry,
         })
     }
 
@@ -638,6 +644,7 @@ impl AccountSession {
         state.guest_ready = false;
         state.login_notice = None;
         state.classic_remove_guide = None;
+        state.live_jsk_expiry = false;
         state.changes.send_replace(state.token());
         Ok(profile)
     }
@@ -744,6 +751,7 @@ impl AccountSession {
         state.guest_ready = false;
         state.login_notice = None;
         state.classic_remove_guide = None;
+        state.live_jsk_expiry = false;
         if state.token() != token {
             state.changes.send_replace(state.token());
         }
@@ -782,6 +790,7 @@ impl AccountSession {
                 notice,
                 clear_queue,
                 classic_remove_guide,
+                live_jsk_expiry,
             } = outcome
             {
                 let native: Arc<dyn std::any::Any + Send + Sync> = state.api.clone();
@@ -791,10 +800,13 @@ impl AccountSession {
                 let show_classic_guide = classic_remove_guide
                     && state.status == SessionStatus::Authenticated
                     && notice.kind == super::login_policy::LoginNoticeKind::Reauthenticate;
+                let show_live_jsk_expiry =
+                    live_jsk_expiry && state.status == SessionStatus::Authenticated;
                 let cleared = self.invalidate_native_login(&client, token, &notice, clear_queue);
                 state.login_notice = Some(notice);
                 state.invalidate(SessionStatus::Expired)?;
                 cleared?;
+                state.live_jsk_expiry = show_live_jsk_expiry;
                 if show_classic_guide {
                     state.classic_remove_guide = Some(ClassicRemoveGuide::new(state.generation));
                 }

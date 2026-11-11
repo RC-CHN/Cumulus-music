@@ -2,7 +2,7 @@
 use super::*;
 use crate::account::login_policy::{
     AB_PATH, InvalidLoginController, InvalidLoginOutcome, LOGIN_EXPERIMENTS, LegacyLoginController,
-    LegacyLoginOutcome, LoginExperiments, REFRESH_PATH, TokenPresence,
+    LegacyLoginOutcome, LoginExperiments, LoginNoticeKind, REFRESH_PATH, TokenPresence,
 };
 use crate::protocol::http::{MusicHttpClient, WireRoute};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +14,7 @@ pub(super) enum Interception {
         notice: LoginNotice,
         clear_queue: bool,
         classic_remove_guide: bool,
+        live_jsk_expiry: bool,
     },
 }
 
@@ -298,6 +299,7 @@ impl AccountSession {
                     notice,
                     clear_queue,
                     classic_remove_guide,
+                    live_jsk_expiry: false,
                 },
                 Ok(_) => Interception::Deferred,
                 Err(error) => match error.root() {
@@ -318,6 +320,7 @@ impl AccountSession {
         self.require_api(token, &api)?;
         Ok(Some(match result {
             InvalidLoginOutcome::Notice(notice) => Interception::Invalid {
+                live_jsk_expiry: notice.kind == LoginNoticeKind::Expired,
                 notice,
                 clear_queue: false,
                 classic_remove_guide: false,

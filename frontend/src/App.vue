@@ -139,6 +139,8 @@ import {
   createClassicRemoveGuideScheduler,
   type ClassicRemoveGuide,
 } from './services/classicRemoveGuide';
+import { createSessionExpiryNotice } from './services/sessionExpiryNotice';
+import SessionExpiryNotice from './components/account/SessionExpiryNotice.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import { flushQuickOfferReload } from './composables/quickOfferReload';
 import TopbarAccount from './components/account/TopbarAccount.vue';
@@ -5515,6 +5517,12 @@ function lyricPanelLeave(element: Element) {
   (element as HTMLElement).inert = true;
 }
 const accountsOpen = ref(false);
+const sessionExpiryMessage = ref<string>();
+const sessionExpiryNotice = createSessionExpiryNotice((message) => {
+  sessionExpiryMessage.value = message;
+});
+watch(account, sessionExpiryNotice.observe, { flush: 'sync' });
+onUnmounted(sessionExpiryNotice.dispose);
 const classicRemoveGuide = shallowRef<ClassicRemoveGuide>();
 function discardClassicRemoveGuide(guide: ClassicRemoveGuide) {
   void core.dismissClassicRemoveGuide(guide.epoch, guide.ticket).catch(() => {});
@@ -8525,6 +8533,7 @@ onUnmounted(() => {
       @played="player.syncPlayback()"
       @issue="music.notice.value = $event"
     />
+    <SessionExpiryNotice :message="sessionExpiryMessage" />
     <PlayerBar
       :account="account"
       :podcast-resume="pcPresentation.podcastResume.value"

@@ -85,6 +85,7 @@ impl MusicClient {
             profile_shortcut,
             login_notice: snapshot.login_notice,
             classic_remove_guide: snapshot.classic_remove_guide,
+            live_jsk_expiry: snapshot.live_jsk_expiry,
         })
     }
 

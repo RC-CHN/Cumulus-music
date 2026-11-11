@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { AccountView } from '../services/contracts';
+import { liveSessionExpiryNotice } from '../services/sessionExpiryNotice';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 const props = defineProps<{ account: AccountView; error: string; guestSearchReady?: boolean }>();
+const liveExpiry = computed(() => !!liveSessionExpiryNotice(props.account));
+const inlineNotice = computed(() => (liveExpiry.value ? undefined : props.account.loginNotice));
+const expiredHelp = '请重新登录后继续管理歌单、查看推荐和使用账号资源。';
 const unverified = computed(
   () => props.account.status === 'unknown' && !props.account.loginNotice && !props.guestSearchReady,
 );
@@ -19,7 +23,7 @@ usePageEntryFocus(
     <div class="welcome-note">♪</div>
     <h1 tabindex="-1">
       {{
-        account.loginNotice?.title ||
+        inlineNotice?.title ||
         (unverified
           ? '暂时无法确认登录状态'
           : account.status === 'expired'
@@ -29,13 +33,15 @@ usePageEntryFocus(
     </h1>
     <p aria-live="polite">
       {{
-        account.loginNotice?.message ||
-        (guestSearchReady ? '可以直接在顶栏搜索。登录后可播放、收藏和查看个人推荐。' : error) ||
-        (account.status === 'expired'
-          ? '请重新登录后继续管理歌单、查看推荐和使用账号资源。'
-          : unverified
-            ? '请重新连接以核对当前账号，也可以选择登录。'
-            : '登录网易云音乐，找回你的歌单与每日推荐')
+        liveExpiry
+          ? expiredHelp
+          : inlineNotice?.message ||
+            (guestSearchReady ? '可以直接在顶栏搜索。登录后可播放、收藏和查看个人推荐。' : error) ||
+            (account.status === 'expired'
+              ? expiredHelp
+              : unverified
+                ? '请重新连接以核对当前账号，也可以选择登录。'
+                : '登录网易云音乐，找回你的歌单与每日推荐')
       }}
     </p>
     <button v-if="unverified" type="button" class="primary" @click="$emit('retry')">

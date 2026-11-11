@@ -325,6 +325,7 @@ export interface AccountView {
   /** Additive native capability; absent on older core versions. */
   canSignOut?: boolean;
   classicRemoveGuide?: string;
+  liveJskExpiry?: boolean;
   loginNotice?: {
     kind: 'expired' | 'reauthenticate';
     title: string | null;

@@ -173,6 +173,8 @@ pub struct AccountView {
     pub login_notice: Option<crate::account::login_policy::LoginNotice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub classic_remove_guide: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub live_jsk_expiry: bool,
 }
 
 #[derive(Clone, Serialize)]

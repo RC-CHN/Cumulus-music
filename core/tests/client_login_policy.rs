@@ -112,6 +112,7 @@ async fn valid_token_keeps_account_caches_experiments_and_never_replays_failed_r
         ));
     }
     assert_eq!(w.epoch(), epoch);
+    assert!(!w.client.account().unwrap().live_jsk_expiry);
     assert_eq!(
         w.client.account().unwrap().status,
         SessionStatus::Authenticated
@@ -168,6 +169,7 @@ async fn explicit_expiry_is_persisted_with_credentials_cleared_and_restart_makes
     assert_ne!(events.borrow().generation.to_string(), epoch);
     let account = w.client.account().unwrap();
     assert_eq!(account.status, SessionStatus::Expired);
+    assert!(!account.live_jsk_expiry);
     assert_eq!(account.login_notice.unwrap().message, "请确认当前账号");
     let pair = w.credentials().login_credentials().unwrap();
     assert!(pair.token.is_none() && pair.refresh_token.is_none());
@@ -184,6 +186,43 @@ async fn explicit_expiry_is_persisted_with_credentials_cleared_and_restart_makes
     );
     assert!(network.calls().is_empty());
     assert_eq!(w.http.calls().len(), 4);
+}
+
+#[tokio::test]
+async fn ordinary_jsk_expiry_is_visible_only_on_the_live_session() {
+    let w = World::new([
+        rejected(),
+        flags("t1", "t1"),
+        json!({"code":200,"data":{"message":"合成会话已经失效"}}).into(),
+    ])
+    .await;
+    let mut events = w.client.subscribe_account().unwrap();
+    let old_epoch = w.epoch();
+    assert!(!w.client.account().unwrap().live_jsk_expiry);
+    assert!(
+        w.client
+            .daily_songs()
+            .await
+            .err()
+            .expect("request must fail")
+            .is_service_code(301)
+    );
+    events.changed().await.unwrap();
+    let live = w.client.account().unwrap();
+    assert_ne!(live.epoch, old_epoch);
+    assert_eq!(live.status, SessionStatus::Expired);
+    assert!(live.live_jsk_expiry);
+    assert_eq!(live.login_notice.unwrap().message, "合成会话已经失效");
+    assert_eq!(w.http.calls().len(), 4);
+
+    let no_network = Arc::new(ScriptHttp::new([]));
+    let reopened = World::open(w.root.path(), no_network.clone());
+    let cold = reopened.restore_account().await.unwrap();
+    assert_eq!(cold.status, SessionStatus::Expired);
+    let json = serde_json::to_value(cold).unwrap();
+    assert_eq!(json["loginNotice"]["message"], "合成会话已经失效");
+    assert!(json.get("liveJskExpiry").is_none());
+    assert!(no_network.calls().is_empty());
 }
 
 #[tokio::test]
@@ -215,6 +254,7 @@ async fn pc_bridge_converts_transport_failures_to_body_failures_and_expires_afte
             }
         }
         assert_eq!(w.client.account().unwrap().status, SessionStatus::Expired);
+        assert!(w.client.account().unwrap().live_jsk_expiry);
         assert_eq!(w.http.calls().len(), 8);
     }
 }

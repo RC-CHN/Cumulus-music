@@ -51,6 +51,26 @@ AccountSession watch通知变化；desktop RenewalPump独立订阅并立即发�
 SessionRenewal新增PolicyDisabled；缺凭据优先显示缺凭据。主界面显示失效原因与重新登录按钮。
 所有新数据保持有界DTO，前端无任意实验赋值、刷新凭据或任意请求接口。
 
+普通 JSK 实时失效提示
+- 官方 PC 3.1.42.205594 的 M/1368:2603–2644 将校验确认的失效派发为
+  LOGIN_INVALID_EVENT。M/198:2628–2655 遇到缺失 action 时立即显示全局错误
+  7 秒，再完成退出；数字 action=2 转到另一条 removeGuide 分支。
+- Cumulus 原先只在 AccountWelcome 显示失效原因，本地音乐、设置等仍可用页面
+  不经过该组件。现在主窗在已登录账号实时转为普通 JSK 失效时显示一次同样时长
+  的文本提示，保留页面和焦点。仅当前账号成功清除本机凭据后，原生才投影临时
+  liveJskExpiry；它不落盘、不能开启登录窗口。冷启动仍显示原持久失效信息，
+  不重播临时提示；切号撤销旧提示。action 1/2、旧版和原设备/SNS 不改。
+  在必须登录的页面，实时原因只显示于全局提示；页面保留通用失效说明和手动
+  「重新登录」入口。M/198:898–929 的退出流程不保留本次提示正文到页面。
+- 无新增网络请求、远端退出或登录操作。窗口位置采用社区样式，未核对原 CEF
+  像素。封闭 WebView 专项：使用现有 login_interception_ui_probe 和
+  run_auth_probe.py --stage-prefix interception_ --screenshots 5，环境设
+  CUMULUS_PROOF_ORDINARY_EXPIRY=1。先验证 action 1 保持登录，再在本地音乐页
+  通过实际类型化 IPC 驱动一条封闭的后台失败读；检查原请求不重放、无二维码或
+  登录弹窗、纯文本提示、焦点与路径不变、登录回退不重复原因及约 7 秒后消失。
+  独立审计命令不变。
+  Rust 用例另核对新进程不读网络且无临时标记；最终实际运行证据待集成。
+
 验证入口
  node desktop/tests/login_interception_official.cjs core/tests/fixtures/login_interception.json
  cargo test --locked --offline -p cumulus-core --test login_interception --test client_login_policy --test client_renewal --test refresh --test http
