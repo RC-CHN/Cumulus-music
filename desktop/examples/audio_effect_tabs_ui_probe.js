@@ -151,7 +151,12 @@
       return account.status === 'authenticated' && ready(launcher()) &&
         ready(one('.track-row .track-play')) && !one('.page-enter-active,.page-leave-active') && account;
     }, 'authenticated current window, player and daily row'));
-    layout = (await invoke('pc_presentation', { epoch })).effectCatalogueNew ? 'modern' : 'legacy';
+    const presentation = await invoke('pc_presentation', { epoch });
+    layout = presentation.effectCatalogueNew ? 'modern' : 'legacy';
+    assert(presentation.effectMinibarEntry === (layout === 'modern' ? 'always' : 'legacy'),
+      'the sealed assignment selects the expected native minibar entrance');
+    await wait(() => launcher()?.dataset.effectEntry === layout &&
+      launcher()?.textContent.trim() === '音效', 'the assigned inactive entrance is visible');
     step = 'native-playing';
     click(one('.track-row .track-play'));
     await wait(async () => {
@@ -195,12 +200,15 @@
         headerMaster().getAttribute('aria-disabled') !== 'true' && equalizer;
     }, 'explicit preset enables the same-owner local master in the header');
     masterControl = headerMaster();
+    await wait(() => launcher()?.textContent.trim() === (layout === 'modern' ? '均衡器' : '音效'),
+      'the modern tag follows a confirmed EQ selection without replacing the legacy button label');
     click(tab('equalizer'));
     await capture('offline_equalizer_selected', 'equalizer', true);
     key('Home');
     await wait(() => selected('catalogue'), 'Home selects the first tab');
     step = 'turn-off-local-eq';
     await toggleMaster(false);
+    await wait(() => launcher()?.textContent.trim() === '音效', 'master off restores the default tag');
     await capture('offline_catalogue_master_off', 'catalogue', false, masterControl);
     click(tab('catalogue'));
     connectivity(true);

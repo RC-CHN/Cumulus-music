@@ -85,7 +85,8 @@ pub fn overview_assignment(
         "data": [
             {"expName":"PH-PC-yinxiaogaiban2","expGroupName":"t1"},
             {"expName":"PH-PC-minibarNew","expGroupName":minibar},
-            {"expName":"PH-PC-minibarNewLike","expGroupName":"c"}
+            {"expName":"PH-PC-minibarNewLike","expGroupName":"c"},
+            {"expName":"PH-PC-yxrk","expGroupName":"t1"}
         ]
     }))
 }
