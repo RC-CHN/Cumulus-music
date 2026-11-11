@@ -1,3 +1,4 @@
+pub(crate) mod current_song_download;
 pub mod intelligence;
 pub mod lyric_bounty;
 mod native_authority;

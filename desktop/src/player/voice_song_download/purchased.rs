@@ -28,7 +28,13 @@ impl TryFrom<String> for Receipt {
     }
 }
 
-fn explicit_continuation<'de, D: Deserializer<'de>>(
+impl From<Receipt> for String {
+    fn from(value: Receipt) -> Self {
+        value.0
+    }
+}
+
+pub(crate) fn explicit_continuation<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Receipt>, D::Error> {
     Option::deserialize(deserializer)
