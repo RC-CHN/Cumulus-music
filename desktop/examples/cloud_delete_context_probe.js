@@ -93,7 +93,7 @@
     await control("report-resize", { width, height, scale: devicePixelRatio });
     await wait(() => innerWidth === width && innerHeight === height, "resize");
   }
-  async function search(value) {
+  async function search(value, required = []) {
     const n = page().querySelector('[aria-label="搜索云盘歌曲"]');
     n.focus();
     n.value = value;
@@ -102,7 +102,10 @@
       new Event("submit", { bubbles: true, cancelable: true }),
     );
     await sleep(0);
-    await wait(ready, "query");
+    await wait(
+      () => ready() && required.every((id) => page().querySelector(`[data-cloud-id="${id}"]`)),
+      "title query rows",
+    );
     await settle();
   }
   async function openRows(ids) {
@@ -267,7 +270,7 @@
       .find((n) => n.textContent.trim() === "音乐云盘")
       .click();
     await wait(ready, "cloud");
-    await search("cloud-003");
+    await search("云盘合成歌曲 003", ["1003"]);
     await theme("light");
     await openRows(["1003"]);
     assert(
@@ -276,19 +279,19 @@
     );
     await capture("ordinary_light");
     await close();
-    await search("cloud-002");
+    await search("云盘合成歌曲 002", ["1002"]);
     await theme("dark");
     await openRows(["1002"]);
     assert(facts().warning.includes("无法再试听下载"), "off-store warning");
     await capture("off_store_dark");
     await close();
-    await search("cloud-001");
+    await search("云盘合成歌曲 001", ["1001"]);
     await theme("light");
     await openRows(["1001"]);
     assert(facts().warning.includes("其他端将无法同步"), "private warning");
     await capture("private_light");
     await close();
-    await search("cloud-00");
+    await search("云盘合成歌曲 00", ["1002", "1001"]);
     await theme("dark");
     await openRows(["1002", "1001"]);
     assert(
@@ -299,7 +302,7 @@
     await capture("mixed_priority_dark");
     await close();
     legacy = true;
-    await search("cloud-003");
+    await search("云盘合成歌曲 003", ["1003"]);
     await theme("light");
     await openRows(["1003"]);
     assert(facts().warning.includes("类型尚未核实"), "missing type is unknown");

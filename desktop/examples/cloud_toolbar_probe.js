@@ -423,7 +423,15 @@
     );
     assert(document.activeElement === trigger(), "batch returns focus to more");
     await capture("batch_returned_dark");
-    await search("cloud-00");
+    await search("云盘合成歌曲 00");
+    await wait(
+      () =>
+        [...page().querySelectorAll("[data-cloud-id]")]
+          .map((row) => row.dataset.cloudId)
+          .sort()
+          .join(",") === "1001,1002,1003,1004,1005,1006,1007,1008,1009",
+      "nine settled title matches",
+    );
     page().querySelector('[data-cloud-sort="title"]').click();
     await sleep(0);
     await wait(ready, "sorted nine");
@@ -623,7 +631,12 @@
     await open();
     await choose("download");
     await wait(() => readMode === "held", "held download list");
-    await search("cloud-001");
+    await search("云盘合成歌曲 001");
+    await wait(
+      () => [...page().querySelectorAll("[data-cloud-id]")]
+        .map((row) => row.dataset.cloudId).join(",") === "1001",
+      "replacement title settled",
+    );
     release();
     readMode = "";
     await sleep(150);

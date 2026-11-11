@@ -75,7 +75,7 @@
     );
     await wait(() => document.documentElement.dataset.theme === value, "theme");
   }
-  async function search(value) {
+  async function search(value, required) {
     const n = page().querySelector('[aria-label="搜索云盘歌曲"]');
     n.value = value;
     n.dispatchEvent(new Event("input", { bubbles: true }));
@@ -86,8 +86,9 @@
     await wait(
       () =>
         page()?.dataset.cloudLoading === "false" &&
-        page()?.dataset.cloudReady === "true",
-      "cloud query",
+        page()?.dataset.cloudReady === "true" &&
+        required.every((id) => page().querySelector(`[data-cloud-id="${id}"]`)),
+      "cloud title query rows",
     );
   }
   async function open(ids) {
@@ -256,7 +257,7 @@
       .find((n) => n.textContent.trim() === "音乐云盘")
       .click();
     await wait(() => page()?.dataset.cloudReady === "true", "cloud");
-    await search("cloud-00");
+    await search("云盘合成歌曲 00", ["1004", "1005", "1006"]);
     await theme("light");
     await open(["1004"]);
     assert(!facts().checked, "default keeps local");
@@ -339,7 +340,7 @@
     client.cloudDeleteExecute = originalExecute;
     await close();
     await control("cloud-config", { mode: 2 });
-    await search("cloud-00");
+    await search("云盘合成歌曲 00", ["1006", "1007"]);
     await theme("light");
     await open(["1006", "1007"]);
     dialog().querySelector("[data-cloud-delete-local]").click();
