@@ -28,6 +28,7 @@ impl MusicClient {
         let cancelled = Arc::new(AtomicBool::new(false));
         let _retire = Retire(cancelled.clone());
         let task = tokio::task::spawn_blocking(move || {
+            host.prepare_runtime(&context)?;
             let task = context.service.create_guarded_song(
                 &json!(id),
                 options,
@@ -73,6 +74,7 @@ impl MusicClient {
         let runtime = tokio::runtime::Handle::current();
         let operation_id = batch.receipt.clone();
         let accepted = tokio::task::spawn_blocking(move || {
+            host.prepare_runtime(&context)?;
             let accepted =
                 context
                     .service
@@ -106,8 +108,8 @@ impl MusicClient {
                 ..Default::default()
             });
         }
-        let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
+        let context = host.prepared_context(epoch).await?;
         match command {
             DownloadCommand::Start { song_ids, options } => {
                 self.start_catalog_downloads(context, song_ids, options)

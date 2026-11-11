@@ -67,7 +67,8 @@ cleanup_pending记录未清理完的文件；重复run验证成品与离线记�
 调度
 DownloadScheduler显式run_pending或run_selected启动，1至3个并发任务，默认使用者选3。
 并发名额包含授权、媒体、标签、发布和歌词。按创建时间/稳定ID取任务，一轮每任务尝试一次。
-queued/authorizing/downloading/processing可恢复；paused/error不自动重跑；一个失败不阻断其他。
+显式启动底层调度时，queued/authorizing/downloading/processing可恢复；paused/error不自动重跑。
+桌面 MusicClient 冷启动另有先暂停旧任务的本地恢复策略，见 desktop-download-contracts.txt。
 按UID加调度锁，run_selected仅运行指定任务；固定开始时账号代次，切换账号停止取新任务。
 stop暂停活跃任务，未开始的仍queued；异步调用取消也触发停止和锁回收。
 名额属于调度器；宿主必须将所有启动统一接入，不能绕过调度器后仍声称全局三并发。

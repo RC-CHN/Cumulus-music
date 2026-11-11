@@ -10,102 +10,105 @@ use crate::{
 };
 use std::fs;
 impl DownloadService {
-    pub(super) async fn publish(
-        &self,
-        mut task: DownloadTask,
-        gate: Control,
-    ) -> Result<DownloadTask> {
+    pub(super) async fn publish(&self, task: DownloadTask, gate: Control) -> Result<DownloadTask> {
         let service = self.clone();
-        tokio::task::spawn_blocking(move || {
-            service.guard(&gate.token)?;
+        tokio::task::spawn_blocking(move || service.publish_audio(task, &gate, false))
+            .await
+            .map_err(|_| Error::State("download publisher stopped"))?
+    }
+
+    pub(super) fn publish_audio(
+        &self,
+        task: DownloadTask,
+        gate: &Control,
+        reconcile_only: bool,
+    ) -> Result<DownloadTask> {
+        self.guard(&gate.token)?;
+        gate.require_alive()?;
+        let artifact = task
+            .prepared
+            .as_ref()
+            .ok_or(Error::State("missing prepared output"))?;
+        artifact.verify(&task)?;
+        let target = files::target(&task)?.to_path_buf();
+        let linked = files::published(&task)?;
+        if !linked {
+            gate.require()?;
+        }
+        // Publish is short, and account selection cannot cross this link.
+        self.session.with_token(&gate.token, |_| {
             gate.require_alive()?;
-            let artifact = task
-                .prepared
-                .as_ref()
-                .ok_or(Error::State("missing prepared output"))?;
-            artifact.verify(&task)?;
-            let target = files::target(&task)?.to_path_buf();
-            let linked = files::published(&task)?;
-            if !linked {
-                gate.require()?;
+            if !linked
+                && (gate.stop.load(std::sync::atomic::Ordering::SeqCst) || gate.action()?.is_some())
+            {
+                return Err(Error::Cancelled);
             }
-            // Publish is short, and account selection cannot cross this link.
-            service.session.with_token(&gate.token, |_| {
-                gate.require_alive()?;
-                if !linked
-                    && (gate.stop.load(std::sync::atomic::Ordering::SeqCst)
-                        || gate.action()?.is_some())
-                {
-                    return Err(Error::Cancelled);
+            files::work(&task)?;
+            files::target(&task)?;
+            if !files::published(&task)? {
+                if reconcile_only {
+                    return Err(Error::State("published output changed identity"));
                 }
-                files::work(&task)?;
-                files::target(&task)?;
-                if !files::published(&task)? {
-                    files::absent(&target)?;
-                    fs::hard_link(&artifact.path, &target)?;
-                }
-                files::sync(target.parent().expect("validated"))
-            })?;
-            let integrity = artifact
-                .integrity
+                files::absent(&target)?;
+                fs::hard_link(&artifact.path, &target)?;
+            }
+            files::sync(target.parent().expect("validated"))
+        })?;
+        let integrity = artifact
+            .integrity
+            .clone()
+            .ok_or(Error::State("prepared digest missing"))?;
+        let published = PublishedDownload {
+            task_id: task.id.clone(),
+            song_id: task.song_id.clone(),
+            requested_quality: task.options.quality,
+            target,
+            song: task
+                .song
                 .clone()
-                .ok_or(Error::State("prepared digest missing"))?;
-            let published = PublishedDownload {
-                task_id: task.id.clone(),
-                song_id: task.song_id.clone(),
-                requested_quality: task.options.quality,
-                target,
-                song: task
-                    .song
-                    .clone()
-                    .ok_or(Error::State("missing download metadata"))?,
-                resource: task
-                    .resource
-                    .clone()
-                    .ok_or(Error::State("missing download authorization"))?,
-                encrypted: task.encrypted,
-                integrity: integrity.clone(),
-            };
-            let mut committed = task.clone();
-            committed.status = DownloadStatus::Complete;
-            if committed.completed_ms.is_none() {
-                committed.completed_ms = Some(
-                    u64::try_from(
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map_err(|_| Error::State("invalid completion clock"))?
-                            .as_millis(),
-                    )
-                    .map_err(|_| Error::State("completion clock overflow"))?,
-                );
-            }
-            committed.phase = DownloadPhase::Complete;
-            committed.output_integrity = Some(integrity);
-            committed.cleanup_pending = true;
-            committed.last_error = None;
-            committed.service_code = None;
-            service
-                .offline
-                .register_with(&gate.token, &published, |tx, _| {
-                    // Once linked, pause/cancel cannot retract an output. Account
-                    // generation and async lifetime still gate the atomic commit.
-                    gate.transaction_gate(tx, true)?;
-                    if !files::published(&task)? {
-                        return Err(Error::State("published output changed identity"));
-                    }
-                    tx.put(
-                        &service.owner,
-                        KIND,
-                        &task.id,
-                        &serde_json::to_value(&committed)?,
-                    )?;
-                    tx.delete(&service.owner, CONTROL, &task.id)
-                })?;
-            task = committed;
-            Ok(task)
-        })
-        .await
-        .map_err(|_| Error::State("download publisher stopped"))?
+                .ok_or(Error::State("missing download metadata"))?,
+            resource: task
+                .resource
+                .clone()
+                .ok_or(Error::State("missing download authorization"))?,
+            encrypted: task.encrypted,
+            integrity: integrity.clone(),
+        };
+        let mut committed = task.clone();
+        committed.status = DownloadStatus::Complete;
+        if committed.completed_ms.is_none() {
+            committed.completed_ms = Some(
+                u64::try_from(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|_| Error::State("invalid completion clock"))?
+                        .as_millis(),
+                )
+                .map_err(|_| Error::State("completion clock overflow"))?,
+            );
+        }
+        committed.phase = DownloadPhase::Complete;
+        committed.output_integrity = Some(integrity);
+        committed.cleanup_pending = true;
+        committed.last_error = None;
+        committed.service_code = None;
+        self.offline
+            .register_with(&gate.token, &published, |tx, _| {
+                // Once linked, pause/cancel cannot retract an output. Account
+                // generation and async lifetime still gate the atomic commit.
+                gate.transaction_gate(tx, true)?;
+                if !files::published(&task)? {
+                    return Err(Error::State("published output changed identity"));
+                }
+                tx.put(
+                    &self.owner,
+                    KIND,
+                    &task.id,
+                    &serde_json::to_value(&committed)?,
+                )?;
+                tx.delete(&self.owner, CONTROL, &task.id)
+            })?;
+        Ok(committed)
     }
     pub(super) async fn verify_complete(
         &self,

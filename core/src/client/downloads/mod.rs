@@ -20,7 +20,7 @@ use crate::{
         service::{DownloadScheduler, DownloadService},
         transfer::{MediaBackend, ReqwestMediaBackend},
     },
-    storage::StateStore,
+    storage::{OperationLock, StateStore},
 };
 pub use collect::{
     DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
@@ -104,6 +104,7 @@ struct Host {
     store: Arc<StateStore>,
     backend: Mutex<Option<Arc<dyn MediaBackend>>>,
     worker: Mutex<Option<Worker>>,
+    runtime_owners: Mutex<HashMap<String, OperationLock>>,
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
     clear: Mutex<Option<clear::ClearVisit>>,
@@ -163,6 +164,7 @@ impl DownloadHost {
                 store,
                 backend: Mutex::new(None),
                 worker: Mutex::new(None),
+                runtime_owners: Mutex::new(HashMap::new()),
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
                 clear: Mutex::new(None),
@@ -201,6 +203,37 @@ impl Host {
         };
         context.guard()?;
         Ok(context)
+    }
+    fn prepare_runtime(&self, context: &Context) -> Result<()> {
+        let mut owners = self
+            .runtime_owners
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        context.guard()?;
+        if let std::collections::hash_map::Entry::Vacant(owner) =
+            owners.entry(context.owner.clone())
+        {
+            // One live desktop scheduler per owner, including between drains.
+            // Keep ownership on page closes and same-process account switches.
+            let lock = OperationLock::acquire(
+                self.store.directory(),
+                "desktop-download-runtime",
+                &context.owner,
+            )?;
+            context.service.restore_desktop_queue(&context.token)?;
+            owner.insert(lock);
+        }
+        context.guard()
+    }
+    async fn prepared_context(self: &Arc<Self>, epoch: &str) -> Result<Context> {
+        let context = self.context(epoch)?;
+        let host = self.clone();
+        tokio::task::spawn_blocking(move || {
+            host.prepare_runtime(&context)?;
+            Ok(context)
+        })
+        .await
+        .map_err(|_| Error::State("download startup worker stopped"))?
     }
     fn kick(&self, context: &Context) -> Result<()> {
         context.guard()?;
@@ -404,11 +437,15 @@ impl MusicClient {
         query.validate()?;
         let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
-        // Restore only persisted runnable tasks. Paused/error and migrations need an explicit action.
-        host.kick(&context)?;
-        tokio::task::spawn_blocking(move || host.view(&context, query))
-            .await
-            .map_err(|_| Error::State("download view worker stopped"))?
+        let runtime = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            host.prepare_runtime(&context)?;
+            let _runtime = runtime.enter();
+            host.kick(&context)?;
+            host.view(&context, query)
+        })
+        .await
+        .map_err(|_| Error::State("download view worker stopped"))?
     }
     pub(super) async fn download_selection(
         &self,

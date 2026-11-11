@@ -1,3 +1,5 @@
+#[path = "client_downloads/cold_queue.rs"]
+mod cold_queue;
 #[path = "support/download_collection.rs"]
 mod download_collection;
 #[path = "client_downloads/ordinary_admission.rs"]

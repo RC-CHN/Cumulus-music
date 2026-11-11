@@ -13,6 +13,7 @@ mod mv;
 mod prepare;
 mod publish;
 mod records;
+mod restore;
 mod run;
 mod scheduler;
 mod voice;

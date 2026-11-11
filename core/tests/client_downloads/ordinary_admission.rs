@@ -131,6 +131,18 @@ async fn catalog_admission_resumes_only_exact_options_and_uses_retained_range() 
 async fn catalog_admission_waits_for_durable_cancel_then_uses_new_quality() {
     let f = Fixture::new();
     let service = prepare(&f);
+    // This is a live waiting row, not a row recovered from a closed host.
+    // Initialize the desktop runtime while empty and hold its dispatch until
+    // the test has checked both waiting and cancellation.
+    let scheduler = OperationLock::acquire(f.store.directory(), "download-scheduler", "1").unwrap();
+    assert_eq!(
+        f.client
+            .downloads("1", Default::default())
+            .await
+            .unwrap()
+            .active_count,
+        0
+    );
     let old = service.create_default(&json!(123), options()).unwrap();
     let waiting = start(&f, &["123"], options()).await;
     assert!(waiting.accepted.is_empty());
@@ -161,6 +173,7 @@ async fn catalog_admission_waits_for_durable_cancel_then_uses_new_quality() {
             .status,
         DownloadStatus::Cancelled
     );
+    drop(scheduler);
     let fresh = start(&f, &["123"], changed.clone()).await;
     assert!(fresh.failed.is_empty() && fresh.skipped.is_empty());
     assert_ne!(fresh.accepted[0], old.id);

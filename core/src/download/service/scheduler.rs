@@ -10,6 +10,8 @@ use std::{
 };
 use tokio::{sync::Notify, task::JoinSet};
 
+pub(super) const LOCK: &str = "download-scheduler";
+
 pub struct DownloadScheduler {
     service: DownloadService,
     concurrency: usize,
@@ -76,7 +78,7 @@ impl DownloadScheduler {
         crate::download::directory::gate::require(&self.service.store, &self.service.owner, None)?;
         let lock = Arc::new(OperationLock::acquire(
             self.service.store.directory(),
-            "download-scheduler",
+            LOCK,
             &self.service.owner,
         )?);
         self.stop.store(false, Ordering::SeqCst);
