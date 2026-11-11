@@ -5,6 +5,8 @@ mod assets;
 mod capture_ack;
 #[path = "support/card_source_fixture.rs"]
 mod card_source_fixture;
+#[path = "support/current_song_download_fixture.rs"]
+mod current_song_download_fixture;
 #[path = "support/daily_history_fixture.rs"]
 mod daily_history_fixture;
 #[path = "support/daily_notification_fixture.rs"]
@@ -259,6 +261,43 @@ fn playlist(id: u64) -> Value {
     playlist
 }
 impl Api for Library {
+    fn request_player_song_purchase_details<'a>(
+        &'a self,
+        ids: &'a [String],
+    ) -> ApiFuture<'a, (Value, Option<String>)> {
+        Box::pin(async move {
+            let rows: Vec<_> = ids.iter().map(|id| json!({"id":id,"v":0})).collect();
+            let mut reply = self
+                .call(
+                    "/api/v3/song/detail",
+                    json!({"c":serde_json::to_string(&rows)?}),
+                    false,
+                    &[200],
+                )
+                .await?;
+            if current_song_download_fixture::witnessed() {
+                current_song_download_fixture::annotate(ids, &mut reply);
+            }
+            Ok((reply, self.player_song_purchase_credential_revision()?))
+        })
+    }
+
+    fn player_song_purchase_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(current_song_download_fixture::witnessed()
+            .then(|| current_song_download_fixture::REVISION.into()))
+    }
+
+    fn player_song_download_picker_credential_revision(
+        &self,
+    ) -> cumulus_core::Result<Option<String>> {
+        self.song_card_playlist_scope_revision()
+    }
+
+    fn song_card_playlist_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(current_song_download_fixture::playlist_mode()
+            .then(|| current_song_download_fixture::REVISION.into()))
+    }
+
     fn player_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(
             player_song_share_fixture::enabled()
@@ -534,6 +573,13 @@ impl Api for Library {
         dispatched: &'a std::sync::atomic::AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if current_song_download_fixture::enabled() {
+                let (path, payload) = write.into_request()?;
+                permission()?;
+                dispatched.store(true, std::sync::atomic::Ordering::Release);
+                return current_song_download_fixture::write(path, &payload);
+            }
+
             if search_group_download_fixture::destination() {
                 let (path, payload) = write.into_request()?;
                 permission()?;
@@ -883,6 +929,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = current_song_download_fixture::read(path, &args, cached) {
                 return response;
             }
             if let Some(response) = search_group_download_fixture::response(path, &args, cached) {
@@ -1477,6 +1526,15 @@ fn main() {
         !daily_notification_proof || motion_proof,
         "daily notification requires sealed native audio"
     );
+    let current_song_download_proof = current_song_download_fixture::enabled();
+    assert!(
+        !current_song_download_proof
+            || (motion_proof
+                && current_song_download_fixture::valid_mode()
+                && !download_page_fixture::enabled()
+                && !search_group_download_fixture::enabled()),
+        "current-song download proof requires an isolated native audio and download fixture"
+    );
     let audio_status_proof =
         card_source_proof || playback_wait_proof || native_stop_proof || search_voice_pending_proof;
     assert!(
@@ -1511,6 +1569,7 @@ fn main() {
         || vertical_zone_fixture::playlist_queue_menu()
         || search_privilege_fixture::enabled()
         || search_download_row_proof
+        || current_song_download_proof
         || vinyl_similar_fixture::enabled()
     {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
@@ -1520,7 +1579,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if search_lyric_group_fixture::drop_enabled() || playlist_song_comment_fixture::enabled() || chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() || search_group_download_fixture::enabled() {
+        if current_song_download_proof || search_lyric_group_fixture::drop_enabled() || playlist_song_comment_fixture::enabled() || chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() || search_group_download_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1635,6 +1694,9 @@ fn main() {
         }
         if search_group_download_fixture::enabled() {
             client=client.with_download_backend(Arc::new(search_group_download_fixture::Media));
+        }
+        if current_song_download_proof {
+            client=client.with_download_backend(Arc::new(current_song_download_fixture::Media));
         }
         if search_download_row_proof {
             client=client.with_download_backend(Arc::new(search_download_ui_fixture::Media));
@@ -1804,6 +1866,15 @@ fn main() {
                 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()
             {
                 value["playerLayoutCatalogueCalls"] = json!(*PLAYER_LAYOUT_CATALOGUE_CALLS.lock().unwrap());
+            }
+            if current_song_download_proof {
+                if value["stage"] == "current-download-show-readback" {
+                    current_song_download_fixture::expose_readback();
+                    handle.get_webview_window("main").unwrap()
+                        .eval("window.__currentSongDownloadReadback=true;").unwrap();
+                    return;
+                }
+                value["currentSongDownloadCalls"] = current_song_download_fixture::report();
             }
             if player_song_share_fixture::enabled() {
                 value["playerSongShareCalls"] = player_song_share_fixture::report();
