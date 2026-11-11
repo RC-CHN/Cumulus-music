@@ -20,6 +20,22 @@
   const enabled = (node) =>
     !!node?.getClientRects().length && !node.disabled &&
     node.getAttribute('aria-disabled') !== 'true' && !node.closest('[inert]');
+  function renderedSettings() {
+    const section = downloadSettings();
+    const heading = one('#settings-download', section);
+    const edit = byText('更改目录', section);
+    const visible = (node) => {
+      if (!enabled(node)) return false;
+      const rect = node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    };
+    if (!visible(heading) || !visible(edit)) return false;
+    for (let node = section; node; node = node.parentElement) {
+      if (node.matches('.page-enter-active,.page-leave-active') || getComputedStyle(node).opacity !== '1')
+        return false;
+    }
+    return true;
+  }
   const assert = (value, message) => { if (!value) throw Error(message); };
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let epoch, checkpoint = 0, last, incumbent;
@@ -61,7 +77,7 @@
     await emit(id, { mode, current, visible: document.visibilityState === 'visible',
       dom: { quality: !!quality(), ordinary: !!download(), picker: !!picker(),
         status: badge()?.dataset.downloadState, focus: document.activeElement === badge(),
-        settings: !!downloadSettings()?.getClientRects().length,
+        settings: label === 'settings' && renderedSettings(),
         settingsFocus: document.activeElement === one('#settings-download', downloadSettings() ?? null),
         settingsDirectoryAction: enabled(byText('更改目录', downloadSettings() ?? null)),
         tiers: all('[data-voice-purchased-quality]', quality() ?? null).map((row) => row.value),
@@ -214,8 +230,8 @@
       await capture('directory');
       await click(() => byText('设置目录', notice()), 'explicit handoff to directory settings');
       await wait(() => document.activeElement === one('#settings-download', downloadSettings() ?? null) &&
-        enabled(byText('更改目录', downloadSettings() ?? null)) && !download(),
-      'settings download section opened and focused');
+        renderedSettings() && !download(),
+      'settled and visible download settings with heading focus');
       await capture('settings');
       const edit = byText('更改目录', downloadSettings());
       await click(() => edit, 'open the directory form directly from Settings');
