@@ -28,6 +28,15 @@ function tableLayout(name: string, columns: readonly Column[]) {
 }
 
 export const searchTableLayouts = {
+  // M352:1090–1135. Duration can donate width but, as the last
+  // column, M225:195–199 gives it no visible separator.
+  lyrics: tableLayout('歌词搜索结果', [
+    { id: 'num', name: '#', label: '序号', width: 45, grow: 0 },
+    { id: 'title', name: '标题', width: 180, grow: 185, resizable: true },
+    { id: 'album', name: '专辑', width: 115, grow: 115, resizable: true },
+    { id: 'oper', name: '喜欢', width: 60, grow: 0 },
+    { id: 'duration', name: '时长', width: 64, grow: 8, resizable: true },
+  ]),
   playlist: tableLayout('搜索歌单结果', [
     { id: 'num', name: '#', label: '序号', width: 45, grow: 0 },
     { id: 'title', name: '标题', width: 200, grow: 4, resizable: true },

@@ -310,6 +310,7 @@ WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单
 - [本地 FLAC 暂停定位](ordinary-native-local-equalizer-proof.txt)修复原生新流启动等待；本机用 CI 包内同一解码器和实际 WebView 验证可信解码、摘要回退及暂停 PEQ 交接。CI 的旧版 libmpv 另验。
 - [环绕深度与强度](ordinary-native-local-equalizer-proof.txt)接入符合条件的本地 FLAC 原生处理；Linux 实拍覆盖保存、暂停热调整、主开关、定位与自然结束。没有合格处理链的音源可保留设置，但不会显示为正在处理；另验 Windows 及其他格式。
 - [默认下载音质](desktop-download-contracts.txt)按已核实的本账号权益列档，允许显式恢复失败的会员读取。Linux 实际桌面已验证一次单曲授权、服务降档、真实发布及默认值不变，另验 Windows。
+- [歌词搜索列宽](search-lyrics-ui-contracts.txt)复现标题和专辑调整、时长余量及本机比例保存。Linux 实窗 8 态含窄窗切换和新进程恢复；未执行真实账号写入。
 - [综合搜索音质角标](search-results-ui-contracts.txt)按官方曲目规格投影，会员变化仅重读普通前六首。Linux 实拍核对更新、失败保留、滚动焦点和原生暂停时钟；[歌词](search-lyrics-ui-contracts.txt)按满批继续，短批保持本页状态并结束。
 - [原生打开 PCM WAV](ordinary-native-local-equalizer-proof.txt)支持符合条件的 44.1 kHz 双声道 16 位文件。Linux 核对实际空间音效、暂停定位和自然结束，以及向现有进程交接后的测试输出；不改变系统文件关联，Windows 独立验收。
 - [搜索单曲使用已完成下载](search-results-ui-contracts.txt)在 Linux 实拍中以普通歌曲身份直接解码文件，暂停仍不请求在线音源；损坏后重新选择才走一次授权。已核文件显示不可点击的「本地」，在线后恢复音质菜单。

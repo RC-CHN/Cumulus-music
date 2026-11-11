@@ -54,6 +54,7 @@ import HistoryRowShareDialog from '../history/HistoryRowShareDialog.vue';
 import TrackTable from '../TrackTable.vue';
 import TrackRow from '../TrackRow.vue';
 import SearchLyricExtra from './SearchLyricExtra.vue';
+import SearchLyricColumns from './SearchLyricColumns.vue';
 import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
@@ -1365,20 +1366,17 @@ onBeforeUnmount(() => {
                 @song-link-action="guestSongLinkAction(section, item, $event)"
               />
             </SearchCardGrid>
-            <div
+            <SearchLyricColumns
               v-else-if="category === 'lyrics'"
-              class="search-lyric-list"
+              :key="account.epoch"
+              v-slot="{ bodyId }"
               :role="lyricSelectionEnabled ? 'grid' : 'table'"
               aria-label="歌词搜索结果"
               :aria-multiselectable="lyricSelectionEnabled ? true : undefined"
               :aria-rowcount="lyricItems.length * 2 + 1"
             >
-              <div class="track-columns track-header" role="row">
-                <span>#</span><span role="columnheader">歌曲 / 歌手</span
-                ><span role="columnheader">专辑</span><span role="columnheader">喜欢</span
-                ><span role="columnheader">时长</span>
-              </div>
               <div
+                :id="bodyId"
                 :ref="(element) => (lyricBody = (element as HTMLElement | null) ?? undefined)"
                 class="search-lyric-window"
                 role="presentation"
@@ -1457,7 +1455,7 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
               </div>
-            </div>
+            </SearchLyricColumns>
             <div
               v-else-if="category === 'all' && section.items.some((i) => i.kind === 'song')"
               class="search-track-preview"

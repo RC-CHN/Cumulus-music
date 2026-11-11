@@ -127,3 +127,28 @@
     order: -1;
   }
 }
+
+.search-lyric-list[data-lyric-columns='wide'] .track-columns {
+  grid-template-columns: var(--search-lyric-columns);
+  gap: 0;
+  padding-inline: 0;
+}
+.search-lyric-list[data-lyric-columns='wide'] .search-lyric-columns > span {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  padding-inline-end: 8px;
+}
+.search-lyric-list[data-lyric-columns='wide']
+  :is(.search-lyric-columns > span:first-child, .track-index) {
+  padding-inline-start: 10px;
+}
+.search-lyric-list[data-lyric-columns='wide'] :is(.track-duration, .track-time-actions) {
+  min-width: 0;
+}
+.search-lyric-list[data-lyric-columns='wide'] .track-duration {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
