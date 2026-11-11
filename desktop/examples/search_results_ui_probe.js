@@ -25,7 +25,9 @@
     for(const n of all('.search-result-actions button')){const r=n.getBoundingClientRect();assert(Math.abs(r.width-94)<1&&Math.abs(r.height-40)<1,'official 94x40 result action');}
     const stage=`ux_${String(++count).padStart(2,'0')}_${label}`;
     if(window.__cumulusSearchArtistTop50Proof) window.__searchArtistTop50Recorded='';
-    await emit(stage,{...info,...extra});
+    // Read layout-dependent evidence after the capture's settle point.
+    const evidence=typeof extra==='function'?extra():extra;
+    await emit(stage,{...info,...evidence});
     if(window.__cumulusSearchArtistTop50Proof)
       await wait(()=>window.__searchArtistTop50Recorded===stage,'native artist proof recorded '+stage);
     else await sleep(500);
@@ -1749,7 +1751,10 @@
           aliasRect=alias.getBoundingClientRect(),lyricRect=lyric.getBoundingClientRect();
         assert(aliasRect.height>0&&lyricRect.height>0&&aliasRect.bottom<=lyricRect.top&&
           aliasRect.top>=row.top&&lyricRect.bottom<=row.bottom,
-          'title extensions fit in distinct lines inside the virtual row');
+          'title extensions fit in distinct lines inside the virtual row: '+JSON.stringify({
+            row:row.toJSON(),alias:aliasRect.toJSON(),lyric:lyricRect.toJSON(),
+            panelTransform:getComputedStyle(hint.closest('.search-result-panel')).transform,
+          }));
         return receipt;
       }
       const firstHints=exactHints(101);
@@ -1769,7 +1774,7 @@
       const anchor=scroll().scrollTop;
       click(button('使用分页查看'));
       await wait(()=>loaded()===30&&one('#search-song-batch-scope')?.textContent.trim()==='仅限当前页的单曲','explicit numbered fallback');
-      await capture('song_numbered_fallback',{songTitleHints:exactHints(101)});
+      await capture('song_numbered_fallback',()=>({songTitleHints:exactHints(101)}));
       click(button('返回上一页'));
       await wait(()=>loaded()===10&&button('重试加载更多')&&Math.abs(scroll().scrollTop-anchor)<=1,'Back restores the continuous view');
       await fixture('song_waterfall');

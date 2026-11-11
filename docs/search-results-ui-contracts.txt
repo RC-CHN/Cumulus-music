@@ -753,6 +753,11 @@ comprehensive algorithm tags are unchanged. No extra request is required.
 The synthetic `--song-waterfall` desktop proof checks initial/late-row
 highlighting, malformed input, compact layout and unchanged cursor/queue
 behavior across retry and numbered fallback.
+主线 CI 43048295216 的 Linux library-search 在 760×540 显式分页时，提前于捕获函数
+的动画等待读取了行几何。探针现在等待后才读同一行的别名／歌词边界；不放宽行内
+和不重叠的断言。本机 GTK/WebKit 通过 5 态，仍只有五次原序读取；把同一行故意
+压到 16px 后仍在该断言失败，输出三组边界和面板变换。
+对照证据：.build/ui-proof/phase304-ci-library-search/；产品行高和动画不变。
 
 搜索结果离线与恢复（PC 3.1.42.205594）
 -------------------------------------
