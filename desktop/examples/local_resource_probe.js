@@ -364,17 +364,17 @@
     );
   }
   async function selectCloud(id, deleteLocal) {
-    input(
-      cloud().querySelector('[aria-label="搜索云盘歌曲"]'),
-      "cloud-00",
-      true,
-    );
+    // The official cloud list matches the song title, not its uploaded filename.
+    const keyword = "云盘合成歌曲 " + id.slice(-3);
+    const field = () => cloud()?.querySelector('[aria-label="搜索云盘歌曲"]');
+    input(field(), keyword, true);
     await wait(
       () =>
         cloud()?.dataset.cloudReady === "true" &&
         cloud()?.dataset.cloudLoading === "false" &&
-        !!cloud().querySelector('[data-cloud-id="' + id + '"]'),
-      "visible filtered cloud target",
+        field()?.value === keyword &&
+        all("[data-cloud-id]", cloud()).map((row) => row.dataset.cloudId).join() === id,
+      "exact cloud title result " + id,
     );
     const node = cloud().querySelector('[data-cloud-id="' + id + '"] input');
     assert(node, "cloud target " + id);
