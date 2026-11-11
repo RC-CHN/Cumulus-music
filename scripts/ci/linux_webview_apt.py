@@ -13,7 +13,8 @@ import tempfile
 import time
 
 from linux_webview_apt_mirrors import (
-    AptDeadline, acquire, canonical_priority, deadline_command, security_priority, supports_fallback,
+    AptDeadline, acquire, configured_source, deadline_command, direct_sources, preflight,
+    verify_fresh_indexes,
 )
 from linux_webview_probe_artifact import run_identity
 
@@ -42,6 +43,14 @@ BLOCK = 1024 * 1024
 DEB_NAME = r'[a-zA-Z0-9][a-zA-Z0-9._+%~\-]{0,249}\.deb'
 URI_ROW = re.compile(rf"'[^'\s]+' ({DEB_NAME}) ([1-9][0-9]{{0,8}}) SHA256:([0-9a-f]{{64}})")
 READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+# These indexes feed package descriptions, software centers and shell command
+# hints. Dependency resolution still uses every signed deb Packages index.
+DIRECT_INDEX_OPTIONS = (
+    '-o', 'Acquire::Languages=none',
+    *(arg for target in ('DEP-11', 'DEP-11-icons-small', 'DEP-11-icons', 'DEP-11-icons-hidpi',
+                          'DEP-11-icons-large', 'DEP-11-icons-large-hidpi', 'CNF')
+      for arg in ('-o', f'Acquire::IndexTargets::deb::{target}::DefaultEnabled=false')),
+)
 
 
 def receipt(identity):
@@ -204,52 +213,65 @@ def install(args):
         subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
         apt = ['sudo', 'apt-get', '-o', f'Dir::Cache::archives={archives}']
         request = ['install', '-y', *PACKAGE_PROFILES[args.profile]]
+        source = configured_source(env)
+        sources = {}
+        private_lists = []
 
-        def update(limit):
+        def transaction(mirror):
+            if mirror is None:
+                return apt, None
+            if mirror.uri not in sources:
+                variant = workspace / f'mirror-{len(sources)}'
+                variant.mkdir(mode=0o755)
+                parts, lists = variant / 'sources.list.d', variant / 'lists'
+                direct_sources(source, parts, mirror.uri)
+                private_lists.append(lists)
+                subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', lists], check=True)
+                sources[mirror.uri] = ([*apt, '-o', f'Dir::Etc::sourceparts={parts}',
+                    '-o', f'Dir::State::lists={lists}', '-o', 'Dir::Cache::pkgcache=',
+                    '-o', 'Dir::Cache::srcpkgcache=', *DIRECT_INDEX_OPTIONS], lists)
+            return sources[mirror.uri]
+
+        def update(mirror, limit):
             # Do not derive authority from any artifact or an index update
             # that silently used stale metadata after a transport failure.
-            timed('update', [*apt, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
+            selected, lists = transaction(mirror)
+            timed('update', [*selected, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
+            if mirror is not None:
+                verify_fresh_indexes(mirror, lists)
 
-        def prepare():
+        def prepare(mirror):
             if args.reuse:
-                restore_for_plan(args.reuse, identity, apt, request, env, archives, workspace)
+                selected, _ = transaction(mirror)
+                restore_for_plan(args.reuse, identity, selected, request, env, archives, workspace)
 
-        def download(limit):
-            timed('archive acquisition', [*apt, '--download-only', *request], env, limit)
+        def download(mirror, limit):
+            selected, _ = transaction(mirror)
+            timed('archive acquisition', [*selected, '--download-only', *request], env, limit)
 
         def reset():
             subprocess.run(['sudo', 'rm', '-rf', '--', archives], check=True)
             subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
 
-        security_fallback = canonical_fallback = None
-        if supports_fallback(env):
-            # The two archive endpoints have both timed out on hosted jobs.
-            # Try the already configured HTTPS Security mirror before giving
-            # Canonical-first its final bounded acquisition.
-            def security_fallback():
-                return security_priority(workspace)
-
-            def canonical_fallback():
-                return canonical_priority(workspace)
-        else:
-            print('APT mirror watchdog: runner preset unsupported; normal APT acquisition', flush=True)
         try:
-            with acquire(update, prepare, download, reset, security_fallback,
-                         canonical_fallback) as downloaded:
+            routes = preflight() if source is not None else None
+            if routes is None:
+                print('APT mirror preflight: runner preset unsupported; normal APT acquisition', flush=True)
+            with acquire(update, prepare, download, reset, routes) as (mirror, downloaded):
                 if args.publish:
                     if not downloaded:
-                        download(None)
+                        download(mirror, None)
                     try:
                         count, total = stage(archives, args.publish, identity)
                         print(f'APT archive handoff: {count} files, {total} bytes', flush=True)
                     except (OSError, ValueError) as error:
                         print(f'APT archive handoff omitted: {error}', flush=True)
                 # Don't put a network watchdog around any dpkg operation.
-                timed('signed installation', [*apt, *request], env)
+                selected, _ = transaction(mirror)
+                timed('signed installation', [*selected, *request], env)
         finally:
-            # APT owns its cache/partial directories and the runner owns the
-            # temporary parent. Remove only this dedicated root-owned cache.
-            subprocess.run(['sudo', 'rm', '-rf', '--', archives], check=True)
+            # APT owns these dedicated cache/partial directories only.
+            subprocess.run(['sudo', 'rm', '-rf', '--', archives, *private_lists], check=True)
 
 
 def main():

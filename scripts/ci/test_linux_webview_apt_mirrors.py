@@ -1,22 +1,23 @@
-"""Check watchdog and fallback choreography without changing host APT."""
+"""Exercise direct signed mirror selection without mutating host APT."""
 
-from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
+from threading import Barrier
 import unittest
 from unittest.mock import patch
 
-from linux_webview_apt import timed
+from linux_webview_apt import DIRECT_INDEX_OPTIONS, timed
 from linux_webview_apt_mirrors import (
-    AZURE_FIRST, CANONICAL_FIRST, DOWNLOAD_DEADLINE, SECURITY_FIRST, UPDATE_DEADLINE,
-    AptDeadline, acquire, canonical_priority, deadline_command, is_signed_noble_source,
-    security_priority,
+    DIRECT_MIRRORS, DOWNLOAD_DEADLINE, KEYRING, MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE,
+    AptDeadline, Mirror, acquire, deadline_command, direct_sources, preflight, release_date,
+    signed_noble_suites, verify_fresh_indexes,
 )
 
 
-SOURCE = '''Types: deb
+SOURCE = '''# untouched runner source
+Types: deb
 URIs: mirror+file:/etc/apt/apt-mirrors.txt
 Suites: noble noble-updates noble-backports
 Components: main restricted universe multiverse
@@ -28,6 +29,9 @@ Suites: noble-security
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 '''
+NOW = datetime(2026, 11, 11, 14, 0, tzinfo=timezone.utc)
+CANONICAL = Mirror(*DIRECT_MIRRORS[1], dict.fromkeys(SUITES, NOW), 0.2)
+MIT = Mirror(*DIRECT_MIRRORS[-1], dict.fromkeys(SUITES, NOW), 0.3)
 
 
 class LinuxWebViewAptMirrors(unittest.TestCase):
@@ -35,154 +39,176 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
         events = []
 
         def operation(label, fail):
-            def call(limit):
-                events.append((label, limit))
-                if fail is not None and events.count((label, limit)) == 1:
+            def call(mirror, limit):
+                events.append((label, mirror and mirror.name, limit))
+                if fail is not None and mirror == CANONICAL:
                     raise fail
             return call
 
-        def alternate(name):
-            @contextmanager
-            def context():
-                events.append(f'{name} first')
-                try:
-                    yield
-                finally:
-                    events.append(f'{name} priorities restored')
-            return context
+        args = (operation('update', fail_update),
+                lambda mirror: events.append(('fresh plan', mirror and mirror.name)),
+                operation('download-only', fail_download),
+                lambda: events.append('discard archives'))
+        return args, events
 
-        args = (operation('update', fail_update), lambda: events.append('fresh cache plan'),
-                operation('download-only', fail_download), lambda: events.append('discard archives'))
-        return args, alternate('security'), alternate('canonical'), events
-
-    def test_download_timeout_revalidates_in_fresh_cache_before_single_install(self):
-        args, security, canonical, events = self.fixture(
-            fail_download=AptDeadline('download', DOWNLOAD_DEADLINE))
-        with acquire(*args, security, canonical) as ready:
-            self.assertTrue(ready)
+    def test_download_deadline_revalidates_before_single_install(self):
+        args, events = self.fixture(fail_download=AptDeadline('download', DOWNLOAD_DEADLINE))
+        with acquire(*args, (CANONICAL, MIT)) as ready:
+            self.assertEqual(ready, (MIT, True))
             events.append('normal install')
         self.assertEqual(events, [
-            ('update', UPDATE_DEADLINE), 'fresh cache plan', ('download-only', DOWNLOAD_DEADLINE),
-            'discard archives', 'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
-            ('download-only', DOWNLOAD_DEADLINE), 'normal install', 'security priorities restored',
+            ('update', 'Canonical', UPDATE_DEADLINE),
+            ('fresh plan', 'Canonical'), ('download-only', 'Canonical', DOWNLOAD_DEADLINE),
+            'discard archives', ('update', 'MIT', UPDATE_DEADLINE),
+            ('fresh plan', 'MIT'), ('download-only', 'MIT', DOWNLOAD_DEADLINE), 'normal install',
         ])
 
-    def test_update_timeout_never_admits_old_plan_and_unknown_preset_keeps_normal_apt(self):
-        args, security, canonical, events = self.fixture(
-            fail_update=AptDeadline('update', UPDATE_DEADLINE))
-        with acquire(*args, security, canonical):
-            events.append('normal install')
-        self.assertEqual(events[:5], [('update', UPDATE_DEADLINE), 'discard archives',
-                                     'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan'])
-        args, _, _, events = self.fixture()
-        with acquire(*args, None) as ready:
-            self.assertFalse(ready)
-            events.append('normal install')
-        self.assertEqual(events, [('update', None), 'fresh cache plan', 'normal install'])
+    def test_update_deadline_never_admits_old_plan(self):
+        args, events = self.fixture(fail_update=AptDeadline('update', UPDATE_DEADLINE))
+        with acquire(*args, (CANONICAL, MIT)) as ready:
+            self.assertEqual(ready, (MIT, True))
+        self.assertEqual(events[:4], [('update', 'Canonical', UPDATE_DEADLINE), 'discard archives',
+                                      ('update', 'MIT', UPDATE_DEADLINE), ('fresh plan', 'MIT')])
 
-    def test_fast_azure_path_does_not_touch_mirror_configuration(self):
-        args, security, canonical, events = self.fixture()
-        with acquire(*args, security, canonical) as ready:
-            self.assertTrue(ready)
-            events.append('normal install')
-        self.assertEqual(events, [('update', UPDATE_DEADLINE), 'fresh cache plan',
-                                  ('download-only', DOWNLOAD_DEADLINE), 'normal install'])
+    def test_unknown_image_has_stock_behavior_and_no_ready_mirrors_try_stock_once(self):
+        for routes, limit, downloaded in ((None, None, False), ((None,), UPDATE_DEADLINE, True)):
+            with self.subTest(routes=routes):
+                args, events = self.fixture()
+                with acquire(*args, routes) as ready:
+                    self.assertEqual(ready, (None, downloaded))
+                expected = [('update', None, limit), ('fresh plan', None)]
+                if downloaded:
+                    expected.append(('download-only', None, DOWNLOAD_DEADLINE))
+                self.assertEqual(events, expected)
 
-    def test_signature_or_other_apt_failure_is_not_treated_as_a_timeout(self):
-        args, security, canonical, events = self.fixture(
-            fail_update=subprocess.CalledProcessError(100, 'apt-get'))
-        with self.assertRaises(subprocess.CalledProcessError), acquire(*args, security, canonical):
-            self.fail('cannot install after an APT failure')
-        self.assertEqual(events, [('update', UPDATE_DEADLINE)])
+    def test_authoritative_signature_or_install_error_never_tries_next_route(self):
+        args, events = self.fixture(fail_update=subprocess.CalledProcessError(100, 'apt-get'))
+        with self.assertRaises(subprocess.CalledProcessError), acquire(*args, (CANONICAL, MIT)):
+            self.fail('cannot install after an authoritative update error')
+        self.assertEqual(events, [('update', 'Canonical', UPDATE_DEADLINE)])
 
-    def test_second_timeout_restores_security_then_tries_canonical_once(self):
-        args, security, canonical, events = self.fixture()
+        args, events = self.fixture()
+        with self.assertRaises(AptDeadline), acquire(*args, (CANONICAL, MIT)):
+            raise AptDeadline('install fixture', 1)
+        self.assertEqual(events, [('update', 'Canonical', UPDATE_DEADLINE),
+                                  ('fresh plan', 'Canonical'),
+                                  ('download-only', 'Canonical', DOWNLOAD_DEADLINE)])
 
-        def download(limit):
-            events.append(('download-only', limit))
-            if events.count(('download-only', limit)) < 3:
-                raise AptDeadline('download', limit)
+    def test_final_deadline_stops_without_install_or_third_attempt(self):
+        args, events = self.fixture()
 
-        with acquire(args[0], args[1], download, args[3], security, canonical) as ready:
-            self.assertTrue(ready)
-            events.append('normal install')
-        self.assertEqual(events, [
-            ('update', UPDATE_DEADLINE), 'fresh cache plan', ('download-only', DOWNLOAD_DEADLINE),
-            'discard archives', 'security first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
-            ('download-only', DOWNLOAD_DEADLINE), 'security priorities restored',
-            'discard archives', 'canonical first', ('update', UPDATE_DEADLINE), 'fresh cache plan',
-            ('download-only', DOWNLOAD_DEADLINE), 'normal install', 'canonical priorities restored',
-        ])
+        def update(mirror, limit):
+            events.append((mirror.name, limit))
+            raise AptDeadline('update', limit)
 
-    def test_final_timeout_stops_without_install_or_fourth_attempt(self):
-        args, security, canonical, events = self.fixture()
+        with self.assertRaises(AptDeadline), acquire(update, *args[1:], (CANONICAL, MIT)):
+            self.fail('cannot install after the last timeout')
+        self.assertEqual(events, [('Canonical', UPDATE_DEADLINE), 'discard archives',
+                                  ('MIT', UPDATE_DEADLINE)])
 
-        def timeout(limit):
-            events.append(('download-only', limit))
-            raise AptDeadline('download', limit)
-
-        with self.assertRaises(AptDeadline), acquire(
-                args[0], args[1], timeout, args[3], security, canonical):
-            self.fail('cannot install after the third timeout')
-        self.assertEqual(events.count(('download-only', DOWNLOAD_DEADLINE)), 3)
-        self.assertEqual(events.count('discard archives'), 2)
-        self.assertEqual(events.count('security first'), 1)
-        self.assertEqual(events.count('canonical first'), 1)
-        self.assertEqual(events[-1], 'canonical priorities restored')
-
-    def test_fallback_signature_error_or_install_failure_never_reaches_next_mirror(self):
-        for fail_install in (False, True):
-            with self.subTest(fail_install=fail_install):
-                args, security, canonical, events = self.fixture()
-
-                def update(limit):
-                    events.append(('update', limit))
-                    if 'security first' not in events:
-                        raise AptDeadline('update', limit)
-                    if not fail_install:
-                        raise subprocess.CalledProcessError(100, 'apt-get')
-
-                # Even an AptDeadline from outside acquisition is not
-                # classified for a retry, since installation may have begun.
-                error = AptDeadline if fail_install else subprocess.CalledProcessError
-                with self.assertRaises(error), acquire(
-                        update, args[1], args[2], args[3], security, canonical):
-                    events.append('normal install')
-                    raise AptDeadline('install fixture', 1)
-                self.assertNotIn('canonical first', events)
-                self.assertEqual(events.count('discard archives'), 1)
-                self.assertEqual(events[-1], 'security priorities restored')
-
-    def test_alternates_keep_all_mirrors_and_restore_bytes_after_failure(self):
+    def test_direct_variant_replaces_only_ubuntu_uris_without_touching_other_sources(self):
         with tempfile.TemporaryDirectory() as work:
             root = Path(work)
-            path = root / 'mirrors.txt'
-            path.write_bytes(AZURE_FIRST)
+            stock = root / 'stock'
+            stock.mkdir()
+            original = stock / 'ubuntu.sources'
+            original.write_text(SOURCE)
+            vendor = stock / 'microsoft-prod.list'
+            vendor.write_text('deb https://packages.microsoft.com/ubuntu/24.04/prod noble main\n')
+            (stock / 'ignored.backup').touch()
+            private = root / 'private'
+            with patch('linux_webview_apt_mirrors.SOURCES', original):
+                direct_sources(SOURCE, private, MIT.uri)
+            self.assertEqual((private / original.name).read_text(), SOURCE.replace(
+                'mirror+file:/etc/apt/apt-mirrors.txt', MIT.uri))
+            self.assertEqual(original.read_text(), SOURCE)
+            self.assertEqual((private / vendor.name).readlink(), vendor)
+            self.assertFalse((private / 'ignored.backup').exists())
 
-            def fake_cp(command, **kwargs):
-                self.assertEqual(command[:2], ['sudo', 'cp'])
-                shutil.copyfile(command[-2], command[-1])
+    def test_direct_options_disable_only_non_package_indexes(self):
+        keys = []
+        for flag, option in zip(DIRECT_INDEX_OPTIONS[::2], DIRECT_INDEX_OPTIONS[1::2], strict=True):
+            self.assertEqual(flag, '-o')
+            key, value = option.split('=', 1)
+            self.assertEqual(value, 'none' if key == 'Acquire::Languages' else 'false')
+            keys.append(key)
+        self.assertEqual(set(keys), {
+            'Acquire::Languages',
+            *(f'Acquire::IndexTargets::deb::{name}::DefaultEnabled' for name in (
+                'DEP-11', 'DEP-11-icons-small', 'DEP-11-icons', 'DEP-11-icons-hidpi',
+                'DEP-11-icons-large', 'DEP-11-icons-large-hidpi', 'CNF')),
+        })
 
-            with patch('linux_webview_apt_mirrors.MIRRORS', path), patch(
-                    'linux_webview_apt_mirrors.subprocess.run', side_effect=fake_cp):
-                for priority, preset in [(security_priority, SECURITY_FIRST),
-                                         (canonical_priority, CANONICAL_FIRST)]:
-                    with self.assertRaisesRegex(RuntimeError, 'failed install'), priority(root):
-                        self.assertEqual(path.read_bytes(), preset)
-                        raise RuntimeError('failed install')
-                    self.assertEqual(path.read_bytes(), AZURE_FIRST)
-            self.assertEqual(path.read_bytes(), AZURE_FIRST)
-        urls = [line.split(b'\t')[0] for line in AZURE_FIRST.splitlines()]
-        for preset in (CANONICAL_FIRST, SECURITY_FIRST):
-            self.assertEqual(urls, [line.split(b'\t')[0] for line in preset.splitlines()])
-
-    def test_only_runner_ubuntu_signed_mirror_stanzas_are_eligible(self):
-        self.assertTrue(is_signed_noble_source(SOURCE))
+    def test_only_the_exact_signed_noble_source_is_recognized(self):
+        self.assertEqual(signed_noble_suites(SOURCE), SUITES)
         for other in (SOURCE.replace('noble-security', 'jammy-security'),
+                      SOURCE.replace('noble-security', 'noble'),
                       SOURCE.replace('Signed-By:', 'Trusted:'),
-                      SOURCE.replace('mirror+file:', 'file:')):
+                      SOURCE.replace('mirror+file:', 'file:'),
+                      SOURCE.replace('Types: deb', 'Types: deb\nCheck-Valid-Until: no'),
+                      SOURCE.replace('Types: deb', 'Types: deb\nValid-Until-Min: 99999999'),
+                      SOURCE.replace('Types: deb', 'Types: deb\nAllow-Weak: yes'),
+                      SOURCE.replace('Types: deb', 'Types: deb\nURIs: http://example.invalid/')):
             with self.subTest(source=other):
-                self.assertFalse(is_signed_noble_source(other))
+                self.assertFalse(signed_noble_suites(other))
+
+    def test_parallel_preflight_requires_every_suite_prefers_recent_metadata_and_bounds_routes(self):
+        barrier = Barrier(len(DIRECT_MIRRORS) * len(SUITES), timeout=5)
+
+        def probe(uri, suite, now):
+            barrier.wait()
+            if uri == DIRECT_MIRRORS[0][1] and suite == 'noble-backports':
+                return None, 0.1, 'HTTP 404'
+            if uri == MIT.uri:
+                return NOW - timedelta(hours=2), 0.1, None
+            return NOW, 0.2 if uri == CANONICAL.uri else 0.3, None
+
+        with patch('linux_webview_apt_mirrors.probe_suite', side_effect=probe):
+            chosen = preflight()
+        self.assertEqual([mirror.name for mirror in chosen], ['Canonical', 'Security'])
+        with patch('linux_webview_apt_mirrors.probe_suite', return_value=(None, 0, 'deadline')):
+            self.assertEqual(preflight(), (None,))
+
+    def test_release_checks_signature_fields_and_mutable_dates(self):
+        def payload(suite, when, **kwargs):
+            fields = dict(Origin='Ubuntu', Suite=suite, Codename='noble', Date=when.strftime(
+                '%a, %d %b %Y %H:%M:%S %z'))
+            fields.update(kwargs)
+            return ''.join(f'{k}: {v}\n' for k, v in fields.items()).encode()
+
+        stale = NOW - MAX_POCKET_AGE - timedelta(days=1)
+        for suite, date, valid in [('noble-security', NOW, True), ('noble-updates', stale, False),
+                                   ('noble-backports', stale, True), ('noble', stale, True),
+                                   ('noble-security', NOW + timedelta(minutes=1), False)]:
+            with self.subTest(suite=suite, date=date), patch('linux_webview_apt_mirrors.subprocess.run',
+                    return_value=subprocess.CompletedProcess([], 0, payload(suite, date))) as gpgv:
+                if valid:
+                    self.assertEqual(release_date(b'fixture signed bytes', suite, NOW), date)
+                else:
+                    with self.assertRaises(ValueError):
+                        release_date(b'fixture signed bytes', suite, NOW)
+                self.assertEqual(gpgv.call_args.args[0], ['gpgv', '--keyring', KEYRING, '--output', '-', '-'])
+                self.assertTrue(gpgv.call_args.kwargs['check'])
+        for invalid in (payload('noble-security', NOW, Codename='jammy'),
+                        payload('noble-security', NOW, **{'Valid-Until': 'Mon, 09 Nov 2026 14:00:00 +0000'})):
+            with patch('linux_webview_apt_mirrors.subprocess.run',
+                       return_value=subprocess.CompletedProcess([], 0, invalid)), self.assertRaises(ValueError):
+                release_date(b'fixture signed bytes', 'noble-security', NOW)
+
+    def test_authoritative_lists_must_exist_and_never_go_back_behind_preflight(self):
+        with tempfile.TemporaryDirectory() as work:
+            lists = Path(work)
+            for suite in SUITES:
+                (lists / f'mirrors.mit.edu_ubuntu_dists_{suite}_InRelease').write_text(suite)
+            with patch('linux_webview_apt_mirrors.release_date', return_value=NOW):
+                verify_fresh_indexes(MIT, lists)
+            with patch('linux_webview_apt_mirrors.release_date', return_value=NOW - timedelta(minutes=1)):
+                with self.assertRaisesRegex(ValueError, 'regressed'):
+                    verify_fresh_indexes(MIT, lists)
+            (lists / 'mirrors.mit.edu_ubuntu_dists_noble-security_InRelease').unlink()
+            with patch('linux_webview_apt_mirrors.release_date', return_value=NOW):
+                with self.assertRaises(FileNotFoundError):
+                    verify_fresh_indexes(MIT, lists)
 
     def test_watchdog_runs_inside_sudo_and_does_not_wrap_dpkg(self):
         command = ['sudo', 'apt-get', '--download-only', 'install', '-y', 'test']

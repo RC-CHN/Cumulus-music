@@ -756,3 +756,32 @@ Windows 原生测试目标选择试验（手动）
 - 本机使用 Ubuntu 系统归档密钥验证了 Security HTTPS 提供的 noble、noble-updates、
   noble-backports、noble-security 四份 InRelease，签名均为 Ubuntu Archive Automatic
   Signing Key (2018)；这不代表相同网址在受影响的 GitHub runner 上已可达。
+
+已知 Ubuntu 24.04 runner 的直连 HTTPS 预检
+- 主线 43041618828（22fc4ea8）的六个 Linux 前置仍都失败于依赖安装。打包
+  作业 130594605726（centralus）和共用实窗探针 130595520695（westus3）
+  均为镜像 20261101.360.1。Azure HTTP、Security HTTPS、Canonical HTTPS
+  各耗尽 75 秒更新期限；每次微软软件源仍能读取，未进入取包、dpkg 或编译。
+  现有三个优先级确实轮换；日志不足以把失败归因于 DNS、TLS 或某个后端。
+- 对已识别的 Noble runner，一次并行读取固定的 Azure HTTPS、Canonical、
+  Security 和 MIT 四个地址的四份 InRelease；每个读取限 6 秒、512 KiB。
+  验证 Ubuntu 系统密钥签名、发行版字段、签名日期和已有的有效期；仅对直连的
+  updates/security 加 7 天日期上限，不把长期不变的基础和 backports 视为过期。
+  按安全更新和常规更新的最新签名日期、再按读取耗时选最多两个直连来源。
+- 真正的 APT 事务仍以严格模式重新拉取和验签，不用预检文件当索引。只在临时
+  来源目录换原 Ubuntu stanza 的 URI，保留 suites、组件、密钥及其余软件源，
+  不写 `/etc`。本轮实际索引不得早于预检看到的签名版本；同轮归档仍按当前
+  安装计划核对大小和 SHA-256。直连进程仅省略翻译、AppStream 及图标和
+  command-not-found 索引，保留 InRelease 和全部软件包依赖索引。只在索引更新
+  或取包期限耗尽时尝试下一个来源；
+  签名、索引回退、依赖解析或安装错误仍失败。如果没有可用的直连来源，原配置
+  下只执行一次有界严格 APT 更新，仍沿用其原本的签名及日期策略。未知配置不改。
+- 本机同一并行预检用时 1.788 秒，四个地址均通过四套件系统密钥验签。MIT 的
+  安全索引与 Canonical 字节一致，常规更新索引签名日期未超过 7 天、比
+  Canonical 早约 4 小时 21 分钟，因此健康时未获优先。预检只观察本机路径，
+  托管 runner 的可达性、完整索引与取包时间以及整轮 CI 用时仍待实测。
+- 本机使用独立临时来源和索引目录实跑 MIT 直连的严格 APT InRelease 更新，
+  约 3 秒接收 634 kB，四个缓存文件名均符合计划，并再次通过日期和签名校验。
+  软件包索引对照计划仍包含四个套件的 Packages，未获取被省略的附属索引；
+  本机同时启用 amd64 和 i386 的冷更新在 75 秒内取得四份 InRelease 并输出
+  28 个 Packages 获取记录，但未正常结束，不能据此称完整更新或依赖安装通过。
