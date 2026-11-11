@@ -38,7 +38,8 @@
   }
   try {
     const cloud = () => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '音乐云盘');
-    await wait(cloud, 'cloud navigation');
+    await wait(() => cloud() && document.querySelector('.track-row .track-play:not(:disabled)'),
+      'synthetic account has loaded its playable daily list');
     const account = await invoke('account_snapshot');
     assert(account.status === 'authenticated', 'synthetic account restored');
     cloud().click();

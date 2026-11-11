@@ -35,4 +35,9 @@ Rust 复验：cargo test -p cumulus-core --test client_cloud --locked cloud_filt
 真实桌面合成脚本：scripts/ci/cloud_filter_smoke.py --binary <mini_ui_probe> --root <新目录>；
 Linux 使用 scripts/ci/loopback_only.sh 隔离。脚本核对初始唯一读取、无提交键的筛选、
 组字和结束、文件名不匹配、清除后原序、无队列变化和写入。
+Linux/Xvfb 实际通过六态与六张截图，只有进页时的云盘列表读取；输入法途中和结束
+均可筛选，焦点仍在同一输入框，未修改合成或真实账号资源。证据：
+`.build/ui-proof/phase318-319-cloud-auth/linux-cloud-filter-r2/report.json`。
+同一构建的 Rust client_cloud 50 项及 cloud_library 9 项通过；新版快照与完整云盘
+播放队列均经合成回包验证。Windows WebView2 尚未在本机执行。
 未找到同版官方手动改配入口或请求证明，继续见 cloud-metadata-recovery.txt。
