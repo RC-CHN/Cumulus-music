@@ -465,3 +465,11 @@ Cumulus 在当前主窗口三个页签上显示已核验、同账号且仍有本
   临时旁路、故障、已下载有声内容等标签分支。audio_effect_tabs_smoke.py 的旧版
   与新版 t1 探针还核对真实播放时选中、旁路切换的标签。t2 的真实双平台界面
   运行尚未单独验证。
+
+Linux 实窗：e50fd050 的生产前端和原生探针均按锁文件构建；新版 t1 与旧版
+各通过 10 个状态并保存 10 张截图。音效入口在暂停播放期间按同一首歌的确认
+状态变化；两个分支均只加载一次解码器，公共栏的两次开关有原生回执。
+两个聚焦 Rust 分流测试及 12 个前端测试通过。复验索引：
+`.build/ui-proof/phase327-yxrk-player-tag/replay-wm-path-SDVJTl/accepted-linux-receipt.json`。
+使用封闭合成账号、素材和 libmpv null 输出；未读真实音效权益、未验证 Windows
+实窗、物理声卡或 t2 的实窗显示。
