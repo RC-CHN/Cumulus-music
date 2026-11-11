@@ -30,7 +30,7 @@ concurrency:
   group: >-
     ci-${{ github.workflow }}-${{ github.event_name }}-${{
     github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-    !startsWith(github.event.head_commit.message, 'chore:release ') && 'main-latest' ||
+    !startsWith(github.event.head_commit.message, 'chore:release ') && 'main-latest-v2' ||
     github.event_name == 'pull_request' && github.ref || github.sha }}-${{
     github.event_name == 'workflow_dispatch' && format('manual-{0}', inputs.windows_native_file_output) || 'required' }}
   cancel-in-progress: true
@@ -1882,7 +1882,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_restart_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-restart-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
       - &linux_webview_disk_after
         name: Measure Linux WebView disk after smoke
-        if: always()
+        if: ${{ !cancelled() }}
         run: df -h .
       - &linux_webview_failure_checkpoints
         name: Gather compact SongCard failure checkpoints
@@ -2599,7 +2599,7 @@ jobs:
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
-    if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
+    if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off') }}
     needs: [linux-webview-shards, linux-webview-media, linux-webview-local, linux-webview-catalog, linux-installed-package]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2776,7 +2776,7 @@ jobs:
               ;;
           esac
       - name: Measure Linux WebView disk after smoke
-        if: always()
+        if: ${{ !cancelled() }}
         run: df -h .
       - name: Archive synthetic failure diagnostics
         if: failure()
@@ -2794,7 +2794,7 @@ jobs:
   linux-webview-ux:
     # Preserve the existing CI and release context while requiring all UX shards.
     name: Linux WebView download, search and player smoke
-    if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
+    if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off') }}
     needs: linux-webview-ux-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2806,7 +2806,8 @@ jobs:
 
   gate:
     name: CI gate
-    if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
+    # Check failed dependencies, but don't keep a superseded run alive.
+    if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off') }}
     needs: [frontend, native-linux, linux-rust-lint, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, windows-release-app, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
