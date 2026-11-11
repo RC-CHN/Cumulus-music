@@ -302,16 +302,32 @@ test('effect catalogue ignores unchanged or retired revisions and clears on acco
   host.connect(account);
   const started = host.start();
   await tick();
-  push({ ...appearance('5'), effectCatalogueRevision: '5', effectCatalogueNew: true });
+  push({
+    ...appearance('5'),
+    effectCatalogueRevision: '5',
+    effectCatalogueNew: true,
+    effectMinibarEntry: 'always',
+  });
   const first = host.effectCatalogue.value;
   assert.deepEqual(first, { revision: '5', layout: 'modern' });
-  push({ ...appearance('6'), effectCatalogueRevision: '5' });
+  assert.equal(host.effectMinibarEntry.value, 'always');
+  push({ ...appearance('6'), effectCatalogueRevision: '5', effectMinibarEntry: 'active_only' });
   assert.equal(host.effectCatalogue.value, first);
+  assert.equal(host.effectMinibarEntry.value, 'active_only');
+  push({ ...appearance('4'), effectCatalogueRevision: '4', effectMinibarEntry: 'always' });
+  assert.equal(host.effectMinibarEntry.value, 'active_only');
   host.connect({ ...account, epoch: '2' });
   assert.equal(host.effectCatalogue.value, undefined);
-  push({ ...appearance('8'), effectCatalogueRevision: '8', effectCatalogueNew: true });
+  assert.equal(host.effectMinibarEntry.value, 'legacy');
+  push({
+    ...appearance('8'),
+    effectCatalogueRevision: '8',
+    effectCatalogueNew: true,
+    effectMinibarEntry: 'always',
+  });
   pending.resolve({ ...appearance('7'), effectCatalogueRevision: '7', effectCatalogueNew: true });
   await started;
   assert.deepEqual(host.effectCatalogue.value, { revision: '9', layout: 'legacy' });
+  assert.equal(host.effectMinibarEntry.value, 'legacy');
   host.dispose();
 });

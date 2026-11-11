@@ -425,6 +425,11 @@ input[type='range'] {
   font-size: 11px;
   white-space: nowrap;
 }
+.player-tools .audio-effects-trigger[data-effect-entry='modern'] {
+  inline-size: auto;
+  min-inline-size: 36px;
+  padding-inline: 5px;
+}
 .player-tools .equalizer-toggle {
   position: relative;
 }

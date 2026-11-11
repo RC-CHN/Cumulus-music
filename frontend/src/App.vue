@@ -8725,6 +8725,7 @@ onUnmounted(() => {
       :account="account"
       :podcast-resume="pcPresentation.podcastResume.value"
       :effect-catalogue="pcPresentation.effectCatalogue.value"
+      :effect-minibar-entry="pcPresentation.effectMinibarEntry.value"
       :recall-guide="discoveryHome.recallGuide.value"
       @recall-guide-shown="
         (epoch, receipt) => void core.acknowledgeHomeRecallGuide(epoch, receipt).catch(() => {})

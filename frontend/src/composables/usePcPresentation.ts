@@ -2,6 +2,7 @@ import { readonly, ref } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import type {
   EffectCataloguePresentation,
+  EffectMinibarEntry,
   PcPresentationClient,
   PcPresentationView,
 } from '../services/pcPresentation.ts';
@@ -20,6 +21,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
   const podcastResume = ref(false);
   const podcastPurchasesCompact = ref(false);
   const effectCatalogue = ref<EffectCataloguePresentation>();
+  const effectMinibarEntry = ref<EffectMinibarEntry>('legacy');
   let signedOrder: bigint | undefined;
   const eligibleGuest = () => account?.status === 'unknown' || account?.status === 'signed_out';
   function observe(view: PcPresentationView) {
@@ -31,6 +33,10 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
         signedOrder = order;
         podcastResume.value = view.podcastResume === true;
         podcastPurchasesCompact.value = view.podcastPurchasesCompact === true;
+        // yxrk can change while the catalogue layout and its revision stay
+        // fixed. Consume only the general presentation revision for the tag.
+        effectMinibarEntry.value =
+          view.effectMinibarEntry ?? (view.effectCatalogueNew ? 'hidden' : 'legacy');
         const cohort = presentationRevision(view.effectCatalogueRevision);
         const previous = presentationRevision(effectCatalogue.value?.revision);
         if (
@@ -72,6 +78,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     podcastResume.value = false;
     podcastPurchasesCompact.value = false;
     effectCatalogue.value = undefined;
+    effectMinibarEntry.value = 'legacy';
     guestSearchReady.value = false;
     void snapshot();
   }
@@ -101,6 +108,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     podcastResume.value = false;
     podcastPurchasesCompact.value = false;
     effectCatalogue.value = undefined;
+    effectMinibarEntry.value = 'legacy';
     unlisten?.();
     unlisten = undefined;
   }
@@ -112,5 +120,6 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     podcastResume: readonly(podcastResume),
     podcastPurchasesCompact: readonly(podcastPurchasesCompact),
     effectCatalogue: readonly(effectCatalogue),
+    effectMinibarEntry: readonly(effectMinibarEntry),
   };
 }

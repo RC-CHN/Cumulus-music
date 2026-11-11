@@ -47,10 +47,12 @@ import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import type { PlayerPodcastResumeTarget } from '../services/playerPodcastResume';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
-import type { EffectCataloguePresentation } from '../services/pcPresentation';
+import type { EffectCataloguePresentation, EffectMinibarEntry } from '../services/pcPresentation';
+import { playerEffectTag } from '../services/playerEffectTag';
 import type { HomeRecallGuide } from '../services/discoveryHome';
 const equalizerOpen = ref(false);
 const audioEffectsOpen = ref(false);
+const audioEffectsEpoch = ref<string>();
 const headphoneManagementOpen = ref(false);
 const effectLauncherButton = ref<HTMLButtonElement>();
 const effectManagementOnOpen = ref(false);
@@ -72,6 +74,7 @@ const props = withDefaults(
     vinylCommentsOpen?: boolean;
     podcastResume?: boolean;
     effectCatalogue?: EffectCataloguePresentation;
+    effectMinibarEntry?: EffectMinibarEntry;
     recallGuide?: HomeRecallGuide;
   }>(),
   { togetherActive: false },
@@ -159,6 +162,13 @@ const commentBadge = computed(() => formatPlaybackCommentCount(props.commentCoun
 const commentDescription = useId();
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
+const audioEffectTag = computed(() =>
+  playerEffectTag(props.effectMinibarEntry, props.account, view.value),
+);
+function openAudioEffects() {
+  audioEffectsEpoch.value = props.account.epoch;
+  audioEffectsOpen.value = true;
+}
 const headphone = computed(() => {
   const current = view.value;
   return props.account.status === 'authenticated' && current?.epoch === props.account.epoch
@@ -917,18 +927,17 @@ watch(
         词
       </button>
       <button
-        v-if="
-          view?.resourceKind !== 'voice' &&
-          !(view?.resourceKind === 'downloaded' && view?.track?.voiceId)
-        "
+        v-if="audioEffectTag"
         type="button"
         class="icon-button audio-effects-trigger"
-        aria-label="音效"
+        :data-effect-entry="audioEffectTag.kind"
+        :aria-label="audioEffectTag.label === '音效' ? '音效' : `音效：${audioEffectTag.label}`"
+        title="音效"
         aria-haspopup="dialog"
         :disabled="!ready"
-        @click="audioEffectsOpen = true"
+        @click="openAudioEffects"
       >
-        音效
+        {{ audioEffectTag.label }}
       </button>
       <button
         ref="effectLauncherButton"
@@ -1008,7 +1017,7 @@ watch(
         :account-epoch="account.epoch"
         :effects-available="ready"
         @catalog="(resource) => emit('catalog', resource)"
-        @effects="audioEffectsOpen = true"
+        @effects="openAudioEffects"
         @login="emit('login')"
         @expired="emit('expired')"
       />
@@ -1146,7 +1155,10 @@ watch(
       @login="loginFromEffects"
     />
   </ModalTransition>
-  <ModalTransition>
+  <ModalTransition
+    :fallback-focus="() => effectLauncherButton ?? null"
+    :restore-focus="audioEffectsEpoch === account.epoch"
+  >
     <AudioEffectsPanel
       :effect-catalogue="effectCatalogue"
       v-if="audioEffectsOpen"

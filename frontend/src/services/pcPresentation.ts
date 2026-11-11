@@ -10,11 +10,14 @@ export interface PcPresentationView {
   podcastPurchasesCompact?: boolean;
   effectCatalogueRevision?: string;
   effectCatalogueNew?: boolean;
+  effectMinibarEntry?: EffectMinibarEntry;
 }
 export interface PcPresentationClient {
   pcPresentation(epoch: string): Promise<PcPresentationView>;
   onPcPresentationChanged(listener: (view: PcPresentationView) => void): Promise<() => void>;
 }
+
+export type EffectMinibarEntry = 'legacy' | 'hidden' | 'always' | 'active_only';
 
 export interface EffectCataloguePresentation {
   revision: string;
