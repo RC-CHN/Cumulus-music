@@ -129,9 +129,9 @@ def audit_row_actions(actions, incumbent, complete):
 
 
 def share_qr_payload(matrix):
-    """Read an undamaged Version 2/3 byte-mode QR from the rendered SVG modules."""
+    """Read an undamaged Version 2–4 byte-mode QR from the rendered SVG modules."""
     size = len(matrix)
-    assert size in (25, 29) and all(len(row) == size and set(row) <= {'0', '1'} for row in matrix)
+    assert size in (25, 29, 33) and all(len(row) == size and set(row) <= {'0', '1'} for row in matrix)
     module = lambda x, y: int(matrix[y][x])
     # Both format copies must carry the same valid BCH-encoded level and mask.
     corner = ([(8, y) for y in range(6)] + [(8, 7), (8, 8), (7, 8)]
@@ -148,7 +148,11 @@ def share_qr_payload(matrix):
     mask = data & 7
     level = data >> 3
     # ISO QR codeword layouts for the levels that can contain this exact URL.
-    layout = {25: {1: (44, 1, 34)}, 29: {0: (70, 1, 44), 1: (70, 1, 55), 3: (70, 2, 17)}}
+    layout = {
+        25: {1: (44, 1, 34)},
+        29: {0: (70, 1, 44), 1: (70, 1, 55), 3: (70, 2, 17)},
+        33: {0: (100, 2, 32)},
+    }
     assert level in layout[size]
     total, blocks, width = layout[size][level]
 

@@ -42,6 +42,11 @@ fn main() {
     let im = Arc::new(fixture::im::Device::default());
     let client = client.with_together_im_factory(Arc::new(fixture::im::Factory(im.clone())));
     let ending = Arc::new(AtomicBool::new(false));
+    let leave_record_proof = std::env::var_os("CUMULUS_TOGETHER_LEAVE_RECORD_PROOF").is_some();
+    if leave_record_proof {
+        api.state.lock().unwrap().peer_avatar_url =
+            Some("https://p2.music.126.net/peer?token=PRIVATE_FIXTURE".into());
+    }
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app|{
         app.manage(client);
         if std::env::var_os("CUMULUS_PROOF_SMALL").is_some(){app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.,540.))?;}
@@ -50,6 +55,19 @@ fn main() {
         app.listen("shared-queue-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).unwrap();let stage=value["stage"].as_str().unwrap_or("");
             match stage {
+                "leave-config" if leave_record_proof => {
+                    let case = value["case"].as_str().expect("sealed leave record case");
+                    assert!(matches!(case, "waiting" | "malformed" | "lost" | "direct" | "clear"));
+                    let mut summary = json!({"thisListenCount":3,"thisDuration":35.8,
+                        "totalListenCount":27,"totalDuration":3665,
+                        "shareUrl":"https://example.invalid/private-record-link","distance":122});
+                    if case == "malformed" {
+                        summary["totalListenCount"] = json!("27");
+                    }
+                    *api.end_share_info.lock().unwrap() = Some(summary);
+                    api.drop_end.store(case == "lost", Ordering::SeqCst);
+                    return;
+                },
                 "inject-peer"=>{api.state.lock().unwrap().peer=true;send(&im,20002,json!({"roomId":"test-room"}));return;},
                 "inject-queue"=>{
                     let mut state=api.state.lock().unwrap();
@@ -74,11 +92,21 @@ fn main() {
                 "shared_preview"|"shared_blocked"|"shared_exit"=>{},
                 "lifecycle_preview"|"lifecycle_auto"|"lifecycle_pending"|"lifecycle_recovered"=>{},
                 "external_partial"|"external_prompt"|"external_dismissed"|"external_ended"=>{},
+                "leave_cancelled"|"leave_waiting"|"leave_malformed"|"leave_uncertain"|
+                "leave_recovered"|"leave_direct"|"leave_dismissed"|"leave_queue_clear"|
+                "leave_queue_dismissed" if leave_record_proof=>{},
                 "complete"|"failed"=>{},
                 _=>return,
             }
-            std::fs::write(root.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-            if stage.starts_with("external_") && std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+            let mut receipt = value.clone();
+            if leave_record_proof {
+                receipt["endRequests"] = json!(api.calls.lock().unwrap().iter()
+                    .filter(|(path, _)| path.ends_with("/end/v2"))
+                    .map(|(_, payload)| payload.clone()).collect::<Vec<_>>());
+            }
+            std::fs::write(root.join(format!("{stage}.json")),serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
+            if (stage.starts_with("external_") || leave_record_proof && stage.starts_with("leave_"))
+                && std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
                 let handle=handle.clone();
                 let stage=stage.to_owned();
                 let captured=root.join(format!("{stage}.captured"));
@@ -110,7 +138,7 @@ fn main() {
         if std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
             window.eval("window.__togetherExternalCaptureEnabled=true;").unwrap();
         }
-        window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else if std::env::var_os("CUMULUS_EXTERNAL_SELECTION_PROOF").is_some(){include_str!("together_external_selection_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();
+        window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else if std::env::var_os("CUMULUS_EXTERNAL_SELECTION_PROOF").is_some(){include_str!("together_external_selection_ui_probe.js")}else if std::env::var_os("CUMULUS_TOGETHER_LEAVE_RECORD_PROOF").is_some(){include_str!("together_leave_record_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();
     }})
         .run(tauri::generate_context!()).expect("production WebView with local fixtures");
 }

@@ -38,3 +38,18 @@ M/3043 使用 M/103.i:35–39：参数单位为秒，显示完整分钟，小于
    显式更换房间或在回包前切换账号，旧记录不得出现在新视图。
 前端单测验证输入、账号代次、在途视图和消费顺序。测试尚未代替
 真实 WebView、双账号同步或真实服务回执验收。
+
+合成桌面脚本使用已有 shared_queue_ui_probe（不新增探针二进制），
+使用本地 API、IM 和音频夹具，不等同真实对端或物理音频：
+
+    cargo build --locked -p cumulus-desktop --features custom-protocol --example shared_queue_ui_probe
+    sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 \
+      LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+      xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
+      /usr/bin/python3 -B scripts/ci/together_leave_record_smoke.py \
+      --binary ABS_SHARED_QUEUE_PROBE --root NEW_PROOF_ROOT --screenshots
+
+九个阶段核对取消、等待室、格式错误、丢回包和只读核对都不会显示
+记录；另外验证直接退出、实际队列清空的 view 投递、两种关闭方式、
+独立二维码解码和累计 End 请求账本。跨账号和新房间迟到响应另由
+Rust 和前端的确定性代次回归验证。
