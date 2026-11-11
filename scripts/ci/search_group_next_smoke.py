@@ -31,6 +31,15 @@ def verify_add_tip(receipt):
     return tip
 
 
+def verify_pause_settlement(settlement, player):
+    first, observed = settlement['first'], settlement['observed']
+    assert settlement['quietMs'] >= 450 and int(observed['revision']) - int(first['revision']) >= 2
+    fields = ('epoch', 'state', 'mode', 'playId', 'entryId', 'position', 'queueRevision')
+    assert all(first[field] == observed[field] == player[field] for field in fields)
+    assert observed['state'] == 'paused' and not first['nativeSeeking'] and not observed['nativeSeeking']
+    assert first['error'] is observed['error'] is None
+
+
 def verify_extended(output, report):
     previous = None
     search_calls = None
@@ -63,6 +72,8 @@ def verify_extended(output, report):
             else:
                 assert player['state'] == 'paused' and player['position'] >= previous['position']
                 assert all(player[field] == previous[field] for field in ('playId', 'entryId'))
+                if label == 'select_random_first':
+                    verify_pause_settlement(report['pauseSettlements'][0], player)
             assert ids == (['103', '101', '104', '105'] if index == 11 else ['103', '101'])
         if index == 11:
             tip = verify_add_tip(receipt)
@@ -106,6 +117,7 @@ def verify_play(output, report):
         media = receipt['searchGroupNextMedia']
         if index == 1:
             base = player
+            verify_pause_settlement(report['pauseSettlements'][0], player)
             search_calls = receipt['syntheticSearchCalls']
         assert receipt['syntheticSearchCalls'] == search_calls
         if index <= 7:
@@ -127,6 +139,7 @@ def verify_play(output, report):
             assert ids == ['701', '103', '101']
             if index == 9:
                 paused = player
+                verify_pause_settlement(report['pauseSettlements'][1], player)
             if index >= 9:
                 assert player['state'] == 'paused' and player['position'] == paused['position']
                 assert player['position'] >= started['position']
@@ -222,6 +235,9 @@ def run(args):
     labels = PLAY_LABELS if args.play else EXTENDED_LABELS if args.extended else LABELS
     assert report['ok'] and report['stageCount'] == len(labels)
     assert report['realMusicRequests'] == report['realAccountWrites'] == 0
+    assert [receipt['label'] for receipt in report['pauseSettlements']] == (
+        ['paused_baseline', 'paused_play_anchor'] if args.play else
+        ['paused_random_anchor'] if args.extended else ['paused_baseline'])
     if args.extended or args.play:
         (verify_extended if args.extended else verify_play)(output, report)
         report.update(actualWebView=True, trustedPointer=True, physicalAudioOutputVerified=False,
@@ -241,6 +257,7 @@ def run(args):
         player, queue = receipt['checkedPlayer'], receipt['checkedQueue']
         if index == 1:
             base = player
+            verify_pause_settlement(report['pauseSettlements'][0], player)
             initial_search_calls = receipt['syntheticSearchCalls']
         assert receipt['syntheticSearchCalls'] == initial_search_calls
         assert player['state'] == 'paused' and player['mode'] == 'single_loop'

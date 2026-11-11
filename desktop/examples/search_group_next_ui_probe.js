@@ -69,13 +69,42 @@
     assert(!one('.track-action-feedback'), 'successful insertion does not also show the old centered toast');
     return result;
   }
-  let step = 'setup', epoch, stageCount = 0, before, baseline;
-  const actionTrace = [];
+  let step = 'setup', epoch, stageCount = 0, before, baseline, pauseSampling;
+  const actionTrace = [], pauseSettlements = [];
   const extended = window.__CUMULUS_SEARCH_GROUP_EXTENDED__ === true;
   const playProof = window.__CUMULUS_SEARCH_GROUP_PLAY__ === true;
   let playStarted = false;
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
+  const clock = ({ epoch, revision, state, mode, playId, entryId, position, queueRevision, nativeSeeking, error }) =>
+    ({ epoch, revision, state, mode, playId, entryId, position, queueRevision, nativeSeeking, error });
+  const clockIdentity = ['epoch', 'mode', 'playId', 'entryId', 'queueRevision'];
+  async function pauseAndSettle(started, label, atPosition = (position) => position >= started.position) {
+    step = label;
+    const initial = clock(started);
+    let first, quietSince;
+    click(button('暂停', bar()));
+    const settled = await wait(async () => {
+      const view = await state(), observed = clock(view), now = performance.now();
+      const unchanged = clockIdentity.every((key) => observed[key] === initial[key]);
+      assert(unchanged && !observed.error,
+        'native identity changed while pausing: ' + JSON.stringify([initial, observed]));
+      const eligible = observed.state === 'paused' && !observed.nativeSeeking &&
+        Number.isFinite(observed.position) && atPosition(observed.position);
+      if (!eligible || !first || observed.position !== first.position) {
+        first = eligible ? observed : undefined;
+        quietSince = now;
+      }
+      pauseSampling = { label, first: first ?? null, observed, quietMs: now - quietSince };
+      // MPV can publish its final clock sample after Pause is acknowledged.
+      // Observe the same value across at least two 200 ms native polls before
+      // treating it as immutable for selection and queue-operation assertions.
+      return first && pauseSampling.quietMs >= 450 &&
+        BigInt(observed.revision) - BigInt(first.revision) >= 2n && view;
+    }, 'native paused clock did not settle: ' + label);
+    pauseSettlements.push(pauseSampling);
+    return settled;
+  }
   const native = async () => {
     const [checkedPlayer, checkedQueue] = await Promise.all([state(), queue()]);
     assert(checkedPlayer.queueRevision === checkedQueue.revision, 'consistent native queue revision');
@@ -86,7 +115,8 @@
     } else if (!extended || before) {
       assert(checkedPlayer.state === 'paused' && checkedPlayer.playId === before.playId &&
         checkedPlayer.entryId === before.entryId && checkedPlayer.position === before.position &&
-        !checkedPlayer.error && checkedQueue.current === baseline.current, 'same paused decoder and clock');
+        !checkedPlayer.error && checkedQueue.current === baseline.current,
+      'same paused decoder and clock: ' + JSON.stringify([clock(before), clock(checkedPlayer)]));
     } else {
       assert(checkedPlayer.mode === 'random' && !checkedPlayer.error,
         'ordinary random mode is still active');
@@ -132,18 +162,14 @@
     ({ epoch } = await invoke('account_snapshot'));
     await invoke('player_action', { epoch, action: { kind: 'mode', mode: extended ? 'random' : playProof ? 'sequential' : 'single_loop' } });
     if (!extended) {
-      await invoke('play_selection', {
+      const started = await invoke('play_selection', {
         epoch, selection: {
           kind: 'songs', ids: playProof ? ['701'] : ['701', '702'], index: 0, quality: 'standard',
         },
       });
       await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
         'actual decoder advances');
-      click(button('暂停', bar()));
-      before = await wait(async () => {
-        const view = await state();
-        return view.state === 'paused' && view.position > .2 && view;
-      }, 'native paused baseline');
+      before = await pauseAndSettle(started, 'paused_baseline', (position) => position > .2);
       baseline = await queue();
       assert(ids(baseline) === (playProof ? '701' : '701,702') &&
         before.mode === (playProof ? 'sequential' : 'single_loop'), 'baseline source and mode');
@@ -220,12 +246,7 @@
       playStarted = true;
       await capture('group_play_started', { addTip: await wait(visibleTip, 'group Play queue acknowledgement') });
 
-      click(button('暂停', bar()));
-      const paused = await wait(async () => {
-        const view = await state();
-        return view.state === 'paused' && view.playId === started.playId &&
-          view.entryId === started.entryId && view.position >= started.position && view;
-      }, 'current anchor is paused at a native clock position');
+      const paused = await pauseAndSettle(started, 'paused_play_anchor');
       await input('select_resume_first', title('104'));
       await wait(() => selected() === '104', 'ordinary click replaces the previous selection');
       await input('select_resume_current', title('101'), 1, true);
@@ -245,7 +266,7 @@
       'the current entry moves inside selected display order without replacing the decoder');
       await capture('current_play_resumed', { addTip: await wait(visibleTip, 'group Play changes the queue while resuming') });
       core.playerAction = original;
-      await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
+      await emit('complete', { ok: true, stageCount, pauseSettlements, realAccountWrites: 0, realMusicRequests: 0 });
       return;
     }
 
@@ -280,12 +301,7 @@
       dispatchEvent(new StorageEvent('storage', { key: motionKey, newValue: 'disabled', storageArea: localStorage }));
       await wait(() => document.documentElement.dataset.motion === 'reduced', 'app reduced motion');
 
-      click(button('暂停', bar()));
-      before = await wait(async () => {
-        const view = await state();
-        return view.state === 'paused' && view.playId === playing.playId &&
-          view.entryId === playing.entryId && view.position >= playing.position && view;
-      }, 'paused same decoder before inserting in random');
+      before = await pauseAndSettle(playing, 'paused_random_anchor');
       baseline = await queue();
       await input('select_random_first', title('104'));
       await wait(() => selected() === '104', 'plain click replaces the old group');
@@ -303,7 +319,7 @@
       else localStorage.setItem(motionKey, oldMotion);
       dispatchEvent(new StorageEvent('storage', { key: motionKey, newValue: oldMotion, storageArea: localStorage }));
       core.playerAction = original;
-      await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
+      await emit('complete', { ok: true, stageCount, pauseSettlements, realAccountWrites: 0, realMusicRequests: 0 });
       return;
     }
 
@@ -346,11 +362,11 @@
       actionTrace[2].action.id === '104', 'one single native Next command');
     await capture('single_inserted', { addTip: await wait(visibleTip, 'single search Next queue acknowledgement') });
     core.playerAction = original;
-    await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
+    await emit('complete', { ok: true, stageCount, pauseSettlements, realAccountWrites: 0, realMusicRequests: 0 });
   } catch (error) {
     await emit('failed', {
       ok: false, error: String(error), stack: error.stack, step, stageCount, actionTrace,
-      selected: selected(), body: document.body.innerText.slice(0, 2800),
+      pauseSampling, selected: selected(), body: document.body.innerText.slice(0, 2800),
     });
   }
 })();
