@@ -128,6 +128,7 @@ pub(super) fn song_metadata_with_privilege(
     if super::together::external::catalog_unsupported(value, privilege) {
         song[super::together::external::BLOCKED] = Value::Bool(true);
     }
+    super::player::mark_current_song_share_metadata(&mut song, value, privilege);
     Ok(song)
 }
 

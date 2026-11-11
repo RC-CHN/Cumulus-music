@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
     pub resource_kind: Option<PlayerResourceKind>,
+    /// Presentation only; the player must revalidate the active native entry.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub current_song_share_available: bool,
     pub audiobook_skip_available: bool,
     pub fm: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

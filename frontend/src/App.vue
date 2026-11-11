@@ -8553,6 +8553,7 @@ onUnmounted(() => {
       @catalog="openPlaybackSource"
       @member="music.navigate({ kind: 'member' })"
       @login="loginOpen = true"
+      @expired="music.bootstrap(false)"
     />
     <ModalTransition
       :return-focus="accountFocus.returnFocus"

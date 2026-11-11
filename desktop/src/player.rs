@@ -6,6 +6,7 @@ mod native_quit;
 pub mod power;
 pub mod quality;
 pub mod reports;
+pub(crate) mod song_share;
 pub mod vinyl_similar;
 pub mod voice_related;
 pub mod voice_song_collect;
@@ -85,7 +86,6 @@ impl PlayerStreams {
         Ok(lease)
     }
 
-    #[cfg(any(target_os = "linux", windows))]
     fn ready_lease(&self, epoch: &str) -> Option<Lease> {
         let values = self.streams.lock().ok()?;
         let current = values.get("main")?;

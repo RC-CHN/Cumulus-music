@@ -1,41 +1,66 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { CatalogResource } from '../services/catalog';
-import type { TrackView } from '../services/contracts';
 import type { MenuItem } from '../services/menu';
-import type { CurrentCatalogTrack } from '../services/player';
-import { songLink } from '../services/trackMenu';
+import type { CurrentCatalogTrack, PlayerSongShareTarget } from '../services/player';
+import { useCore } from '../services/core';
+import { useSongShare } from '../composables/useSearchSongShare';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
-import TrackShareDialog from './TrackShareDialog.vue';
+import HistoryRowShareDialog from './history/HistoryRowShareDialog.vue';
 
 const props = defineProps<{
   selection?: CurrentCatalogTrack;
+  entryId?: string;
+  shareTarget?: PlayerSongShareTarget;
   accountEpoch: string;
   effectsAvailable: boolean;
 }>();
-const emit = defineEmits<{ catalog: [resource: CatalogResource]; effects: [] }>();
+const emit = defineEmits<{
+  catalog: [resource: CatalogResource];
+  effects: [];
+  login: [];
+  expired: [];
+}>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
-const sharing = shallowRef<TrackView>();
+const core = useCore();
+const sharing = useSongShare<PlayerSongShareTarget>(
+  {
+    prepare: (epoch, target) => core.playerSongSharePrepare(epoch, target),
+    choose: (epoch, target, offer, choice) =>
+      core.playerSongShareChoose(epoch, target, offer, choice),
+    cancel: (epoch, target, offer) => core.playerSongShareCancel(epoch, target, offer),
+  },
+  {
+    expired: () => emit('expired'),
+    loginRequired: () => emit('login'),
+    staleMessage: '当前歌曲已更新，请重新打开菜单。',
+  },
+);
+onBeforeUnmount(sharing.reset);
+watch(sharing.feedback, (message, _, onCleanup) => {
+  if (!message) return;
+  const timer = setTimeout(sharing.clearFeedback, 5000);
+  onCleanup(() => clearTimeout(timer));
+});
 let opened: string | undefined;
 const selection = computed(() =>
   props.selection?.epoch === props.accountEpoch ? props.selection : undefined,
 );
 const key = computed(() => {
   const current = selection.value;
-  return current ? JSON.stringify([current.epoch, current.playId, current.track.id]) : undefined;
+  return current
+    ? JSON.stringify([current.epoch, current.playId, props.entryId, current.track.id])
+    : undefined;
 });
 watch(
   key,
   () => {
     opened = undefined;
+    sharing.reset();
     menu.value?.close(menu.value.containsFocus());
   },
   { flush: 'sync' },
-);
-watch(
-  () => props.accountEpoch,
-  () => (sharing.value = undefined),
 );
 
 const firstArtist = computed(() => selection.value?.track.artistRefs?.[0]);
@@ -43,7 +68,9 @@ const items = computed<MenuItem[]>(() => {
   const track = selection.value?.track;
   if (!track) return [];
   return [
-    { key: 'share', label: '分享', icon: 'share', disabled: !songLink(track) },
+    ...(props.shareTarget
+      ? [{ key: 'share', label: '分享', icon: 'share', disabled: sharing.busy.value }]
+      : []),
     {
       key: 'artist',
       label: `歌手：${firstArtist.value?.name || track.artists[0] || '未知'}`,
@@ -62,10 +89,29 @@ const items = computed<MenuItem[]>(() => {
 function select(action: string) {
   const target = selection.value;
   if (!target || key.value !== opened) return;
+  const shown = opened;
   opened = undefined;
   const { track } = target;
-  if (action === 'share' && songLink(track)) sharing.value = track;
-  else if (action === 'artist' && firstArtist.value?.id)
+  if (action === 'share') {
+    const bound = props.shareTarget;
+    const anchor = menu.value?.triggerElement();
+    if (!bound || !anchor || sharing.busy.value) return;
+    void sharing.open(
+      {
+        epoch: target.epoch,
+        target: bound,
+        live: () =>
+          key.value === shown &&
+          props.shareTarget?.playId === bound.playId &&
+          props.shareTarget?.entryId === bound.entryId,
+        fallbackFocus: () => menu.value?.triggerElement() ?? null,
+      },
+      anchor,
+    );
+    return;
+  }
+  sharing.reset();
+  if (action === 'artist' && firstArtist.value?.id)
     emit('catalog', { kind: 'artist', id: firstArtist.value.id });
   else if (action === 'album' && track.albumId)
     emit('catalog', { kind: 'album', id: track.albumId });
@@ -81,16 +127,42 @@ function select(action: string) {
     variant="song"
     label="当前歌曲更多操作"
     :items="items"
-    @opened="opened = key"
+    @opened="
+      opened = key;
+      sharing.clearFeedback();
+    "
     @select="select"
   >
     <template #item="{ item }"
       ><span class="player-track-action-label" :title="item.label">{{ item.label }}</span></template
     >
   </ActionMenu>
-  <ModalTransition
-    ><TrackShareDialog v-if="sharing" :track="sharing" @close="sharing = undefined"
-  /></ModalTransition>
+  <Teleport to="body">
+    <ModalTransition
+      :return-focus="sharing.returnFocus"
+      :fallback-focus="sharing.fallbackFocus"
+      :restore-focus="sharing.restoreFocus.value"
+      @left="sharing.keepFocusVisible"
+    >
+      <HistoryRowShareDialog
+        v-if="sharing.dialog.value"
+        :key="sharing.dialog.value.stage"
+        data-player-song-share-dialog
+        :modules="sharing.dialog.value.stage === 'qr' ? sharing.dialog.value.modules : undefined"
+        @choose="sharing.choose"
+        @close="sharing.close()"
+      />
+    </ModalTransition>
+    <p
+      v-if="sharing.busy.value || sharing.feedback.value"
+      class="track-action-feedback player-song-share-status"
+      :class="{ failed: sharing.feedback.value?.error }"
+      :role="sharing.feedback.value?.error ? 'alert' : 'status'"
+      data-player-song-share-status
+    >
+      {{ sharing.feedback.value?.text ?? '正在核对分享权限…' }}
+    </p>
+  </Teleport>
 </template>
 <style scoped>
 .player-track-action-label {
@@ -99,5 +171,8 @@ function select(action: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.player-song-share-status {
+  pointer-events: none;
 }
 </style>

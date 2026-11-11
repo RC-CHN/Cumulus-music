@@ -52,6 +52,7 @@ mod search_artist;
 mod search_podcast;
 mod search_voice_menu;
 mod selection;
+mod song_share;
 mod source_control;
 mod startup;
 mod vinyl_comments;
@@ -117,6 +118,8 @@ pub use quality::{
 };
 pub use queue_click::{QueueClickPreferencesCommand, QueueClickPreferencesView};
 pub use reports::LyricReportView;
+pub use song_share::PlayerSongShareTarget;
+pub(super) use song_share::mark_metadata as mark_current_song_share_metadata;
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 pub use vinyl_comments::VinylCommentPageView;
@@ -156,6 +159,7 @@ pub(super) struct PlayerHost {
     power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
     queue_catalog_reveal: queue_catalog_reveal::Host,
+    song_share: song_share::Host,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -199,6 +203,7 @@ impl PlayerHost {
             power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
             queue_catalog_reveal: Default::default(),
+            song_share: Default::default(),
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
@@ -342,6 +347,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         .flatten()
     });
     Ok(PlayerView {
+        current_song_share_available: song_share::available(value),
         audiobook_skip_available: token.uid.is_some()
             && super::podcast::audiobook::active_radio(value).is_some(),
         fm: value.fm,

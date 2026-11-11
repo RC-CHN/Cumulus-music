@@ -68,8 +68,22 @@ struct Backend {
     vinyl_comment_hold: AtomicU64,
     vinyl_comment_started: Notify,
     vinyl_comment_release: Notify,
+    player_song_share: player_song_share::Server,
 }
 impl Api for Backend {
+    fn player_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self.player_song_share.revision())
+    }
+
+    fn request_player_song_share_privilege<'a>(
+        &'a self,
+        id: &'a str,
+        revision: &'a str,
+        permission: &'a (dyn Fn() -> cumulus_core::Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.player_song_share.access(id, revision, permission))
+    }
+
     fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         let revision = self.search_menu_revision.load(Ordering::SeqCst);
         Ok((revision > 0).then(|| format!("synthetic-search-menu-{revision}")))
@@ -370,6 +384,7 @@ impl Api for Backend {
                     if ids.iter().any(|song| song["id"].as_str().and_then(|id| id.parse().ok()) == Some(denied)) {
                         response["privileges"] = json!([{"id":denied,"pl":0,"flag":0}]);
                     }
+                    self.player_song_share.annotate_details(&mut response);
                     response
                 }
                 "/api/song/enhance/player/url/v1" => {
@@ -478,6 +493,9 @@ mod artist_batch_queue;
 
 #[path = "client_player/artist_search_cover.rs"]
 mod artist_search_cover;
+
+#[path = "client_player/player_song_share.rs"]
+mod player_song_share;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;

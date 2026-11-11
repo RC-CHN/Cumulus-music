@@ -421,6 +421,7 @@ defineExpose({
   showAt,
   showBelow,
   close,
+  triggerElement: () => trigger.value,
   containsFocus: () =>
     !!panel.value?.contains(document.activeElement) ||
     !!submenu.value?.contains(document.activeElement as Node),

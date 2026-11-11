@@ -7,6 +7,11 @@ import type { VoiceRecommendationsClient } from './voiceRecommendations';
 import type { VoiceDetailClient } from './voicePage';
 import type { VoiceSongsClient } from './voiceSongs';
 import type { VoiceDetail } from './voiceDetail';
+import type {
+  HistoryRowShareChoice,
+  HistoryRowShareOutcome,
+  HistoryRowSharePreparation,
+} from './history';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -77,6 +82,7 @@ export interface DeviceParametricView {
 }
 
 export interface PlayerView {
+  currentSongShareAvailable?: boolean;
   voiceDetail?: VoiceDetail | null;
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   audiobookSkipAvailable?: boolean;
@@ -141,6 +147,32 @@ export interface CurrentCatalogTrack {
   epoch: string;
   playId: string;
   track: TrackView;
+}
+
+export interface PlayerSongShareTarget {
+  playId: string;
+  entryId: string;
+}
+
+export type PlayerSongShareChannel =
+  | Exclude<HistoryRowShareOutcome, { kind: 'copy' }>
+  | { kind: 'copied' | 'copy_failed' };
+
+export function currentSongShareTarget(
+  view: PlayerView | undefined,
+  epoch: string,
+  togetherActive: boolean,
+): PlayerSongShareTarget | undefined {
+  if (
+    togetherActive ||
+    view?.epoch !== epoch ||
+    view.currentSongShareAvailable !== true ||
+    view.resourceKind !== 'catalog' ||
+    !view.playId ||
+    !view.entryId
+  )
+    return undefined;
+  return { playId: view.playId, entryId: view.entryId };
 }
 
 /** Current catalogue controls cannot mistake another resource namespace for a song. */
@@ -1079,6 +1111,17 @@ export interface PlayerClient
   playerQueueOpenDownloadDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
+  playerSongSharePrepare(
+    epoch: string,
+    target: PlayerSongShareTarget,
+  ): Promise<AccountData<HistoryRowSharePreparation>>;
+  playerSongShareChoose(
+    epoch: string,
+    target: PlayerSongShareTarget,
+    offer: string,
+    choice: HistoryRowShareChoice,
+  ): Promise<AccountData<PlayerSongShareChannel>>;
+  playerSongShareCancel(epoch: string, target: PlayerSongShareTarget, offer: string): Promise<void>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;
   playerVinylComments(
     epoch: string,

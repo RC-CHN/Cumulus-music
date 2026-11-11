@@ -55,6 +55,9 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "playlist_song_row_comment_count",
             "reconcile_playlist_mixed_reorder",
             "player_action",
+            "player_song_share_prepare",
+            "player_song_share_choose",
+            "player_song_share_cancel",
             "player_vinyl_voice_detail_target",
             "player_voice_songs_download_prepare",
             "player_voice_songs_download_prepare_with_destination",
@@ -816,6 +819,18 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","revision":"0"}),
         ),
         ("player_lyrics", json!({"epoch":"0","playId":"old"})),
+        (
+            "player_song_share_prepare",
+            json!({"epoch":"0","target":{"playId":"old","entryId":"old"}}),
+        ),
+        (
+            "player_song_share_choose",
+            json!({"epoch":"0","target":{"playId":"old","entryId":"old"},"offer":"old","choice":"copy"}),
+        ),
+        (
+            "player_song_share_cancel",
+            json!({"epoch":"0","target":{"playId":"old","entryId":"old"},"offer":"old"}),
+        ),
         ("playlist_editor", json!({"epoch":"0","id":"10"})),
         ("playlist_tags", json!({"epoch":"0"})),
         (

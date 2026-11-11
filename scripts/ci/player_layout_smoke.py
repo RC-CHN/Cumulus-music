@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from history_row_next_smoke import share_qr_payload
 from motion_smoke import launch
 
 
@@ -121,6 +122,58 @@ def verify_fm_chorus(root, complete, screenshots):
                 physicalDisplayVerified=False, physicalAudioOutputVerified=False)
 
 
+def verify_current_share(stages, complete, menu, screenshots):
+    names = ('cancelled', 'denied', 'copied', 'wechat', 'stale', 'subscription')
+    expected = [dict(path='/api/song/enhance/privilege', args={'ids': json.dumps([song])}, cached=False, sp=sp)
+                for song, sp in zip(['2'] * 10 + ['1'] * 2,
+                                    (1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1), strict=True)]
+    assert menu['playerSongShareCalls'] == []
+    assert complete['playerSongShareCalls'] == expected
+    rows = []
+    for name, count in zip(names, (1, 3, 5, 7, 10, 12), strict=True):
+        match, = [file for file in stages if file.stem.endswith('_current_share_' + name)]
+        row = json.loads(match.read_text(encoding='utf-8'))
+        assert row['playerSongShareCalls'] == expected[:count], name
+        rows.append(row)
+    cancelled, denied, copied, wechat, stale, subscription = rows
+    assert cancelled['forgedRejected'] is True
+    assert all(row['focusRestored'] is True for row in (cancelled, denied, copied))
+    assert (denied['notice'], denied['clipboardUntouched']) == ('当前资源暂不支持分享。', True)
+    assert (copied['notice'], copied['nativeClipboard']) == ('复制成功', True)
+    assert (wechat['title'], wechat['hint'], wechat['qrWidth']) == ('分享到微信', '打开微信, 扫一扫', 180)
+    assert len(wechat['qrModules']) == 25
+    assert share_qr_payload(wechat['qrModules']) == 'https://music.163.com/song?id=2'
+    if screenshots:
+        qr_path, = [file for file in stages if file.stem.endswith('_current_share_wechat')]
+        paint = json.loads(qr_path.with_name('paint-' + qr_path.name).read_text(encoding='utf-8'))
+        assert [sample['actual'] for sample in paint['samples']] == [[255, 255, 255], [0, 0, 0]]
+        assert all(sample['ok'] for sample in paint['samples'])
+    first = cancelled['nativePlayer']
+    for row in rows[:4]:
+        native, queue = row['nativePlayer'], row['nativeQueue']
+        assert native['playId'] == row['playId'] == menu['nativePlayer']['playId']
+        assert native['track']['id'] == row['trackId'] == '2' and native['state'] == 'paused'
+        assert native['currentSongShareAvailable'] is True
+        assert native['entryId'] == queue['current'] == first['entryId']
+        assert native['queueRevision'] == queue['revision'] == first['queueRevision']
+        assert queue == cancelled['nativeQueue']
+        assert abs(native['position'] - row['position']) < .1
+        assert abs(native['position'] - first['position']) < .1
+    assert stale['oldChooserRetired'] is True and stale['shareHidden'] is True
+    assert stale['clipboardUntouched'] is True and stale['stale'] == 'stale'
+    assert stale['oldPlayId'] == first['playId'] != stale['nativePlayer']['playId']
+    assert stale['nativePlayer']['track']['id'] == stale['trackId'] == '3'
+    assert not stale['nativePlayer'].get('currentSongShareAvailable')
+    native = subscription['nativePlayer']
+    assert subscription['originalLeaseRejected'] is True and subscription['replacementReady'] is True
+    assert subscription['clipboardUntouched'] is True
+    assert native['state'] == 'paused' and native['track']['id'] == subscription['trackId'] == '1'
+    assert native['playId'] == subscription['playId'] == complete['nativePlayer']['playId']
+    assert native['entryId'] == subscription['entryId'] == subscription['nativeQueue']['current']
+    assert native['queueRevision'] == subscription['queueRevision'] == subscription['nativeQueue']['revision']
+    assert native['epoch'] == subscription['epoch'] == subscription['nativeQueue']['epoch']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -143,6 +196,7 @@ def main():
         env['CUMULUS_FM_CHORUS_PROOF'] = '1'
     elif not args.baseline:
         env['CUMULUS_PLAYER_WAIT_PROOF'] = '1'
+        env['CUMULUS_PLAYER_SONG_SHARE_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -179,7 +233,7 @@ def main():
         (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps({k: report[k] for k in ['ok', 'nativeQueueCache', 'stageCount', 'screenshots']}))
         return
-    expected = 20 if args.baseline else 30
+    expected = 20 if args.baseline else 36
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
@@ -209,6 +263,7 @@ def main():
         assert menu['menu'] and menu['nativePlayer']['state'] == 'paused'
         assert menu['nativePlayer']['playId'] == menu['playId']
         assert menu['nativePlayer']['track']['id'] == menu['trackId'] == '2'
+        verify_current_share(stages, complete, menu, args.screenshots)
         for label, expected_badge in [('long_760_dark', '999+'), ('short_760_dark', '25')]:
             shot, = [stage for stage in stages if stage.stem.endswith('_' + label)]
             frame = json.loads(shot.read_text(encoding='utf-8'))

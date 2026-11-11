@@ -681,6 +681,12 @@ export function createTauriClient(): CoreClient {
       invoke('player_queue_open_download_directory', { epoch, revision, entryId }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
     playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
+    playerSongSharePrepare: (epoch, target) =>
+      invoke('player_song_share_prepare', { epoch, target }),
+    playerSongShareChoose: (epoch, target, offer, choice) =>
+      invoke('player_song_share_choose', { epoch, target, offer, choice }),
+    playerSongShareCancel: (epoch, target, offer) =>
+      invoke('player_song_share_cancel', { epoch, target, offer }),
     playerVinylSimilarAvailable: (epoch) => invoke('player_vinyl_similar_available', { epoch }),
     playerVinylRecommendationPlacement: (epoch) =>
       invoke('player_vinyl_recommendation_placement', { epoch }),

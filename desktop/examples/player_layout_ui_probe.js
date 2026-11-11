@@ -18,11 +18,173 @@
   const trackActionTrigger = () => one('.playerbar [aria-label="当前歌曲更多操作"]');
   const trackActionMenu = () => one('.action-menu[aria-label="当前歌曲更多操作"]:not([inert]):not(.menu-leave-active)');
   const trackAction = key => trackActionMenu()?.querySelector(`[data-menu-key="${key}"]`);
-  async function openTrackActions() {
+  async function openTrackActions(shareExpected = true) {
     assert(trackActionTrigger() && hit(trackActionTrigger()),'more menu trigger is hit-testable');
     click(trackActionTrigger());
-    await wait(()=>trackAction('share')&&hit(trackAction('share')),'current song menu opens above bottom bar');
+    await wait(()=>trackAction('effects')&&hit(trackAction('effects'))&&
+      (shareExpected ? trackAction('share')&&hit(trackAction('share')) : !trackAction('share')),
+      'current song menu shows the expected controls above the bottom bar');
     return trackActionMenu();
+  }
+  const shareDialog = kind => one(
+    `[data-player-song-share-dialog][data-history-share-dialog="${kind}"][open]:not([inert])`,
+  );
+  const shareStatus = () => one('[data-player-song-share-status]');
+  let clipboardSequence = 0;
+  window.__playerSongShareClipboard = {};
+  async function nativeClipboard(action) {
+    const sequence = ++clipboardSequence;
+    await emit('player-song-share-clipboard', {sequence,action});
+    await wait(() => typeof window.__playerSongShareClipboard[sequence] === 'boolean', 'native clipboard receipt');
+    assert(window.__playerSongShareClipboard[sequence], 'native clipboard must match the exact sealed value: '+action);
+  }
+  async function chooser(alreadyOpen = false) {
+    if (!alreadyOpen) await openTrackActions();
+    click(trackAction('share'));
+    await wait(() => shareDialog('chooser') && document.activeElement?.getAttribute('aria-label') === '关闭分享',
+      'current song share chooser has close focus');
+    const dialog = shareDialog('chooser');
+    const choices = [...dialog.querySelectorAll('[data-history-share-channel]')].map(node => node.textContent.trim());
+    assert(dialog.querySelector('h2')?.textContent.trim()==='分享到'&&choices.join(',')==='微信好友,复制链接',
+      'ordinary Song exposes only the supported local channels');
+    return dialog;
+  }
+  async function shareFocus() {
+    await wait(() => !one('[data-player-song-share-dialog]')&&document.activeElement===trackActionTrigger()&&
+      hit(trackActionTrigger()),'current share returns focus to the visible More trigger');
+  }
+  function shareQrModules(svg) {
+    const [x,y,width,height] = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    const size = width-8, d = svg.querySelector('path')?.getAttribute('d') ?? '';
+    assert(x===0&&y===0&&width===height&&[25,29].includes(size)&&d,'rendered QR has a bounded grid and quiet zone');
+    const rows = Array.from({length:size},()=>Array(size).fill('0'));
+    const shapes = [...d.matchAll(/M(\d+) (\d+)h1v1h-1z/g)];
+    assert(shapes.map(m=>m[0]).join(' ')===d,'rendered QR path consists of unit squares');
+    for(const [,column,row] of shapes) {
+      const c=Number(column)-4,r=Number(row)-4;
+      assert(rows[r]?.[c]==='0','QR quiet zone remains clear and modules are unique');
+      rows[r][c]='1';
+    }
+    return rows.map(row=>row.join(''));
+  }
+  async function captureShare(label, fields) {
+    const bar=one('.playerbar');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_current_share_${label}`,{
+      playId:bar.dataset.playId,trackId:bar.dataset.trackId,position:Number(bar.dataset.position),...fields,
+    });
+    await sleep(800);
+  }
+  async function verifyCurrentShare() {
+    const invoke = (command,args) => window.__TAURI_INTERNALS__.invoke(command,args);
+    const {epoch} = await invoke('account_snapshot');
+    const {playId} = await invoke('player_snapshot',{epoch});
+    const forged = await invoke('player_song_share_prepare',{epoch,target:{playId,entryId:'forged'}}).then(()=>null,error=>error);
+    assert(forged?.code==='stale','registered share IPC rejects a forged entry before reading rights');
+    const dialog = await chooser(true);
+    assert(!dialog.dispatchEvent(new Event('cancel',{cancelable:true})),'dialog Cancel is handled');
+    await shareFocus();
+    await captureShare('cancelled',{focusRestored:true,forgedRejected:true});
+
+    await nativeClipboard('seed');
+    click((await chooser()).querySelector('[data-history-share-channel="copy"]'));
+    await wait(()=>shareStatus()?.textContent.trim()==='当前资源暂不支持分享。','second rights read denies copying');
+    await shareFocus();
+    await nativeClipboard('marker');
+    await captureShare('denied',{focusRestored:true,clipboardUntouched:true,notice:shareStatus().textContent.trim()});
+
+    click((await chooser()).querySelector('[data-history-share-channel="copy"]'));
+    await wait(()=>shareStatus()?.textContent.trim()==='复制成功','typed native clipboard success');
+    await shareFocus();
+    await nativeClipboard('song');
+    await captureShare('copied',{focusRestored:true,nativeClipboard:true,notice:shareStatus().textContent.trim()});
+
+    click((await chooser()).querySelector('[data-history-share-channel="wechat_qr"]'));
+    await wait(()=>shareDialog('wechat_qr')?.querySelector('[data-history-share-qr]')&&
+      document.activeElement?.getAttribute('aria-label')==='关闭微信分享二维码','local QR replaces chooser and focuses Close');
+    const qr = shareDialog('wechat_qr'), svg = qr.querySelector('[data-history-share-qr]');
+    const title=qr.querySelector('h2').textContent.trim(), hint=qr.querySelector('p').textContent.trim();
+    assert(title==='分享到微信'&&hint==='打开微信, 扫一扫'&&svg.getAttribute('width')==='180','current share QR content');
+    await wait(()=>getComputedStyle(qr).opacity==='1'&&!qr.classList.contains('modal-enter-active')&&
+      !one('[data-player-song-share-dialog][data-history-share-dialog="chooser"]'),
+      'QR dialog and chooser transition reach the painted state');
+    const modules=shareQrModules(svg), box=rect(svg), unit=box.width/(modules.length+8);
+    assert(inside(box,{x:0,y:0,right:innerWidth,bottom:innerHeight})&&box.width===180&&box.height===180,
+      'QR stays inside the narrow viewport after animation');
+    await captureShare('wechat',{title,hint,qrWidth:180,qrModules:modules,
+      screenX,screenY,ratio:devicePixelRatio,paintSamples:[
+        {x:box.x+2*unit,y:box.y+2*unit,color:'rgb(255, 255, 255)'},
+        {x:box.x+7.5*unit,y:box.y+7.5*unit,color:'rgb(0, 0, 0)'},
+      ],
+    });
+    click(qr.querySelector('header button'));
+    await shareFocus();
+  }
+  async function verifyCurrentShareRetirement() {
+    const invoke = (command,args) => window.__TAURI_INTERNALS__.invoke(command,args);
+    const {epoch} = await invoke('account_snapshot');
+    const before = await invoke('player_snapshot',{epoch});
+    await nativeClipboard('seed');
+    await chooser();
+    const target={playId:before.playId,entryId:before.entryId};
+    // A second registered native offer retires the UI's older one. Hold its
+    // actual typed copy invocation to observe the return after native selection.
+    const prepared = await invoke('player_song_share_prepare',{epoch,target});
+    assert(prepared.value.kind==='ready','same source permits the explicit newer proof offer');
+    const pending = invoke('player_song_share_choose',{epoch,target,offer:prepared.value.receipt,choice:'copy'}).then(()=>null,error=>error);
+    for(let i=0;i<30&&window.__playerSongShareReads!==10;i++) {
+      await emit('player-song-share-read-count');
+      await sleep(45);
+    }
+    assert(window.__playerSongShareReads===10,'native transport received the held channel read');
+    await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['3'],index:0,quality:'standard'}});
+    await wait(()=>one('.playerbar').dataset.trackId==='3'&&!one('[data-player-song-share-dialog]'),
+      'native track replacement retires the old UI chooser');
+    await emit('player-song-share-release');
+    const stale=await pending;
+    assert(stale?.code==='stale','held native channel returns stale after replacing the actual player');
+    await nativeClipboard('marker');
+    const menu=await openTrackActions(false);
+    assert(!shareStatus()&&!trackAction('share')&&menu,'blocked replacement has no unguarded share action');
+    await captureShare('stale',{clipboardUntouched:true,oldChooserRetired:true,oldPlayId:before.playId,shareHidden:true,stale:stale.code});
+    click(trackActionTrigger());
+  }
+  async function verifyCurrentShareSubscription() {
+    const native=window.__TAURI_INTERNALS__;
+    const invoke=(command,args)=>native.invoke(command,args);
+    const {epoch}=await invoke('account_snapshot');
+    const before=await invoke('player_snapshot',{epoch});
+    assert(before.track.id==='1'&&before.state==='paused','same-account subscription test has a settled native song');
+    const target={playId:before.playId,entryId:before.entryId};
+    await nativeClipboard('seed');
+    const original=await invoke('player_song_share_prepare',{epoch,target});
+    assert(original.value.kind==='ready','original subscription produced an offer');
+
+    let observed;
+    const callback=native.transformCallback(message=>{
+      if(message.message?.kind==='state') observed=message.message.value;
+    },false);
+    const streamId='phase316-'+crypto.randomUUID();
+    try {
+      // Register a new real IPC channel at the same epoch; the published
+      // player and selection deliberately remain exactly the same.
+      await invoke('watch_player',{epoch,streamId,onUpdate:`__CHANNEL__:${callback}`});
+      await wait(()=>observed?.playId===before.playId&&observed?.entryId===before.entryId,
+        'replacement native subscription sees the same paused selection');
+      const stale=await invoke('player_song_share_choose',{
+        epoch,target,offer:original.value.receipt,choice:'copy',
+      }).then(()=>null,error=>error);
+      assert(stale?.code==='stale','the same song and new channel cannot consume an old share offer');
+      await nativeClipboard('marker');
+      const fresh=await invoke('player_song_share_prepare',{epoch,target});
+      assert(fresh.value.kind==='ready'&&fresh.value.receipt!==original.value.receipt,
+        'replacement channel can prepare a new offer');
+      await invoke('player_song_share_cancel',{epoch,target,offer:fresh.value.receipt});
+      await captureShare('subscription',{originalLeaseRejected:true,clipboardUntouched:true,replacementReady:true,
+        entryId:before.entryId,queueRevision:before.queueRevision,epoch});
+    } finally {
+      await invoke('unwatch_player',{streamId});
+      native.unregisterCallback(callback);
+    }
   }
   async function capture(label, extra = {}) {
     await sleep(500);
@@ -350,10 +512,7 @@
     assert(inside(rect(menu),{x:0,y:0,right:innerWidth,bottom:innerHeight})&&rect(menu).bottom<=rect(trackActionTrigger()).y,'narrow menu fits above the trigger');
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_current_track_menu`,{playId,trackId,menu:true});
     await sleep(800);
-    click(trackAction('share'));
-    await wait(()=>one('.track-share-dialog[open] [aria-label="歌曲分享链接"]')?.value===`https://music.163.com/song?id=${trackId}`,'share shows the active song link');
-    click(one('.track-share-dialog [aria-label="关闭分享"]'));
-    await wait(()=>!one('.track-share-dialog')&&document.activeElement===trackActionTrigger(),'share closes back to the playback trigger');
+    await verifyCurrentShare();
     await openTrackActions();
     click(trackAction('effects'));
     const activeCatalogue = '.audio-effects-panel[open] [data-audio-effect-pane="catalogue"]:not([hidden])';
@@ -375,6 +534,7 @@
     assert(bar.dataset.playId===playId&&bar.dataset.trackId===trackId&&bar.dataset.state==='paused'&&Math.abs(Number(bar.dataset.position)-Number(position))<.1,'actions preserve the native song and paused position');
     click(all('.sidebar button').find(node=>node.textContent.trim()==='每日推荐'));
     await wait(()=>one('.daily-track-actions')&&!one('.catalog-page')&&all('.track-row').length>2,'restore the daily fixture for the output recovery case');
+    await verifyCurrentShareRetirement();
     await emit('resize',{width:1120,height:760});
     await wait(()=>innerWidth===1120&&innerHeight===760,'restore the output recovery viewport');
   }
@@ -438,7 +598,7 @@
     }
     click(one('[aria-label="收起播放详情"]'));await wait(()=>!one('.lyrics-panel'),'details close');await sleep(300);
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
-    if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyTrackActions(); await verifyAudioOutputRecovery(); }
+    if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyTrackActions(); await verifyAudioOutputRecovery(); await verifyCurrentShareSubscription(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
     await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,lyricStopVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline,currentTrackMenuVerified:!window.__playerLayoutBaseline});

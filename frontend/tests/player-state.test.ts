@@ -4,6 +4,7 @@ import { usePlayer } from '../src/composables/usePlayer.ts';
 import type { CoreClient, AccountView } from '../src/services/contracts.ts';
 import {
   currentCatalogTrack,
+  currentSongShareTarget,
   type PlayerView,
   type PlayerUpdate,
   type LyricsView,
@@ -2499,4 +2500,27 @@ test('mixed playlist drop preserves typed selection order and requests refresh w
   assert.equal(f.player.view.value?.playId, 'paused-song');
   assert.equal(refreshes, 1);
   f.player.dispose();
+});
+
+test('current-song share requires the exact native catalog play and queue entry', () => {
+  const playback = {
+    ...state('1', '9', 'play'),
+    resourceKind: 'catalog' as const,
+    entryId: 'entry',
+    currentSongShareAvailable: true,
+  };
+  assert.deepEqual(currentSongShareTarget(playback, '9', false), {
+    playId: 'play',
+    entryId: 'entry',
+  });
+  assert.equal(currentSongShareTarget(playback, '8', false), undefined);
+  assert.equal(currentSongShareTarget(playback, '9', true), undefined);
+  for (const source of [
+    { ...playback, currentSongShareAvailable: undefined },
+    { ...playback, resourceKind: 'local' as const },
+    { ...playback, playId: null },
+    { ...playback, entryId: null },
+  ]) {
+    assert.equal(currentSongShareTarget(source, '9', false), undefined);
+  }
 });

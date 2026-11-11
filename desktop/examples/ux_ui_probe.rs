@@ -231,6 +231,9 @@ static PLAYLIST_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex
 static PLAYER_LAYOUT_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> =
     std::sync::Mutex::new(Vec::new());
 
+#[path = "support/player_song_share_fixture.rs"]
+mod player_song_share_fixture;
+
 #[path = "support/profile_play_record_fixture.rs"]
 mod profile_play_record_fixture;
 #[path = "support/profile_relations_fixture.rs"]
@@ -256,6 +259,24 @@ fn playlist(id: u64) -> Value {
     playlist
 }
 impl Api for Library {
+    fn player_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(
+            player_song_share_fixture::enabled()
+                .then(|| player_song_share_fixture::REVISION.into()),
+        )
+    }
+
+    fn request_player_song_share_privilege<'a>(
+        &'a self,
+        id: &'a str,
+        revision: &'a str,
+        permission: &'a (dyn Fn() -> cumulus_core::Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(player_song_share_fixture::privilege(
+            id, revision, permission,
+        ))
+    }
+
     fn lyric_group_playback_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(if search_lyric_group_fixture::enabled() {
             Some(search_lyric_group_fixture::CREDENTIAL_REVISION.into())
@@ -1239,6 +1260,9 @@ impl Api for Library {
                     if intelligence_start_fixture::enabled() {
                         response["privileges"]=json!(rows.iter().map(|row|json!({"id":row["id"],"pl":320000,"maxbr":999000,"flag":0})).collect::<Vec<_>>());
                     }
+                    if player_song_share_fixture::enabled() {
+                        player_song_share_fixture::annotate(&mut response);
+                    }
                     response
                 }
                 "/api/batch" if playlist_editor_fixture::enabled() => {
@@ -1432,6 +1456,10 @@ fn main() {
         !playback_wait_proof
             || (motion_proof && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()),
         "playback wait proof requires isolated layout/audio fixtures"
+    );
+    assert!(
+        !player_song_share_fixture::enabled() || playback_wait_proof,
+        "player sharing requires the sealed layout/audio fixture"
     );
     let native_stop_proof = card_source_fixture::native_stop_enabled();
     assert!(
@@ -1777,6 +1805,9 @@ fn main() {
             {
                 value["playerLayoutCatalogueCalls"] = json!(*PLAYER_LAYOUT_CATALOGUE_CALLS.lock().unwrap());
             }
+            if player_song_share_fixture::enabled() {
+                value["playerSongShareCalls"] = player_song_share_fixture::report();
+            }
             if peq_proof || device_peq_proof || audio_effect_tabs_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if device_source_bypass_proof {
                 value["headphoneSourceCalls"]=json!(effect_directory_fixture::source_calls());
@@ -1960,6 +1991,7 @@ fn main() {
                 let reply=card_audio.configure(value["mode"].as_str().unwrap_or("")).unwrap_or_else(|error|json!({"error":error.to_string()}));
                 handle.get_webview_window("main").unwrap().eval(format!("window.__cardSourceAck[{id}]={reply};")).unwrap();return;
             }
+            if player_song_share_fixture::control(&handle, stage, &value) { return; }
             if intelligence_start_fixture::enabled() && stage=="intelligence-start-fixture" {
                 let kind=value["kind"].as_str().unwrap();intelligence_start_fixture::control(kind);
                 handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceStartReport={};window.__intelligenceStartAck={};",intelligence_start_fixture::report(),json!(kind))).unwrap();return;
@@ -2255,6 +2287,7 @@ fn main() {
                 let rank_source_store=proof_store.clone();let rank_source_session=fixture_session.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
+                    let player_share_stage = player_song_share_fixture::enabled() && stage.contains("_current_share_");
                     if daily_notification_proof {
                         value["dailyNotificationFixture"]=daily_notification_fixture::report(&rank_source_store).unwrap();
                     }
@@ -2271,14 +2304,14 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() || zone_fm_preview_fixture::enabled() {
+                    let player = if player_share_stage || chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() || zone_fm_preview_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() {
+                        if player_share_stage || chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {

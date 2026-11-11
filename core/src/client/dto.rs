@@ -44,6 +44,7 @@ pub use super::mv::{
 };
 pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::pc_experiments::PcPresentationView;
+pub use super::player::PlayerSongShareTarget;
 pub use super::player::{
     HistoryRadioMenuAction, IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin,
     LyricsView, MixedPlaylistDropRow, MixedPlaylistStart, OutputCommand, OutputEngineView,

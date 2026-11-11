@@ -2,7 +2,12 @@
 import { computed, ref, shallowRef, nextTick, useId, watch, onMounted, onUnmounted } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
-import { currentCatalogTrack, currentPlaybackDownload, time } from '../services/player';
+import {
+  currentCatalogTrack,
+  currentPlaybackDownload,
+  currentSongShareTarget,
+  time,
+} from '../services/player';
 import type {
   CurrentCatalogTrack,
   CurrentPlaybackDownload,
@@ -97,6 +102,7 @@ const emit = defineEmits<{
   download: [target: CurrentPlaybackDownload];
   member: [];
   login: [];
+  expired: [];
   audioOutput: [epoch: string];
   catalog: [resource: CatalogResource];
 }>();
@@ -203,6 +209,9 @@ const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
     return previous;
   return current;
 });
+const songShareTarget = computed(() =>
+  currentSongShareTarget(view.value, props.account.epoch, props.togetherActive),
+);
 const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
   const current = view.value;
   if (
@@ -989,10 +998,14 @@ watch(
       >
       <PlayerTrackActions
         :selection="currentCatalog"
+        :entry-id="view?.entryId ?? undefined"
+        :share-target="songShareTarget"
         :account-epoch="account.epoch"
         :effects-available="ready"
         @catalog="(resource) => emit('catalog', resource)"
         @effects="audioEffectsOpen = true"
+        @login="emit('login')"
+        @expired="emit('expired')"
       />
       <AudiobookSkipMenu
         :epoch="account.epoch"
