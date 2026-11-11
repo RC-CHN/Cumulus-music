@@ -3,10 +3,12 @@
 import hashlib
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from linux_webview_apt import MAX_DEB, admit, apt_plan, receipt, stage
+from linux_webview_apt import MAX_DEB, PACKAGE_PROFILES, admit, apt_plan, package_request, receipt, stage
 
 
 IDENTITY = {'commit': 'a' * 40, 'ciRun': '123', 'ciAttempt': '2'}
@@ -93,6 +95,33 @@ class LinuxWebViewApt(unittest.TestCase):
         self.assertEqual({p.name for p in published.iterdir()}, {name, 'receipt.json'})
         plan = apt_plan(uri_row(name, package))
         self.assertEqual(admit(published, IDENTITY, plan, self.staging), [self.staging / name])
+
+    def test_known_runner_omits_only_absent_speech_model_with_no_removal_guard(self):
+        env = {'LC_ALL': 'C'}
+        for code, stdout, stderr in ((0, 'not-installed\n', ''), (1, '',
+                'dpkg-query: no packages found matching pocketsphinx-en-us\n')):
+            with self.subTest(code=code), patch('linux_webview_apt.subprocess.run',
+                    return_value=subprocess.CompletedProcess([], code, stdout, stderr)) as dpkg:
+                self.assertEqual(package_request('package', True, env), [
+                    'install', '-y', *PACKAGE_PROFILES['package'], '--no-remove', 'pocketsphinx-en-us-',
+                ])
+                dpkg.assert_called_once_with(['dpkg-query', '--show',
+                    '--showformat=${db:Status-Status}\n', 'pocketsphinx-en-us'],
+                    env=env, capture_output=True, text=True)
+
+    def test_installed_partial_or_unverifiable_model_and_unknown_runner_keep_original_plan(self):
+        original = ['install', '-y', *PACKAGE_PROFILES['native']]
+        with patch('linux_webview_apt.subprocess.run') as dpkg:
+            self.assertEqual(package_request('native', False, {}), original)
+            dpkg.assert_not_called()
+        for code, stdout, stderr in ((0, 'installed\n', ''), (0, 'config-files\n', ''),
+                (0, 'unpacked\n', ''), (0, 'not-installed\n', 'warning'),
+                (1, '', 'unrelated error'), (2, '', 'database failure')):
+            with self.subTest(code=code, stdout=stdout, stderr=stderr), patch('linux_webview_apt.subprocess.run',
+                    return_value=subprocess.CompletedProcess([], code, stdout, stderr)):
+                self.assertEqual(package_request('native', True, {}), original)
+        with patch('linux_webview_apt.subprocess.run', side_effect=FileNotFoundError):
+            self.assertEqual(package_request('native', True, {}), original)
 
 
 if __name__ == '__main__':

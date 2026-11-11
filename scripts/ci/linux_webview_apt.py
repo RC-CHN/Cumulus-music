@@ -36,6 +36,7 @@ PACKAGE_PROFILES = {
     'native': NATIVE_PACKAGES,
     'package': (*NATIVE_PACKAGES, 'cmake', 'binutils'),
 }
+OPTIONAL_SPEECH_MODEL = 'pocketsphinx-en-us'
 MAX_FILES = 1024
 MAX_BYTES = 512 * 1024 * 1024
 MAX_DEB = 128 * 1024 * 1024
@@ -204,6 +205,27 @@ def restore_for_plan(source, identity, apt, request, env, archives, workspace):
               f'{time.monotonic() - start:.3f}s including the plan; fetch all misses', flush=True)
 
 
+def package_request(profile, supported_runner, env):
+    request = ['install', '-y', *PACKAGE_PROFILES[profile]]
+    if not supported_runner:
+        return request
+    try:
+        state = subprocess.run(['dpkg-query', '--show', '--showformat=${db:Status-Status}\n',
+                                OPTIONAL_SPEECH_MODEL], env=env, capture_output=True, text=True)
+    except OSError:
+        return request
+    absent = (state.returncode == 0 and state.stdout == 'not-installed\n' and not state.stderr
+              or state.returncode == 1 and not state.stdout and state.stderr ==
+              f'dpkg-query: no packages found matching {OPTIONAL_SPEECH_MODEL}\n')
+    if absent:
+        # This data package is only a recommendation of the retained runtime
+        # library. For an absent package APT's exact '-' marker prevents a
+        # new install; --no-remove rejects any removal if state changed.
+        print(f'APT dependency plan: omit absent optional {OPTIONAL_SPEECH_MODEL}; no removals', flush=True)
+        request.extend(('--no-remove', f'{OPTIONAL_SPEECH_MODEL}-'))
+    return request
+
+
 def install(args):
     env = {**os.environ, 'LC_ALL': 'C'}
     checkout = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
@@ -214,8 +236,8 @@ def install(args):
         archives = workspace / 'archives'
         subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
         apt = ['sudo', 'apt-get', '-o', f'Dir::Cache::archives={archives}']
-        request = ['install', '-y', *PACKAGE_PROFILES[args.profile]]
         source = configured_source(env)
+        request = package_request(args.profile, source is not None, env)
         sources = {}
         private_lists = []
 
