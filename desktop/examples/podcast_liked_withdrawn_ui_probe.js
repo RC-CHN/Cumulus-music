@@ -69,12 +69,18 @@
     const popup = () => one('[role="menu"][aria-label^="单集菜单"]');
     const more = (id) => one('[data-liked-voice-more]', row(id));
     const item = (label) => all('[role="menuitem"]', popup()).find((node) => node.textContent.trim() === label);
+    const liveItem = (id, label) => {
+      const menu = popup(), anchor = more(id), button = item(label);
+      return menu && anchor?.getAttribute('aria-controls') === menu.id &&
+        anchor.getAttribute('aria-expanded') === 'true' &&
+        button?.isConnected && !button.disabled && !button.closest('[inert]') ? button : null;
+    };
     const openMenu = async (id, keyboard = false) => {
       if (keyboard) {
         more(id).focus();
         more(id).dispatchEvent(new KeyboardEvent('keydown', { key:'F10', shiftKey:true, bubbles:true }));
       } else more(id).click();
-      await wait(() => popup() && Number(getComputedStyle(popup()).opacity) > 0.98 && item('播放'), 'visible programme menu');
+      await wait(() => liveItem(id, '播放') && Number(getComputedStyle(popup()).opacity) > 0.98, 'visible programme menu');
     };
     step = 'menu plays the single selected normal row';
     await invoke('player_action', { epoch, action: { kind: 'mode', mode: 'sequential' } });
@@ -102,7 +108,10 @@
     const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused:true } });
     await wait(() => player()?.dataset.state === 'paused', 'paused before next');
     await openMenu(503);
-    item('下一首播放').click();
+    // A painted menu can precede the player stream publishing that transport
+    // is ready for another operation. A disabled control ignores click().
+    await wait(() => liveItem(503, '下一首播放'), 'paused successor action is enabled');
+    liveItem(503, '下一首播放').click();
     await wait(() => one('[data-podcast-program-status]', pane())?.textContent.includes('已添加'), 'next acknowledged');
     const nextQueue = await queue(), afterNext = await playerSnapshot();
     assert(nextQueue.tracks.map((entry) => entry.track.voiceId).join() === '504,503' && afterNext.playId === paused.playId && afterNext.position === paused.position && afterNext.state === 'paused', 'next inserts one voice without reopening');

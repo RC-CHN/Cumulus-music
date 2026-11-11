@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--frontend-dist', type=Path)
     args = parser.parse_args()
     require_xvfb()
     root = args.root.resolve()
@@ -29,6 +30,8 @@ def main():
     script = Path(__file__).resolve().parents[2] / 'desktop/examples/podcast_liked_withdrawn_ui_probe.js'
     env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_PROOF_CAPTURE_ACK='1',
                CUMULUS_PODCAST_LIKED_WITHDRAWN_PROOF='1', CUMULUS_UX_SCRIPT=str(script))
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(strict=True), env, log, output, True)
     failed = output / 'failed.json'
