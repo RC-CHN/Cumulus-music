@@ -22,6 +22,8 @@ use tokio::sync::Notify;
 #[derive(Default)]
 struct Backend {
     calls: Mutex<Vec<String>>,
+    song_authorizations: Mutex<Vec<(Value, Value)>>,
+    song_authorized: Notify,
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
     search_menu_revision: AtomicU64,
@@ -391,6 +393,11 @@ impl Api for Backend {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    self.song_authorizations
+                        .lock()
+                        .unwrap()
+                        .push((json!(ids), payload["level"].clone()));
+                    self.song_authorized.notify_one();
                     self.playlist_trial.record_media(&ids, &payload["trialMode"]);
                     if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
                         == Some(self.hold_url_id.load(Ordering::SeqCst))
@@ -771,7 +778,7 @@ async fn quality_menu_target_and_preference_revision_are_checked_before_requesti
 #[tokio::test]
 async fn member_ceiling_updates_the_next_song_without_reloading_the_paused_source() {
     use cumulus_core::playback::{
-        controller::PlaybackStatus, quality_preferences::QualityPreferences,
+        PlaybackMode, controller::PlaybackStatus, quality_preferences::QualityPreferences,
     };
     use std::time::Duration;
 
@@ -780,6 +787,15 @@ async fn member_ceiling_updates_the_next_song_without_reloading_the_paused_sourc
     let registry = ProfileRegistry::open(directory.path(), ApiOrigin::Pc).unwrap();
     let old_default =
         QualityPreferences::replace(&registry.store(), "9", "initial", Quality::Vivid).unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::OrderLoop,
+            },
+        )
+        .await
+        .unwrap();
     client
         .play_selection(
             "1",
@@ -800,15 +816,28 @@ async fn member_ceiling_updates_the_next_song_without_reloading_the_paused_sourc
         .await
         .unwrap();
     let loads = device.state.lock().unwrap().loads;
-    let url_reads = || {
-        api.calls
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|path| path.ends_with("/player/url/v1"))
-            .count()
+    let authorizations = || api.song_authorizations.lock().unwrap().clone();
+    let wait_for_authorizations = async |count| {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let calls = authorizations();
+                if calls.len() >= count {
+                    return calls;
+                }
+                api.song_authorized.notified().await;
+            }
+        })
+        .await
+        .expect("expected song URL authorizations")
     };
-    let authorization = url_reads();
+    let expected = [
+        (json!(["1"]), json!("vivid")),
+        (json!(["2"]), json!("vivid")),
+        (json!(["2"]), json!("jyeffect")),
+        (json!(["1"]), json!("jyeffect")),
+    ];
+    // Wait for the old next-song prefetch before changing the preference.
+    assert_eq!(wait_for_authorizations(2).await, expected[..2]);
     let mut observations = client.subscribe_membership_observations().unwrap();
     let lifecycle = client.start_membership_lifecycle().await.unwrap();
     tokio::time::timeout(Duration::from_secs(3), observations.changed())
@@ -830,14 +859,22 @@ async fn member_ceiling_updates_the_next_song_without_reloading_the_paused_sourc
     assert_eq!(current.requested_quality.as_deref(), Some("vivid"));
     assert_eq!(current.actual_quality.as_deref(), Some("standard"));
     assert_eq!(device.state.lock().unwrap().loads, loads);
-    assert_eq!(url_reads(), authorization);
+    // A paused tick may already reauthorize song 2 with the new preference.
+    // It must never reauthorize the still-loaded song 1 here.
+    let while_paused = authorizations();
+    assert!(
+        while_paused == expected[..2] || while_paused == expected[..3],
+        "unexpected authorization while paused: {while_paused:?}"
+    );
 
     let next = client.player_action("1", PlayerAction::Next).await.unwrap();
     assert_eq!(next.track.unwrap().id, "2");
     assert_eq!(next.requested_quality.as_deref(), Some("jyeffect"));
     assert_eq!(next.actual_quality.as_deref(), Some("standard"));
     assert_eq!(device.state.lock().unwrap().loads, loads + 1);
-    assert_eq!(url_reads(), authorization + 1);
+    // Next uses song 2's capped authorization once (shared with prefetch
+    // if already resolved). OrderLoop then prefetches song 1 at the cap.
+    assert_eq!(wait_for_authorizations(4).await, expected);
     drop(lifecycle);
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
