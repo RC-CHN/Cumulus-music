@@ -290,6 +290,10 @@ export type DownloadDialogTarget =
       liked?: import('./podcast').PodcastLikedProgramTarget;
       pagedLiked?: import('./podcast').PodcastLikedPageTarget;
       history?: import('./history').HistorySelectionScope;
+      historyRow?: {
+        plan: VoiceDownloadPreparation;
+        accepted: (count: number) => void;
+      };
       live?: () => boolean;
     }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }

@@ -356,6 +356,7 @@
   const copyNotice = () => text(one('.history-row-menu-notice[role="status"]', page()));
   const back = () => one('button[aria-label="返回上一页"]');
   const singleActions = ['play', 'next', 'comments', 'copy', 'remove'];
+  const voiceActions = ['play', 'next', 'comments', 'download', 'copy', 'remove'];
   async function openActions(kind, ids, clicked, gesture, expected) {
     const title = kind === 'song' ? '歌曲' : '声音';
     const source = await enter(kind, title, ids);
@@ -431,14 +432,14 @@
     await dismissMenu('11');
 
     const voiceIds = ['9', '10'];
-    const voice = await openActions('voice', voiceIds, '10', 'contextmenu', singleActions);
+    const voice = await openActions('voice', voiceIds, '10', 'contextmenu', voiceActions);
     const voiceLabel = text(menuItem('comments'));
     assert(voiceLabel === '查看评论(47)', 'voice group uses the clicked episode count');
     await capture('actions_voice_menu', queueIds, {
       clicked: '10', selected: voiceIds, keys: menuKeys(), label: voiceLabel,
     });
     await routeComments('voice', '10', voice, voiceLabel, '合成历史声音评论', queueIds);
-    await openActions('voice', voiceIds, '10', 'button', singleActions);
+    await openActions('voice', voiceIds, '10', 'button', voiceActions);
     await copyPublic('voice', '10', voiceIds, queueIds);
 
     const remove = ['10', '7'];

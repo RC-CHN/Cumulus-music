@@ -51,7 +51,30 @@ export function historyBrowseRemovalIds(
   if (!tableGroup.length) return [clickedId];
   return tableGroup.includes(clickedId) ? [...tableGroup] : [];
 }
-import type { HistoryQueueKind } from './history';
+import type { HistoryPage, HistoryQueueKind, HistoryRowMenuTarget } from './history';
+
+/** Resolve display labels without converting a browse gesture into batch order. */
+export function historyBrowseVoiceDownloadTracks(page: HistoryPage, target: HistoryRowMenuTarget) {
+  if (
+    page.kind !== 'voice' ||
+    target.history_kind !== 'voice' ||
+    page.revision !== target.revision ||
+    target.selected_ids.length === 1 ||
+    new Set(target.selected_ids).size !== target.selected_ids.length
+  )
+    return;
+  const voices = new Map(
+    page.entries.flatMap(({ id, resource }) =>
+      resource.kind === 'voice' && resource.voice.id === id ? [[id, resource.voice.name]] : [],
+    ),
+  );
+  if (!voices.has(target.clicked_id)) return;
+  // M225 keeps selectedData in the table, even if a modifier opened another row.
+  const ids = target.selected_ids.length ? target.selected_ids : [target.clicked_id];
+  return ids.every((id) => voices.has(id))
+    ? ids.map((id) => ({ id, name: voices.get(id)! }))
+    : undefined;
+}
 
 /** M556 disables the clicked song, or a group only if every selected song is blocked. */
 export function historyBrowseSongMenuBlocked(

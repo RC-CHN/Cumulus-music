@@ -532,3 +532,30 @@ test('program quality reads send episode IDs and discard a late old-account rece
   assert.deepEqual(commands, []);
   model.dispose();
 });
+
+test('history row quality uses only its scoped preparation and discards it after account change', async () => {
+  const pending = deferred<import('../src/services/downloads.ts').VoiceDownloadPreparation>();
+  const calls: string[][] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadVoicePrepare: async () => {
+      assert.fail('history row must not prepare bare episode IDs');
+    },
+    downloadVoiceDiscard: async (epoch, receipt) => {
+      calls.push(['discard', epoch, receipt]);
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  const old = model.prepareScopedVoice((epoch) => {
+    calls.push(['scoped', epoch]);
+    return pending.promise;
+  });
+  await model.connect(account('2'));
+  pending.resolve({ epoch: '1', state: 'ready', receipt: 'old-row', choices: [] });
+  assert.equal(await old, undefined);
+  assert.deepEqual(calls, [
+    ['scoped', '1'],
+    ['discard', '1', 'old-row'],
+  ]);
+  model.dispose();
+});

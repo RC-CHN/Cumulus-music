@@ -30,13 +30,13 @@ impl HistorySelectionScope {
         Ok(rows)
     }
 
-    pub(in crate::client) fn verify_in(
-        &self,
+    pub(in crate::client) fn verify_revision_in(
+        revision: &str,
         tx: &StateTransaction<'_>,
         owner: &str,
         kind: HistoryKind,
     ) -> Result<()> {
-        if HistoryService::snapshot_in(tx, owner, kind)?.revision != self.revision {
+        if HistoryService::snapshot_in(tx, owner, kind)?.revision != revision {
             return Err(Error::QueueChanged);
         }
         Ok(())

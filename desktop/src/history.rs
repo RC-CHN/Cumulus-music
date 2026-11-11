@@ -54,6 +54,31 @@ pub async fn history_row_menu_info<R: tauri::Runtime>(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn history_row_voice_reveal<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryRowMenuTarget,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "history program reveal is main-window only",
+        )
+        .into());
+    }
+    let reveal = client
+        .history_row_voice_file_reveal(&epoch, target, &receipt)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        reveal.check_current(&app.state::<MusicClient>())
+    })
+    .await
+    .map_err(Into::into)
+}
 #[tauri::command]
 pub async fn history_command(
     client: tauri::State<'_, MusicClient>,

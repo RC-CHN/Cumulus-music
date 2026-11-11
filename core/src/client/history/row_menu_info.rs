@@ -1,12 +1,13 @@
 //! Read-only M556/M622 menu adornments bound to the current native history.
 use super::{
     AccountData, HistoryRowComment, HistoryRowCommentResource, HistoryRowMenuInfo,
-    HistoryRowMenuTarget, MusicClient, row_menu, song_download,
+    HistoryRowMenuTarget, MusicClient, row_menu, song_download, voice_file_menu,
 };
 use crate::{
     Error, Result,
     comments::{CommentApi, ResourceKind},
     history::{HistoryKind, HistoryRecord, HistoryService, HistorySnapshot},
+    podcast::Episode,
     protocol::{api::identifier, wire::serialization::js_truthy},
 };
 use std::time::Duration;
@@ -16,6 +17,7 @@ const COUNT_TIMEOUT: Duration = Duration::from_millis(1_500);
 struct MenuProjection {
     info: HistoryRowMenuInfo,
     count_target: Option<(ResourceKind, String)>,
+    clicked_program: Option<Episode>,
 }
 
 fn public_id(kind: HistoryKind, row: &HistoryRecord) -> Option<String> {
@@ -57,8 +59,12 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
         info: HistoryRowMenuInfo {
             comment: None,
             copy_link: None,
+            voice_file: None,
         },
         count_target: None,
+        clicked_program: (snapshot.kind == HistoryKind::Voice)
+            .then(|| voice_file_menu::episode(selection.clicked).ok())
+            .flatten(),
     };
     let Some(id) = public_id(snapshot.kind, selection.clicked) else {
         return Ok(projection);
@@ -102,6 +108,7 @@ impl MusicClient {
         let history = HistoryService::new(self.session.clone())?;
         let snapshot = history.snapshot_for(&token, target.history_kind)?;
         let mut menu = project(&snapshot, &target)?;
+        let sequence = self.history_voice_menu.begin()?;
         if let Some((kind, id)) = menu.count_target
             && token.uid.is_some()
         {
@@ -116,9 +123,21 @@ impl MusicClient {
                 comment.count = count;
             }
         }
+        let observation = if target.history_kind == HistoryKind::Voice {
+            Some(
+                self.observe_history_voice_file(&token, menu.clicked_program)
+                    .await?,
+            )
+        } else {
+            None
+        };
         // Scope failures are not optional adornment failures. An expired
         // account epoch or a changed displayed history must not publish.
-        history.with_matching_revision(&token, target.history_kind, &target.revision, |_| {
+        let revision = target.revision.clone();
+        history.with_matching_revision(&token, target.history_kind, &revision, |_| {
+            menu.info.voice_file =
+                self.history_voice_menu
+                    .publish(sequence, token.clone(), target, observation)?;
             Ok(AccountData {
                 epoch: epoch.into(),
                 value: menu.info,

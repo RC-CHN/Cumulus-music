@@ -14,7 +14,7 @@ pub struct HistorySelectionScope {
 }
 
 /// The identities frozen by the table at menu opening, separate from playback.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryRowMenuTarget {
     pub history_kind: HistoryKind,
@@ -27,6 +27,15 @@ pub struct HistoryRowMenuTarget {
 pub struct HistoryRowMenuInfo {
     pub comment: Option<HistoryRowComment>,
     pub copy_link: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_file: Option<HistoryVoiceFileMenu>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistoryVoiceFileMenu {
+    Download,
+    Reveal { receipt: String },
+    Unavailable,
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct HistoryRowComment {

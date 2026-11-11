@@ -184,26 +184,12 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       // Another visit may have retired this exact receipt.
     }
   }
-  async function prepareVoice(
-    voiceIds: string[],
-    purchased?: import('../services/podcast.ts').PodcastPurchasedTarget,
-    liked?: import('../services/podcast.ts').PodcastLikedProgramTarget,
-    pagedLiked?: import('../services/podcast.ts').PodcastLikedPageTarget,
-    history?: import('../services/history.ts').HistorySelectionScope,
-  ) {
+  async function prepareScopedVoice(prepare: (epoch: string) => Promise<VoiceDownloadPreparation>) {
     if (!epoch) return;
     const captured = epoch,
       current = captureVisit();
     try {
-      const plan = history
-        ? await core.downloadHistoryVoicePrepare(captured, history)
-        : pagedLiked
-          ? await core.downloadLikedPageVoicePrepare(captured, pagedLiked)
-          : purchased
-            ? await core.downloadPurchasedVoicePrepare(captured, purchased)
-            : liked
-              ? await core.downloadLikedVoicePrepare(captured, liked)
-              : await core.downloadVoicePrepare(captured, [...voiceIds]);
+      const plan = await prepare(captured);
       if (plan.epoch !== captured) return;
       if (current()) return plan;
       void discardVoice(plan);
@@ -213,6 +199,25 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
         throw value;
       }
     }
+  }
+  function prepareVoice(
+    voiceIds: string[],
+    purchased?: import('../services/podcast.ts').PodcastPurchasedTarget,
+    liked?: import('../services/podcast.ts').PodcastLikedProgramTarget,
+    pagedLiked?: import('../services/podcast.ts').PodcastLikedPageTarget,
+    history?: import('../services/history.ts').HistorySelectionScope,
+  ) {
+    return prepareScopedVoice((owner) =>
+      history
+        ? core.downloadHistoryVoicePrepare(owner, history)
+        : pagedLiked
+          ? core.downloadLikedPageVoicePrepare(owner, pagedLiked)
+          : purchased
+            ? core.downloadPurchasedVoicePrepare(owner, purchased)
+            : liked
+              ? core.downloadLikedVoicePrepare(owner, liked)
+              : core.downloadVoicePrepare(owner, [...voiceIds]),
+    );
   }
   async function discardClear(plan: DownloadClearPlan) {
     if (!plan.receipt) return;
@@ -370,6 +375,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     connect,
     qualityPreferences,
     prepareVoice,
+    prepareScopedVoice,
     discardVoice,
     prepareClear,
     discardClear,

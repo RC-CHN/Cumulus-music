@@ -317,6 +317,8 @@ export function createTauriClient(): CoreClient {
     listenedBooks: (epoch, query) => invoke('listened_books', { epoch, query }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     historyRowMenuInfo: (epoch, target) => invoke('history_row_menu_info', { epoch, target }),
+    historyRowVoiceReveal: (epoch, target, receipt) =>
+      invoke('history_row_voice_reveal', { epoch, target, receipt }),
     historyCollectPrepare: (epoch, target) => invoke('history_collect_prepare', { epoch, target }),
     historySyncPreference: (epoch, action) => invoke('history_sync_preference', { epoch, action }),
     onHistorySyncChanged: (handler) =>
@@ -559,6 +561,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_voice_prepare', { epoch, voiceIds }),
     downloadHistoryVoicePrepare: (epoch, target) =>
       invoke('download_history_voice_prepare', { epoch, target }),
+    downloadHistoryRowVoicePrepare: (epoch, target) =>
+      invoke('download_history_row_voice_prepare', { epoch, target }),
     downloadPurchasedVoicePrepare: (epoch, target) =>
       invoke('download_purchased_voice_prepare', { epoch, target }),
     downloadLikedVoicePrepare: (epoch, target) =>

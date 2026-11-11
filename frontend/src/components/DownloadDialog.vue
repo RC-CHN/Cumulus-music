@@ -18,9 +18,10 @@ const emit = defineEmits<{ close: []; started: []; manage: [tab: 'active' | 'com
 const { view, busy, error } = props.model;
 const dialog = ref<HTMLDialogElement>(),
   root = ref(view.value?.directory?.root ?? '');
-const historyQualityOnly = computed(
-  () => props.target.kind === 'voice' && !!props.target.history && !!view.value?.directory?.root,
+const historyVoice = computed(
+  () => props.target.kind === 'voice' && !!(props.target.history || props.target.historyRow),
 );
+const historyQualityOnly = computed(() => historyVoice.value && !!view.value?.directory?.root);
 const options = ref({ ...(view.value?.options ?? defaultDownloadOptions) });
 if (props.target.kind === 'voice')
   Object.assign(options.value, { container: 'audio', lyrics: false });
@@ -34,16 +35,30 @@ const voicePlan = shallowRef<VoiceDownloadPreparation>();
 const skippedVoiceCount = computed(() => {
   const admitted = voicePlan.value?.admittedCount;
   const target = props.target;
-  return target.kind === 'voice' && target.history && admitted !== undefined
-    ? Math.max(0, target.history.ids.length - admitted)
+  return target.kind === 'voice' && historyVoice.value && admitted !== undefined
+    ? Math.max(0, target.tracks.length - admitted)
     : 0;
 });
 const loadingVoice = ref(false);
 const voicePreparationError = ref('');
 const voiceSubmitted = ref(false);
+function setVoicePlan(plan: VoiceDownloadPreparation | undefined) {
+  voicePlan.value = plan;
+  const first = plan?.choices[0];
+  if (plan?.state === 'ready' && plan.receipt && first) options.value.quality = first.quality;
+  else if (plan?.state !== 'restricted' && plan?.state !== 'already_available')
+    voicePreparationError.value = '暂未获得可选下载音质';
+}
+if (originalVoiceTarget?.historyRow) setVoicePlan(originalVoiceTarget.historyRow.plan);
 async function prepareVoice() {
   const target = props.target;
-  if (target.kind !== 'voice' || loadingVoice.value || !voiceIsCurrent() || staleVoice.value)
+  if (
+    target.kind !== 'voice' ||
+    target.historyRow ||
+    loadingVoice.value ||
+    !voiceIsCurrent() ||
+    staleVoice.value
+  )
     return;
   loadingVoice.value = true;
   voicePreparationError.value = '';
@@ -59,11 +74,7 @@ async function prepareVoice() {
       if (plan) void props.model.discardVoice(plan);
       return;
     }
-    voicePlan.value = plan;
-    const first = plan?.choices[0];
-    if (plan?.state === 'ready' && plan.receipt && first) options.value.quality = first.quality;
-    else if (plan?.state !== 'restricted' && plan?.state !== 'already_available')
-      voicePreparationError.value = '暂未获得可选下载音质';
+    setVoicePlan(plan);
   } catch (value) {
     if (dialogOpen && voiceIsCurrent() && props.target === target && !staleVoice.value)
       voicePreparationError.value = failure(value).message;
@@ -198,7 +209,7 @@ onMounted(() => {
   dialog.value?.showModal();
   if (props.target.kind === 'settings') void loadQuality();
   if (props.target.kind === 'clear') void prepareClear();
-  if (props.target.kind === 'voice') void prepareVoice();
+  if (props.target.kind === 'voice' && !props.target.historyRow) void prepareVoice();
   rename.value =
     task.value?.path
       ?.split(/[\\/]/)
@@ -212,8 +223,10 @@ onMounted(() => {
 onUnmounted(() => {
   dialogOpen = false;
   if (clearPlan.value) void props.model.discardClear(clearPlan.value);
-  if (voicePlan.value) void props.model.discardVoice(voicePlan.value);
-  focus?.focus();
+  if (!originalVoiceTarget?.historyRow) {
+    if (voicePlan.value) void props.model.discardVoice(voicePlan.value);
+    focus?.focus();
+  }
 });
 async function focusForm() {
   await nextTick();
@@ -269,6 +282,12 @@ async function perform(command: DownloadCommand) {
   if (result?.failed.length)
     localError.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
   if (result && !result.failed.length) {
+    const historyRow = props.target.kind === 'voice' && props.target.historyRow;
+    if (command.kind === 'confirm_voice' && historyRow) {
+      if (result.accepted.length) historyRow.accepted(result.accepted.length);
+      emit('close');
+      return;
+    }
     emit('close');
     if (
       result.accepted.length &&
@@ -317,8 +336,7 @@ async function save() {
     return;
   }
   const currentDirectory = view.value?.directory;
-  const onlyConfigureChanges =
-    target.kind === 'start' || (target.kind === 'voice' && target.history !== undefined);
+  const onlyConfigureChanges = target.kind === 'start' || historyVoice.value;
   if (
     !onlyConfigureChanges ||
     currentDirectory?.root !== root.value.trim() ||

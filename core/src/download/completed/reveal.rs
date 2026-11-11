@@ -159,6 +159,22 @@ impl CompletedDownloads {
         Ok(candidate)
     }
 
+    pub(crate) fn program_reveal_candidate(
+        &self,
+        id: &str,
+        voice: &str,
+        media: Option<&str>,
+    ) -> Result<DownloadFileCandidate> {
+        let candidate = self.prepare_reveal_at(id, None)?;
+        if !matches!(&candidate.0.origin, DownloadOrigin::Voice { voice_id } if voice_id == voice)
+            || media.is_some_and(|id| candidate.0.record.song_id != id)
+        {
+            return Err(Error::QueueChanged);
+        }
+        candidate.0.check_current()?;
+        Ok(candidate)
+    }
+
     fn prepare_reveal_at(&self, id: &str, path: Option<&Path>) -> Result<DownloadFileCandidate> {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
         let (record, origin) = self.reveal_publication(&token, id)?;

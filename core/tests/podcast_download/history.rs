@@ -4,7 +4,7 @@ use cumulus_core::{
     account::profiles::ProfileRegistry,
     client::{
         MusicClient,
-        dto::{DownloadCommand, HistorySelectionScope},
+        dto::{DownloadCommand, HistoryRowMenuTarget, HistorySelectionScope, HistoryVoiceFileMenu},
     },
     history::{HistoryKind, HistoryRecord, HistoryService},
     protocol::{
@@ -17,6 +17,7 @@ use std::{path::PathBuf, sync::Mutex, time::Duration};
 const DETAIL: &str = "/api/dj/program/detail";
 const RIGHTS: &str = "/api/dj/voices/download/check";
 const MEDIA: &str = "/api/song/enhance/download/url/v1";
+const MUSICS: &str = "/api/dj/program/song/musics";
 
 fn episode(voice: u64, media: u64) -> Value {
     let mut value = program();
@@ -80,6 +81,15 @@ async fn selection(client: &MusicClient, epoch: &str, order: &[&str]) -> History
     HistorySelectionScope {
         revision: page.revision,
         ids,
+    }
+}
+
+fn row_menu(revision: &str, clicked: &str, gesture: &[&str]) -> HistoryRowMenuTarget {
+    HistoryRowMenuTarget {
+        history_kind: HistoryKind::Voice,
+        revision: revision.into(),
+        clicked_id: clicked.into(),
+        selected_ids: gesture.iter().map(|id| (*id).into()).collect(),
     }
 }
 
@@ -213,6 +223,172 @@ async fn history_voice_confirmation_rechecks_history_after_held_detail_before_cr
     assert!(f.service.list().unwrap().is_empty());
     assert!(f.media.audio.calls().is_empty() && f.media.cover.calls().is_empty());
     assert!(std::fs::read_dir(output).unwrap().next().is_none());
+}
+
+#[tokio::test]
+async fn history_voice_row_download_uses_gesture_order_and_rejects_a_changed_history() {
+    let (held, release) = support::gate();
+    let f = Fixture::new(vec![held]);
+    let client = Arc::new(client(&f));
+    let output = configure(&f, &client, "1").await;
+    record(&f, 81, 91, 100);
+    record(&f, 82, 92, 200);
+    record(&f, 83, 93, 300);
+    let scope = selection(&client, "1", &["83", "82", "81"]).await;
+    assert!(matches!(
+        client
+            .download_history_row_voice_prepare(
+                "1",
+                row_menu(&scope.revision, "999", &["81", "82"])
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    // Modifier right-click keeps the existing two rows even though it
+    // anchors the menu on a different programme. The first selected row
+    // was gestured last in display order and must be the first admission.
+    let prepared = client
+        .download_history_row_voice_prepare("1", row_menu(&scope.revision, "83", &["81", "82"]))
+        .await
+        .unwrap();
+    assert_eq!(prepared.admitted_count, Some(2));
+    assert_eq!(prepared.choices.len(), 3);
+    assert!(f.api.calls().is_empty());
+    let receipt = prepared.receipt.unwrap();
+    let submit = client.clone();
+    let pending =
+        tokio::spawn(async move { submit.download_command("1", confirm(&receipt)).await });
+    f.api.wait_for_calls(1).await;
+    record(&f, 82, 92, 400);
+    release
+        .send(Ok(json!({"code":200,"program":episode(81, 91)})))
+        .unwrap();
+    assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
+    let calls = f.api.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].path, DETAIL);
+    assert_eq!(calls[0].payload, json!({"id":"81"}));
+    assert!(f.service.list().unwrap().is_empty());
+    assert!(f.media.audio.calls().is_empty());
+    assert!(std::fs::read_dir(output).unwrap().next().is_none());
+}
+
+#[tokio::test]
+async fn history_voice_row_reveals_only_the_exact_clicked_publication_and_filters_group() {
+    const COMMENTS: &str = "/api/resource/commentInfo/list";
+    let count = || json!({"code":200,"data":[{"threadId":"A_DJ_1_81","commentCount":27}]}).into();
+    let f = Fixture::new(vec![
+        detail(),
+        detail(),
+        permission(true),
+        resource(),
+        count(),
+        count(),
+        json!({"code":200,"data":{"allowDownloadVoiceIds":["82"],"forbidDownloadVoiceIds":[],
+            "downloadCheckResultList":[{"voiceId":"82","canDownload":true}]}})
+        .into(),
+        json!({"code":200,"programs":[{"musics":[{"bitrate":192000,"size":1048576}]}]}).into(),
+    ]);
+    let task = f
+        .service
+        .create_voice(
+            &json!(81),
+            f.destination(),
+            DownloadOptions {
+                tags: false,
+                cover: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let task = f
+        .service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    let path = task.target.as_ref().unwrap();
+    assert_eq!(task.status, DownloadStatus::Complete);
+    let client = client(&f);
+    configure(&f, &client, "1").await;
+    record(&f, 81, 91, 100);
+    record(&f, 82, 92, 200);
+    let scope = selection(&client, "1", &["82", "81"]).await;
+    let completed = row_menu(&scope.revision, "81", &["82", "81"]);
+    let other = row_menu(&scope.revision, "82", &["82", "81"]);
+    assert!(matches!(
+        client
+            .download_history_row_voice_prepare("1", completed.clone())
+            .await,
+        Err(Error::QueueChanged)
+    ));
+
+    let offer = client
+        .history_row_menu_info("1", completed.clone())
+        .await
+        .unwrap();
+    let Some(HistoryVoiceFileMenu::Reveal { receipt }) = offer.value.voice_file else {
+        panic!("expected a native reveal offer");
+    };
+    assert!(
+        client
+            .history_row_voice_file_reveal("1", other.clone(), &receipt)
+            .await
+            .is_err()
+    );
+    let lease = client
+        .history_row_voice_file_reveal("1", completed.clone(), &receipt)
+        .await
+        .unwrap();
+    assert_eq!(lease.path(), path);
+    assert!(lease.check_current(&client).is_ok());
+    assert!(
+        client
+            .history_row_voice_file_reveal("1", completed.clone(), &receipt)
+            .await
+            .is_err()
+    );
+
+    let offer = client
+        .history_row_menu_info("1", completed.clone())
+        .await
+        .unwrap();
+    let Some(HistoryVoiceFileMenu::Reveal { receipt }) = offer.value.voice_file else {
+        panic!("expected another reveal offer");
+    };
+    let mut bytes = std::fs::read(path).unwrap();
+    bytes[100] ^= 1;
+    std::fs::write(path, bytes).unwrap();
+    assert!(matches!(
+        client
+            .history_row_voice_file_reveal("1", completed, &receipt)
+            .await,
+        Err(Error::DownloadedFileMissing)
+    ));
+
+    // Pointing at the uncompleted row preserves the same group, but only
+    // its single surviving programme is eligible for quality preparation.
+    let prepared = client
+        .download_history_row_voice_prepare("1", other)
+        .await
+        .unwrap();
+    assert_eq!(prepared.admitted_count, Some(1));
+    assert_eq!(
+        serde_json::to_value(&prepared).unwrap()["choices"],
+        json!([{"quality":"higher","label":"较高（1.0M）"}])
+    );
+    client
+        .download_voice_discard("1", &prepared.receipt.unwrap())
+        .unwrap();
+    assert_eq!(f.service.list().unwrap().len(), 1);
+    let calls = f.api.calls();
+    let tail = &calls[4..];
+    assert_eq!(
+        tail.iter().map(|c| c.path.as_str()).collect::<Vec<_>>(),
+        [COMMENTS, COMMENTS, RIGHTS, MUSICS]
+    );
+    assert_eq!(tail[2].payload, json!({"voiceIdsStr":["82"]}));
+    assert_eq!(tail[3].payload, json!({"ids":["82"]}));
 }
 
 #[derive(Default)]

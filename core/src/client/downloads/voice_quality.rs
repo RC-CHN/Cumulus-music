@@ -2,8 +2,8 @@
 use super::{Context, DownloadFailure, DownloadResult, Host, MusicClient};
 use crate::client::{
     dto::{
-        HistorySelectionScope, PodcastLikedPageTarget, PodcastLikedProgramTarget,
-        PodcastPurchasedTarget,
+        HistoryRowMenuTarget, HistorySelectionScope, PodcastLikedPageTarget,
+        PodcastLikedProgramTarget, PodcastPurchasedTarget,
     },
     podcast::{
         liked_menu::{liked_playable_program, lock_liked_download_voice},
@@ -90,19 +90,30 @@ enum VoiceScope {
     Legacy(LegacyVoiceScope),
     LikedPage(PodcastLikedPageTarget),
     History(HistorySelectionScope),
+    HistoryRow(HistoryRowMenuTarget),
 }
 impl VoiceScope {
     fn id(&self, client: &MusicClient, token: &SessionToken) -> Result<String> {
         match self {
             Self::Legacy(source) => source.id(&client.session, token),
             Self::LikedPage(target) => client.liked_page_download_id(token, target),
-            Self::History(_) => Err(Error::InvalidInput("history requires ordered voice rows")),
+            Self::History(_) | Self::HistoryRow(_) => {
+                Err(Error::InvalidInput("history requires scoped voice rows"))
+            }
+        }
+    }
+    fn history_revision(&self) -> Option<&str> {
+        match self {
+            Self::History(target) => Some(&target.revision),
+            Self::HistoryRow(target) => Some(&target.revision),
+            _ => None,
         }
     }
     fn check(&self, client: &MusicClient, token: &SessionToken) -> Result<()> {
-        match self {
-            Self::History(target) => client.verify_history_voice_download(token, target),
-            _ => self.id(client, token).map(|_| ()),
+        if let Some(revision) = self.history_revision() {
+            client.verify_history_voice_download(token, revision)
+        } else {
+            self.id(client, token).map(|_| ())
         }
     }
 }
@@ -297,6 +308,15 @@ impl MusicClient {
             .await
     }
 
+    pub async fn download_history_row_voice_prepare(
+        &self,
+        epoch: &str,
+        target: HistoryRowMenuTarget,
+    ) -> Result<VoiceDownloadPreparation> {
+        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::HistoryRow(target)))
+            .await
+    }
+
     async fn prepare_voice_quality(
         &self,
         epoch: &str,
@@ -312,10 +332,13 @@ impl MusicClient {
             Some(VoiceScope::History(target)) => {
                 Some(self.history_voice_download_rows(&token, target, MAX_SELECTION)?)
             }
+            Some(VoiceScope::HistoryRow(target)) => {
+                Some(self.history_row_voice_download_rows(&token, target, MAX_SELECTION)?)
+            }
             _ => None,
         };
         let voices = match &scope {
-            Some(VoiceScope::History(_)) => Vec::new(),
+            Some(VoiceScope::History(_) | VoiceScope::HistoryRow(_)) => Vec::new(),
             Some(source) => vec![source.id(self, &token)?],
             None => voice_ids(voices)?,
         };
@@ -345,7 +368,10 @@ impl MusicClient {
             state: VoiceDownloadPreparationState::Unavailable,
             receipt: None,
             choices: Vec::new(),
-            admitted_count: matches!(scope, Some(VoiceScope::History(_))).then_some(voices.len()),
+            admitted_count: scope
+                .as_ref()
+                .and_then(VoiceScope::history_revision)
+                .map(|_| voices.len()),
         };
         if let [id] = voices.as_slice() {
             let expected = &token;
@@ -461,12 +487,9 @@ impl MusicClient {
         let mut voices = plan.voices.into_iter();
         while let Some(id) = voices.next() {
             context.session.require_api(&plan.token, &plan.api)?;
-            let history = match &plan.scope {
-                Some(VoiceScope::History(target)) => Some(target),
-                _ => None,
-            };
-            if let Some(target) = history
-                && let Err(err) = self.verify_history_voice_download(&plan.token, target)
+            let history = plan.scope.as_ref().and_then(VoiceScope::history_revision);
+            if let Some(revision) = history
+                && let Err(err) = self.verify_history_voice_download(&plan.token, revision)
             {
                 if !matches!(err, Error::QueueChanged) || result.accepted.is_empty() {
                     return Err(err);
@@ -495,8 +518,11 @@ impl MusicClient {
                         })
                         .await
                 }
-                Some(VoiceScope::History(target)) => {
-                    let source = super::history_voice::HistoryVoiceAdmission { target, voice: &id };
+                Some(VoiceScope::History(_) | VoiceScope::HistoryRow(_)) => {
+                    let source = super::history_voice::HistoryVoiceAdmission {
+                        revision: history.expect("checked history scope"),
+                        voice: &id,
+                    };
                     context
                         .service
                         .create_visit_scoped_voice_default(&voice, options.clone(), &source)
@@ -513,8 +539,8 @@ impl MusicClient {
                 Ok(task) => result.accepted.push(task.id),
                 Err(Error::StaleResponse) => return Err(Error::StaleResponse),
                 Err(Error::QueueChanged) if history.is_some() => {
-                    let target = history.expect("checked history scope");
-                    match self.verify_history_voice_download(&plan.token, target) {
+                    let revision = history.expect("checked history scope");
+                    match self.verify_history_voice_download(&plan.token, revision) {
                         Err(Error::QueueChanged) if !result.accepted.is_empty() => {
                             retired_history_voices(&mut result, id, voices);
                             break;

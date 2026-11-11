@@ -16,6 +16,7 @@ import {
   historyBrowseRemovalIds,
   historyBrowseSongMenuBlocked,
   historyBrowseTableGroup,
+  historyBrowseVoiceDownloadTracks,
   selectHistoryBrowseRow,
   type HistoryBrowseSelection,
 } from '../src/services/historyBrowseSelection.ts';
@@ -375,4 +376,59 @@ test('history menu keeps the table group separate and deletes only the clicked r
   assert.deepEqual(historyBrowseRemovalIds('outside', group), []);
   assert.deepEqual(historyBrowseMenuIds(selection, 'outside'), []);
   assert.deepEqual(historyBrowseRemovalIds('outside', []), ['outside']);
+});
+
+test('history voice row download resolves the frozen gesture and rejects a mismatched episode', () => {
+  const snapshot = page('voice');
+  snapshot.entries = ['1', '2', '3'].map((id) => ({
+    id,
+    resource: {
+      kind: 'voice',
+      voice: {
+        id,
+        name: `单集 ${id}`,
+        coverUrl: null,
+        creator: '',
+        radioId: null,
+        radioName: '',
+        durationMs: 1000,
+        feeType: 0,
+        liked: false,
+        unavailable: false,
+      },
+    },
+    playedAt: 1,
+    device: '',
+    origin: 'remote',
+    playProgress: null,
+    listened: null,
+  }));
+  const target = {
+    history_kind: 'voice' as const,
+    revision: snapshot.revision,
+    clicked_id: '1',
+    selected_ids: ['3', '2'],
+  };
+  assert.deepEqual(historyBrowseVoiceDownloadTracks(snapshot, target), [
+    { id: '3', name: '单集 3' },
+    { id: '2', name: '单集 2' },
+  ]);
+  assert.deepEqual(historyBrowseVoiceDownloadTracks(snapshot, { ...target, selected_ids: [] }), [
+    { id: '1', name: '单集 1' },
+  ]);
+  assert.equal(
+    historyBrowseVoiceDownloadTracks(snapshot, { ...target, revision: 'stale' }),
+    undefined,
+  );
+  assert.equal(
+    historyBrowseVoiceDownloadTracks(snapshot, { ...target, clicked_id: 'unknown' }),
+    undefined,
+  );
+  assert.equal(
+    historyBrowseVoiceDownloadTracks(snapshot, { ...target, selected_ids: ['2', '2'] }),
+    undefined,
+  );
+  const mismatched = snapshot.entries[1]?.resource;
+  if (mismatched?.kind === 'voice') mismatched.voice.id = 'song-2';
+  assert.equal(historyBrowseVoiceDownloadTracks(snapshot, target), undefined);
 });

@@ -148,7 +148,10 @@ import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
 import type { CatalogSession } from './composables/useCatalogSession';
 import CollectionsPage from './components/CollectionsPage.vue';
 import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
-import HistoryPage, { type HistoryCommentReturn } from './components/HistoryPage.vue';
+import HistoryPage, {
+  type HistoryCommentReturn,
+  type HistoryVoiceRowDownloadRequest,
+} from './components/HistoryPage.vue';
 import ListenedBooksPage from './components/history/ListenedBooksPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
@@ -172,6 +175,7 @@ import type {
   HistoryRowQueueTarget,
   HistorySelectionScope,
 } from './services/history';
+import { historyBrowseVoiceDownloadTracks } from './services/historyBrowseSelection';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
 import DailyNotificationCard from './components/DailyNotificationCard.vue';
@@ -854,6 +858,101 @@ function openHistoryVoiceDownload(target: HistorySelectionScope) {
       music.account.value.epoch === owner &&
       signedIn.value,
   };
+}
+async function openHistoryVoiceRowDownload(request: HistoryVoiceRowDownloadRequest) {
+  const { target, epoch, routeIdentity, opener } = request;
+  const route = music.page.value;
+  const snapshot = recent.page.value;
+  const current = () =>
+    music.page.value === route &&
+    music.account.value.epoch === epoch &&
+    recent.page.value?.kind === 'voice' &&
+    recent.page.value.revision === target.revision &&
+    opener.isConnected &&
+    request.live();
+  const anotherModal = () =>
+    !!(
+      downloadDialog.value ||
+      loginOpen.value ||
+      accountsOpen.value ||
+      modalDepth.value ||
+      document.querySelector('dialog[open], [aria-modal="true"]')
+    );
+  if (
+    route !== routeIdentity ||
+    route.kind !== 'history' ||
+    route.scope !== 'voice' ||
+    route.batch === true ||
+    !snapshot ||
+    recent.loading.value ||
+    recent.busy.value ||
+    !current() ||
+    anotherModal()
+  )
+    return;
+  const tracks = historyBrowseVoiceDownloadTracks(snapshot, target);
+  if (!tracks?.length) return;
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  const live = () => signedIn.value && current();
+  opener.focus({ preventScroll: true });
+  let interrupted = false;
+  const stop = watch(
+    [downloadDialog, loginOpen, accountsOpen, modalDepth],
+    () => {
+      if (anotherModal()) interrupted = true;
+    },
+    { flush: 'sync' },
+  );
+  const canPresent = () =>
+    !interrupted && live() && document.activeElement === opener && !anotherModal();
+  request.preparing(true);
+  try {
+    const plan = await downloads.prepareScopedVoice((owner) => {
+      if (owner !== epoch || !live())
+        throw { code: 'stale', message: '播放记录已更新，请重新打开菜单。' };
+      return core.downloadHistoryRowVoicePrepare(owner, target);
+    });
+    if (!canPresent()) {
+      if (plan) void downloads.discardVoice(plan);
+      return;
+    }
+    if (plan?.state === 'already_available') {
+      void downloads.discardVoice(plan);
+      request.feedback('资源已下载');
+      return;
+    }
+    if (
+      plan?.state !== 'restricted' &&
+      !(plan?.state === 'ready' && plan.receipt && plan.choices.length)
+    ) {
+      if (plan) void downloads.discardVoice(plan);
+      request.feedback('暂未获得可选下载音质，请重新打开菜单。', true);
+      return;
+    }
+    stop();
+    downloadDialog.value = {
+      kind: 'voice',
+      tracks,
+      historyRow: { plan, accepted: request.accepted },
+      live,
+    };
+  } catch (cause) {
+    if (canPresent()) {
+      const issue = failure(cause);
+      request.feedback(
+        ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+          ? '播放记录已更新，请重新打开菜单。'
+          : issue.message,
+        true,
+      );
+    }
+  } finally {
+    stop();
+    request.preparing(false);
+  }
 }
 function openHistorySongDownload(
   target: HistorySelectionScope,
@@ -3734,6 +3833,25 @@ function backFromPodcastDetail() {
   else podcasts.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
+// The row plan is acquired before the modal mounts; releasing it here also
+// handles navigation that invalidates the dialog before its first render.
+watch(
+  () =>
+    downloadDialog.value?.kind === 'voice' ? downloadDialog.value.historyRow?.plan : undefined,
+  (plan, _, onCleanup) => {
+    if (plan) onCleanup(() => void downloads.discardVoice(plan));
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => {
+    const target = downloadDialog.value;
+    return target?.kind === 'voice' && target.historyRow && target.live?.() === false;
+  },
+  (stale) => {
+    if (stale) downloadDialog.value = undefined;
+  },
+);
 let settingsFocus: { epoch: string; route: Page; section: string } | undefined;
 const quickLoginGuide = shallowRef<{ epoch: string; route: Page }>();
 function focusSettingsSection() {
@@ -6646,6 +6764,7 @@ onUnmounted(() => {
                 @collect-songs="openHistoryCollection"
                 @download-songs="openHistorySongDownload"
                 @download-voices="openHistoryVoiceDownload"
+                @row-voice-download="openHistoryVoiceRowDownload"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"
                 @chapter="playHistoryChapter"

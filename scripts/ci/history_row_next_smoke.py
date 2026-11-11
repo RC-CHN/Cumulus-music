@@ -34,6 +34,7 @@ PLAY_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13']
 RESUMED_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13']
 PLAY_VOICES = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:4', 'voice:2', 'voice:13']
 SINGLE_ACTIONS = ['play', 'next', 'comments', 'copy', 'remove']
+VOICE_ACTIONS = ['play', 'next', 'comments', 'download', 'copy', 'remove']
 DELETE_CALL = dict(path='/api/play-record/batch/delete', cached=False, args={
     'type': 'SONG', 'resourceIds': '["10","7"]', 'lastResourceId': '300',
     'lastPlayTime': 1793179700000,
@@ -87,11 +88,11 @@ def audit_row_actions(actions, incumbent, complete):
             'resourceType': resource_type, 'resourceIds': json.dumps([id]),
         })
         assert expected in row['historyRowMenuCalls']
-    for row, opened, kind, label, body, thread in (
-        (song_comment, song_menu, 'track', '查看评论(36)', '合成历史歌曲评论', 'R_SO_4_10'),
-        (voice_comment, voice_menu, 'voice', '查看评论(47)', '合成历史声音评论', 'A_DJ_1_10'),
+    for row, opened, keys, kind, label, body, thread in (
+        (song_comment, song_menu, SINGLE_ACTIONS, 'track', '查看评论(36)', '合成历史歌曲评论', 'R_SO_4_10'),
+        (voice_comment, voice_menu, VOICE_ACTIONS, 'voice', '查看评论(47)', '合成历史声音评论', 'A_DJ_1_10'),
     ):
-        assert opened['keys'] == SINGLE_ACTIONS
+        assert opened['keys'] == keys
         assert (opened['clicked'], opened['label']) == ('10', label)
         assert (row['commentKind'], row['commentId'], row['label'], row['body']) == (
             kind, '10', label, body,

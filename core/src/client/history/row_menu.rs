@@ -5,7 +5,7 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-pub(super) struct ResolvedRows<'a> {
+pub(in crate::client) struct ResolvedRows<'a> {
     pub clicked: &'a HistoryRecord,
     pub selected: Vec<&'a HistoryRecord>,
 }

@@ -1,5 +1,6 @@
 import type { AccountData, TrackView } from './contracts';
 import type { AlbumCard } from './catalog';
+import type { VoiceDownloadPreparation } from './downloads';
 import type { EpisodeView, PodcastCard, PodcastMutation } from './podcast';
 export type HistoryKind = 'song' | 'album' | 'playlist' | 'voice' | 'podcast' | 'audiobook';
 export type HistoryQueueKind = Extract<HistoryKind, 'song' | 'voice'>;
@@ -29,12 +30,22 @@ export interface HistoryRowMenuInfo {
     count: number | null;
   } | null;
   copyLink: string | null;
+  voiceFile?: { kind: 'download' } | { kind: 'reveal'; receipt: string } | { kind: 'unavailable' };
 }
 export interface HistoryRowMenuClient {
   historyRowMenuInfo(
     epoch: string,
     target: HistoryRowMenuTarget,
   ): Promise<AccountData<HistoryRowMenuInfo>>;
+  downloadHistoryRowVoicePrepare(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+  ): Promise<VoiceDownloadPreparation>;
+  historyRowVoiceReveal(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+    receipt: string,
+  ): Promise<void>;
 }
 export interface HistorySelectionScope {
   revision: string;

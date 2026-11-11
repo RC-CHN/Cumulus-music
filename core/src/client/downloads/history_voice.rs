@@ -3,7 +3,10 @@ use super::MusicClient;
 use crate::{
     Error, Result,
     account::SessionToken,
-    client::dto::HistorySelectionScope,
+    client::{
+        dto::{HistoryRowMenuTarget, HistorySelectionScope},
+        history::voice_file_menu,
+    },
     download::service::{ScopedTaskAdmission, ScopedTaskLease},
     history::{HistoryKind, HistoryService},
     podcast::Episode,
@@ -43,14 +46,58 @@ impl MusicClient {
     pub(super) fn verify_history_voice_download(
         &self,
         token: &SessionToken,
-        target: &HistorySelectionScope,
+        revision: &str,
     ) -> Result<()> {
         let snapshot =
             HistoryService::new(self.session.clone())?.snapshot_for(token, HistoryKind::Voice)?;
-        if snapshot.revision != target.revision {
+        if snapshot.revision != revision {
             return Err(Error::QueueChanged);
         }
         Ok(())
+    }
+
+    pub(super) fn history_row_voice_download_rows(
+        &self,
+        token: &SessionToken,
+        target: &HistoryRowMenuTarget,
+        maximum: usize,
+    ) -> Result<Vec<HistoryVoiceRow>> {
+        if target.selected_ids.len() > maximum {
+            return Err(Error::InvalidInput("invalid history program download size"));
+        }
+        let store = self.session.persistent_store()?;
+        self.session.with_token(token, |owner| {
+            store.read_snapshot(|tx| {
+                let snapshot = HistoryService::snapshot_in(tx, owner, HistoryKind::Voice)?;
+                let menu = voice_file_menu::selection(&snapshot, target)?;
+                let clicked = voice_file_menu::episode(menu.clicked)?;
+                // M622 gates the menu using the clicked programme, even if
+                // the parent selection consists entirely of different rows.
+                if tx
+                    .playback_download_rows(owner, &clicked.id, PlaybackDownloadKind::Voice)?
+                    .iter()
+                    .any(|row| row.status == "complete")
+                {
+                    return Err(Error::QueueChanged);
+                }
+                if menu.selected.is_empty() {
+                    return Ok(vec![HistoryVoiceRow {
+                        id: clicked.id,
+                        media: clicked.song_id,
+                    }]);
+                }
+                menu.selected
+                    .into_iter()
+                    .map(|row| {
+                        let episode = voice_file_menu::episode(row)?;
+                        Ok(HistoryVoiceRow {
+                            id: episode.id,
+                            media: episode.song_id,
+                        })
+                    })
+                    .collect()
+            })
+        })
     }
 
     pub(super) async fn filter_history_voice_downloads(
@@ -88,7 +135,7 @@ impl MusicClient {
 }
 
 pub(super) struct HistoryVoiceAdmission<'a> {
-    pub(super) target: &'a HistorySelectionScope,
+    pub(super) revision: &'a str,
     pub(super) voice: &'a str,
 }
 
@@ -102,7 +149,7 @@ impl ScopedTaskAdmission for HistoryVoiceAdmission<'_> {
 
 impl ScopedTaskLease for &HistoryVoiceAdmission<'_> {
     fn verify(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
-        self.target.verify_in(tx, owner, HistoryKind::Voice)?;
+        HistorySelectionScope::verify_revision_in(self.revision, tx, owner, HistoryKind::Voice)?;
         if task_exists(tx, owner, self.voice)? {
             return Err(Error::State("program already has a download"));
         }

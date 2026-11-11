@@ -30,8 +30,10 @@ impl Fixture {
                         "forbidDownloadVoiceIds":if allowed {vec![]} else {vec![id]},
                         "downloadCheckResultList":[{"voiceId":id,"canDownload":allowed}]}})
                 }),
-            "/api/dj/program/song/musics" => (args == &json!({"ids":["1"]}) && !cached)
-                .then(|| json!({"code":200,"programs":[{"musics":[{"bitrate":128000,"size":1048576}]}]})),
+            "/api/dj/program/song/musics" => args["ids"][0]
+                .as_str()
+                .filter(|id| !cached && matches!(*id, "1" | "2") && args == &json!({"ids":[id]}))
+                .map(|_| json!({"code":200,"programs":[{"musics":[{"bitrate":128000,"size":1048576}]}]})),
             "/api/song/enhance/download/url/v1" => args["id"]
                 .as_str()
                 .filter(|id| !cached && matches!(*id, "1001" | "1002") && args == &json!({"id":id,"level":"standard","immerseType":"c51"}))

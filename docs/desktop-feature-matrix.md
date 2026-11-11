@@ -36,6 +36,11 @@ RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音�
 实窗检查点，包括声音多选时仍针对点击节目、两次系统剪贴板读回、取消零写入和确认后的
 原生历史日志。报告和截图在 `.build/ui-proof/phase299-history-row-actions-final/`。
 
+[最近播放声音行的下载与定位](play-history-contracts.txt)通过 10 个 Linux WebKitGTK
+检查点：选区按手势顺序处理，重复节目没有二次下载，文件定位交给隔离的 FileManager1。
+报告和截图在 `.build/ui-proof/phase300-history-voice-row/`，Windows 的真实 Explorer
+未实测。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。

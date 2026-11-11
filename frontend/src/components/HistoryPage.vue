@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { HistoryQueueKind } from '../services/history';
+import type { HistoryQueueKind, HistoryRowMenuTarget } from '../services/history';
 
 export interface HistoryCommentReturn {
   kind: HistoryQueueKind;
@@ -9,6 +9,16 @@ export interface HistoryCommentReturn {
   routeIdentity: object;
   keyword: string;
   scrollTop: number;
+}
+export interface HistoryVoiceRowDownloadRequest {
+  target: HistoryRowMenuTarget;
+  epoch: string;
+  routeIdentity: object;
+  opener: HTMLElement;
+  live: () => boolean;
+  preparing: (active: boolean) => void;
+  feedback: (message: string, failed?: boolean) => void;
+  accepted: (count: number) => void;
 }
 </script>
 
@@ -102,6 +112,7 @@ const emit = defineEmits<{
     selectionCurrent: () => boolean,
   ];
   downloadVoices: [target: HistorySelectionScope];
+  rowVoiceDownload: [request: HistoryVoiceRowDownloadRequest];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   rowComments: [resource: CommentResource, title: string, opener: HistoryCommentReturn];
   commentRestored: [opener: HistoryCommentReturn];
@@ -225,6 +236,7 @@ const rowTarget = shallowRef<BrowseMenuTarget>();
 const rowMenuInfo = shallowRef<{ target: BrowseMenuTarget; value: HistoryRowMenuInfo }>();
 const rowMenuNotice = ref('');
 const rowMenuError = ref('');
+const rowVoicePreparing = shallowRef<BrowseMenuTarget>();
 const rowQueueReady = computed(() => props.rowQueueReady && !loading.value && !busy.value);
 function sameBrowseScope(target: BrowseMenuTarget) {
   return (
@@ -268,6 +280,7 @@ const rowMenuItems = computed<MenuItem[]>(() => {
   const target = rowTarget.value;
   if (!target || !rowMenuLive.value) return [];
   const info = rowMenuInfo.value?.target === target ? rowMenuInfo.value.value : undefined;
+  const voiceFile = target.kind === 'voice' ? info?.voiceFile : undefined;
   const ids = historyBrowseRemovalIds(target.clickedId, target.tableGroup);
   const blocked = rowMenuCopyrightBlocked(target);
   const disabled = !rowQueueReady.value || blocked;
@@ -284,11 +297,15 @@ const rowMenuItems = computed<MenuItem[]>(() => {
           },
         ]
       : []),
-    ...(info?.copyLink
-      ? [
-          { key: 'link-divider', label: '', separator: true },
-          { key: 'copy', label: '复制链接', icon: 'copy' },
-        ]
+    ...(voiceFile?.kind === 'download' || voiceFile?.kind === 'reveal' || info?.copyLink
+      ? [{ key: 'link-divider', label: '', separator: true }]
+      : []),
+    ...(voiceFile?.kind === 'download'
+      ? [{ key: 'download', label: '下载', icon: 'download' }]
+      : []),
+    ...(info?.copyLink ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
+    ...(voiceFile?.kind === 'reveal'
+      ? [{ key: 'reveal', label: '打开文件所在目录', icon: 'folder' }]
       : []),
     ...(ids.length
       ? [
@@ -307,6 +324,7 @@ function closeRowMenu() {
   rowMenu.value?.close();
   rowTarget.value = undefined;
   rowMenuInfo.value = undefined;
+  rowVoicePreparing.value = undefined;
 }
 watch(rowMenuLive, (live) => {
   if (!live) closeRowMenu();
@@ -399,12 +417,7 @@ async function prepareBrowseRowMenu(signal: AbortSignal) {
   const target = rowTarget.value;
   if (!target || !rowTargetLive(target) || loading.value || busy.value) return false;
   try {
-    const result = await core.historyRowMenuInfo(target.epoch, {
-      history_kind: target.kind,
-      revision: target.revision,
-      clicked_id: target.clickedId,
-      selected_ids: target.tableGroup,
-    });
+    const result = await core.historyRowMenuInfo(target.epoch, rowMenuScope(target));
     if (
       signal.aborted ||
       result.epoch !== target.epoch ||
@@ -423,6 +436,14 @@ async function prepareBrowseRowMenu(signal: AbortSignal) {
     }
     return false;
   }
+}
+function rowMenuScope(target: BrowseMenuTarget): HistoryRowMenuTarget {
+  return {
+    history_kind: target.kind,
+    revision: target.revision,
+    clicked_id: target.clickedId,
+    selected_ids: [...target.tableGroup],
+  };
 }
 async function chooseRowMenu(key: string) {
   const target = rowTarget.value;
@@ -450,6 +471,46 @@ async function chooseRowMenu(key: string) {
       if (rowTargetLive(target)) rowMenuNotice.value = '复制成功';
     } catch {
       if (rowTargetLive(target)) rowMenuError.value = '复制失败，请重新打开菜单重试。';
+    }
+    return;
+  }
+  const voiceFile = target.kind === 'voice' ? info?.voiceFile : undefined;
+  if (key === 'download' && voiceFile?.kind === 'download') {
+    if (loading.value || busy.value) return;
+    const live = () => rowTargetLive(target);
+    emit('rowVoiceDownload', {
+      target: rowMenuScope(target),
+      epoch: target.epoch,
+      routeIdentity: target.routeIdentity,
+      opener: target.anchor,
+      live,
+      preparing: (active) => {
+        if (active && live()) rowVoicePreparing.value = target;
+        else if (!active && rowVoicePreparing.value === target) rowVoicePreparing.value = undefined;
+      },
+      feedback: (message, failed) => {
+        if (!live()) return;
+        if (failed) rowMenuError.value = message;
+        else rowMenuNotice.value = message;
+      },
+      accepted: (count) => {
+        if (live()) rowMenuNotice.value = `已添加 ${count} 个单集到下载列表`;
+      },
+    });
+    return;
+  }
+  if (key === 'reveal' && voiceFile?.kind === 'reveal') {
+    if (loading.value || busy.value) return;
+    try {
+      await core.historyRowVoiceReveal(target.epoch, rowMenuScope(target), voiceFile.receipt);
+    } catch (cause) {
+      if (!rowTargetLive(target)) return;
+      const issue = failure(cause);
+      if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+      else
+        rowMenuError.value = ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+          ? '播放记录或下载文件已更新，请重新打开菜单。'
+          : issue.message;
     }
     return;
   }
@@ -1018,6 +1079,7 @@ function keyboard(event: KeyboardEvent) {
         collectFeedback ||
         rowMenuNotice ||
         rowMenuError ||
+        rowVoicePreparing ||
         addNotice ||
         batchError ||
         error ||
@@ -1037,6 +1099,13 @@ function keyboard(event: KeyboardEvent) {
       </p>
       <p v-if="addNotice" class="history-outcome history-add-notice" role="status">
         {{ addNotice }}
+      </p>
+      <p
+        v-if="rowVoicePreparing"
+        class="history-outcome history-row-download-loading"
+        role="status"
+      >
+        正在检查下载状态…
       </p>
       <p
         v-if="rowMenuNotice"
