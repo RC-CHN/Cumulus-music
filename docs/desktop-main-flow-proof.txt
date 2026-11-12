@@ -1292,3 +1292,8 @@ scripts/ci/playback_power_smoke.py。
 - 二进制、前端哈希、六份分项报告及 60 张截图见
   .build/ui-proof/phase333-334-integrated/webview-ea85224c/accepted-linux.json。
   这些结果不覆盖之后的一起听修复、物理声卡、实服账号或 Windows 发布门槛。
+- 后续源码 5147d54a 的一起听与播客三路详情探针在 Linux 另通过 9 态与 8 态。
+  一起听合成房间收到 0 秒暂停和 12 秒定位；播客明确等同一暂停时钟稳定，严格验证
+  多路回包期间未更换播放实例或队列。两项证据在
+  .build/ui-proof/phase333-334-integrated/final-native-5147d54a/accepted-linux.json。
+  Windows 同一播客基线修正等待其独立验收。

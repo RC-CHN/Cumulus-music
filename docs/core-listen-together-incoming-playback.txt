@@ -109,3 +109,7 @@ HTTP 已观察好友就证明共同权益已经应用。当晚到读取的 nativ
 同样时序但返回变化的试看权限验证旧结果仍被拒绝。先忽略再完整读取的场景另覆盖
 本账号与对方命令；后者经明确重同步后恢复对方的进度、不回报写入。无归属命令仍由
 完整播放恢复的身份校验拒绝。既有变化队列与定位冲突用例保留。
+源码 5147d54a 的 45 项 client_together 测试通过。隔离 Linux WebKitGTK 用真实
+libmpv null 输出通过 9 态：先同一歌曲 PAUSE/0，再 PROGRESS/12000，退出回执只
+显示一次，5 次合成 End 请求均符合各自操作。该流程使用合成对端，不是双账号验证。
+原生结果和截图：.build/ui-proof/phase333-334-integrated/final-native-5147d54a/accepted-linux.json。

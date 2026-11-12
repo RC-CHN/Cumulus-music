@@ -72,7 +72,8 @@ WebKitGTK 检查点及截图。私有 FileManager1 收到三次精确路径：�
 [Windows 持有句柄的本地 WAV 音效](ordinary-native-local-equalizer-proof.txt)已接入
 现有播放与回退。`bc1c70dc` 的托管 Windows CI 通过两项固定 NTFS 路径替换／
 迟到下载声明用例，以及 WebView2 从本地音乐行启动同一 WAV 解码的流程；该轮
-整套 CI 未通过，合成音频也不证明物理输出或后来新增的空间音效入口。
+整套 CI 未通过。较新的 `ec80575b` 托管 Windows WebView2 又通过同一索引 WAV
+上的纯空间音效主开关、暂停定位和自然结束；没有覆盖物理声卡。
 
 ## 2026-11-09 集成验收
 

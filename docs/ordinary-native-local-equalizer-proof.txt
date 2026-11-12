@@ -358,6 +358,16 @@ Windows x64 固定 NTFS 验收命令：`cargo test -p cumulus-core --locked
 `.build/ui-proof/ci-43114377545/accepted-windows-indexed-wav.json`。
 这是该提交的索引 WAV 与固定 NTFS 验收；同轮全量门槛因其他探针未通过，
 也没有验证物理音频输出或之后新增的空间音效入口。
+后续精确提交 ec80575bc11f2266446567a980c4dc6bb089f204 的托管 Windows CI
+43119808290，package-media 作业 130868159410，通过较新的同一 `--indexed-wav-only`
+流程。该源码的校验要求从本地音乐行打开、拒绝不适用源和过时提交、目录里进入
+设备设置关主开关，再从均衡器打开；同一 playId、entryId、队列修订和暂停时钟，
+持久设置与实际处理图一起更新，切换不重载，随后正常定位及自然结束。WebView2
+与打包 libmpv 的结果是 `indexed_wav` 通过、真实音乐请求 0。同作业的原生选中
+WAV、48 kHz WAV、48 kHz FLAC 合成流程也通过。回执见
+`.build/ui-proof/ci-43119808290/accepted-windows-indexed-wav.json`；未验证物理输出，
+该运行的整体门槛仍受其他作业失败影响。同轮 package-runtime 作业 130868159460
+也通过上述两项固定 NTFS 用例。
 源码 15e69ddd 已在锁定 Rust 1.96.0 下交叉编译并链接 x86_64-pc-windows-gnu
 的 core libtest；归档记录为 `.build/ui-proof/phase326-windows-indexed-wave/`
 中的 windows-gnu-15e69ddd-RZRq6u。该 PE x86-64 文件未执行，不证明 NTFS、
