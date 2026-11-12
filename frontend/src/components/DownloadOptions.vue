@@ -12,6 +12,7 @@ const props = defineProps<{
   voiceChoices?: VoiceDownloadChoice[];
   voiceQualityOnly?: boolean;
   settings?: boolean;
+  auxiliaryOnly?: boolean;
   qualitySettings?: DownloadQualityPreferences;
 }>();
 const displayed = computed(() =>
@@ -19,7 +20,8 @@ const displayed = computed(() =>
 );
 const retained = computed(() => {
   const settings = props.qualitySettings;
-  if (!settings || model.value.quality !== settings.options.quality) return undefined;
+  if (props.auxiliaryOnly || !settings || model.value.quality !== settings.options.quality)
+    return undefined;
   if (model.value.quality === 'higher') return '较高（设置中显示为标准）';
   const choice = settings.choices.find((choice) => choice.quality === model.value.quality);
   if (choice?.access !== 'allowed') return label(model.value.quality);
@@ -39,7 +41,7 @@ const captions = {
   <div class="download-options">
     <template v-if="settings">
       <div
-        v-if="qualitySettings"
+        v-if="qualitySettings && !auxiliaryOnly"
         class="download-quality-choices"
         role="group"
         aria-label="下载音质"

@@ -18,6 +18,7 @@ import {
 } from '../services/settings';
 import SettingsConfirm from './settings/SettingsConfirm.vue';
 import SettingsDownloadDirectory from './settings/SettingsDownloadDirectory.vue';
+import SettingsQuality from './settings/SettingsQuality.vue';
 import type { DownloadModel } from '../composables/useDownloads';
 import AboutSupport from './settings/AboutSupport.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -59,6 +60,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   login: [];
+  member: [];
   accounts: [];
   quickLoginEnabled: [];
   downloads: [];
@@ -565,15 +567,26 @@ function accept(op: SettingsOperation) {
       </section>
       <DailyNotificationSettings :epoch="account.epoch" />
       <section class="settings-section" aria-labelledby="settings-download">
-        <h2 id="settings-download" tabindex="-1">下载</h2>
-        <SettingsDownloadDirectory
-          :account="account"
-          :model="downloadModel"
-          :visit="downloadDirectoryVisit"
-          @downloads="emit('downloads')"
-          @preferences="emit('downloadPreferences')"
-          @expired="emit('expired')"
-        />
+        <h2 id="settings-download" tabindex="-1">音质与下载</h2>
+        <div class="settings-section-content">
+          <SettingsQuality
+            :account="account"
+            :player="player"
+            :downloads="downloadModel"
+            :visit="downloadDirectoryVisit"
+            @login="emit('login')"
+            @member="emit('member')"
+            @expired="emit('expired')"
+          />
+          <SettingsDownloadDirectory
+            :account="account"
+            :model="downloadModel"
+            :visit="downloadDirectoryVisit"
+            @downloads="emit('downloads')"
+            @preferences="emit('downloadPreferences')"
+            @expired="emit('expired')"
+          />
+        </div>
       </section>
       <PlaybackCache />
       <AboutSupport />

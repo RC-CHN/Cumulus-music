@@ -122,6 +122,54 @@
   margin-top: 22px;
   min-width: 0;
 }
+.settings-quality {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.settings-quality-group {
+  width: 100%;
+}
+.settings-quality-group legend {
+  margin-bottom: 7px;
+}
+.settings-quality-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(142px, 100%), 1fr));
+  gap: 5px 12px;
+}
+.settings-quality-choices label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  margin: 0;
+  min-width: 0;
+}
+.settings-quality-choices input {
+  margin-block-start: 3px;
+}
+.settings-quality-choices small {
+  display: block;
+}
+.settings-quality-group .settings-note {
+  margin: 4px 0;
+}
+.settings-quality-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 3px;
+}
+.settings-quality-actions button,
+.settings-quality-guide {
+  padding-inline: 0;
+}
+.settings-quality-guide svg {
+  width: 14px;
+  height: 14px;
+}
 .settings-download-layout .settings-choices {
   gap: 10px 20px;
 }

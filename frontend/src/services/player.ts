@@ -8,6 +8,7 @@ import type { VoiceRecommendationsClient } from './voiceRecommendations';
 import type { VoiceDetailClient } from './voicePage';
 import type { VoiceSongsClient } from './voiceSongs';
 import type { VoiceDetail } from './voiceDetail';
+import type { PlaybackSettingsQualityClient } from './settingsQuality';
 import type {
   HistoryRowShareChoice,
   HistoryRowShareOutcome,
@@ -1070,7 +1071,8 @@ export interface PlayerClient
     VoiceDetailClient,
     VoiceRecommendationsClient,
     VoiceSongsClient,
-    CurrentSongDownloadClient {
+    CurrentSongDownloadClient,
+    PlaybackSettingsQualityClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
   playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;

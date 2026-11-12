@@ -179,6 +179,7 @@ export type DownloadCommand =
   | { kind: 'all'; action: 'pause' | 'resume' }
   | { kind: 'confirm_clear'; receipt: string }
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
+  | { kind: 'default_quality'; revision: string; quality: Quality }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'configure_for_download'; root: string; revision: string | null }
   | { kind: 'migrate'; root: string }
@@ -293,6 +294,7 @@ export interface DownloadClient {
   ): Promise<AccountData<PlaylistMutationView>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
+  openSettingsQualityGuide(epoch: string): Promise<void>;
   downloadVoicePrepare(epoch: string, voiceIds: string[]): Promise<VoiceDownloadPreparation>;
   downloadHistoryVoicePrepare(
     epoch: string,

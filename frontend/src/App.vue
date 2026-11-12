@@ -7347,6 +7347,7 @@ onUnmounted(() => {
                 "
                 @login="loginOpen = true"
                 @accounts="accountsOpen = true"
+                @member="music.navigate({ kind: 'member' })"
                 @quick-login-enabled="quickLoginGuide = undefined"
                 @blacklist-profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @blacklist-updated="profileBlacklistUpdated"

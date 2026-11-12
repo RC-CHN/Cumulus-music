@@ -197,7 +197,9 @@ const title = computed(() =>
           : props.target.kind === 'start'
             ? `下载 ${props.target.tracks.length} 首歌曲`
             : props.target.kind === 'settings'
-              ? '音质与下载'
+              ? preferencesOnly.value
+                ? '其他下载选项'
+                : '音质与下载'
               : props.target.kind === 'cancel'
                 ? '删除下载任务'
                 : props.target.kind === 'clear'
@@ -469,7 +471,7 @@ async function fileAction() {
     >
       <div class="download-settings-body">
         <p v-if="target.kind === 'settings' && loadingQuality" class="muted" role="status">
-          正在读取下载音质…
+          {{ preferencesOnly ? '正在读取下载选项…' : '正在读取下载音质…' }}
         </p>
         <div v-if="target.kind === 'settings' && qualityError" class="error-state" role="alert">
           {{ qualityError }}
@@ -477,7 +479,7 @@ async function fileAction() {
             type="button"
             class="text-button"
             :disabled="loadingQuality"
-            @click="loadQuality(true)"
+            @click="loadQuality(!preferencesOnly)"
           >
             重试
           </button>
@@ -547,10 +549,11 @@ async function fileAction() {
             :voice-choices="voicePlan?.choices"
             :voice-quality-only="historyQualityOnly"
             :settings="target.kind === 'settings'"
+            :auxiliary-only="preferencesOnly"
             :quality-settings="quality"
           />
           <button
-            v-if="target.kind === 'settings' && quality && !qualityError"
+            v-if="target.kind === 'settings' && !preferencesOnly && quality && !qualityError"
             class="text-button"
             type="button"
             @click="loadQuality(true)"

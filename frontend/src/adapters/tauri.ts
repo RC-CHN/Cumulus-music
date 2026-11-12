@@ -575,6 +575,7 @@ export function createTauriClient(): CoreClient {
       invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>
       invoke('download_quality_preferences', { epoch, refresh }),
+    openSettingsQualityGuide: (epoch) => invoke('open_settings_quality_guide', { epoch }),
     downloadVoicePrepare: (epoch, voiceIds) =>
       invoke('download_voice_prepare', { epoch, voiceIds }),
     downloadHistoryVoicePrepare: (epoch, target) =>
@@ -667,6 +668,10 @@ export function createTauriClient(): CoreClient {
     playerIntelligenceEligibility: (epoch, revision) =>
       invoke('player_intelligence_eligibility', { epoch, revision }),
     playerSnapshot: (epoch) => invoke('player_snapshot', { epoch }),
+    playbackQualityPreferences: (epoch, refresh) =>
+      invoke('playback_quality_preferences', { epoch, refresh }),
+    savePlaybackQualityPreference: (epoch, revision, quality) =>
+      invoke('save_playback_quality_preference', { epoch, revision, quality }),
     playerQueue: (epoch) => invoke('player_queue', { epoch }),
     queueMoreTip: (epoch, action) => invoke('queue_more_tip', { epoch, action }),
     playerQueueCollection: (epoch, revision) =>

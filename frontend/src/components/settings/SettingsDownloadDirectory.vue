@@ -274,7 +274,9 @@ function check(event: MouseEvent) {
       >
         核对当前目录
       </button>
-      <button type="button" class="secondary" @click="emit('preferences')">音质与下载选项</button>
+      <button v-if="scope" type="button" class="secondary" @click="emit('preferences')">
+        其他下载选项
+      </button>
       <button ref="manage" type="button" class="secondary" @click="emit('downloads')">
         打开下载管理
       </button>

@@ -60,6 +60,8 @@ export function downloadCommandLabel(command: DownloadCommand): string {
       return '清空下载任务';
     case 'preferences':
       return '保存下载设置';
+    case 'default_quality':
+      return '保存默认下载音质';
     case 'configure':
     case 'configure_for_download':
       return '保存下载目录';
