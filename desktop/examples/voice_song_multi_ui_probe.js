@@ -19,7 +19,7 @@
     !node.disabled && node.getAttribute('aria-disabled') !== 'true';
   const mode = window.__voiceSongsMultiCase;
   const events = [], reads = [], selectedActions = [], singleActions = [];
-  let epoch, last, count = 0, restore;
+  let epoch, last, lastHit, count = 0, restore;
   const player = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
   const stateView = (s) => ({ kind: s.resourceKind, state: s.state, trackId: s.track?.id,
@@ -79,12 +79,38 @@
     const node = await wait(() => enabled(find()) && find(), `visible ${target}`);
     node.scrollIntoView({ block: 'nearest' });
     await frame();
-    const rect = node.getBoundingClientRect();
-    const x = Math.floor(rect.left + rect.width / 2), y = Math.floor(rect.top + rect.height / 2);
-    assert(hit(document.elementFromPoint(x, y)) === target, `actual hit for ${target}`);
+    let previous, obstruction;
+    const pointer = await wait(() => {
+      const candidate = find();
+      if (!enabled(candidate)) {
+        previous = undefined;
+        lastHit = { target, enabled: false };
+        return false;
+      }
+      const rect = candidate.getBoundingClientRect();
+      const x = Math.floor(rect.left + rect.width / 2), y = Math.floor(rect.top + rect.height / 2);
+      const point = { x, y, width: innerWidth, height: innerHeight, ratio: devicePixelRatio };
+      const receiver = document.elementFromPoint(x, y);
+      const actual = hit(receiver);
+      const blocker = receiver?.closest('[role="alert"]') ?? receiver;
+      lastHit = { target, actual, point, rect: {
+        left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+      }, blocker: blocker && {
+        tag: blocker.tagName, className: blocker.getAttribute('class'), role: blocker.getAttribute('role'),
+      } };
+      if (actual !== target) {
+        previous = undefined;
+        obstruction = lastHit;
+        return false;
+      }
+      // An offline search notice can briefly cover the selected artwork. Wait
+      // for the real center to receive hits at the same point on two samples.
+      if (previous?.candidate === candidate && equal(previous.point, point)) return point;
+      previous = { candidate, point };
+      return false;
+    }, `actual hit for ${target}`);
     const before = events.length;
-    await capture(stage, { pointer: { x, y, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
-      input: { target, button, ctrl, shift, count } });
+    await capture(stage, { pointer, input: { target, button, ctrl, shift, count }, obstruction });
     const type = button === 3 ? 'contextmenu' : count === 2 ? 'dblclick' : 'click';
     const inputEvent = { target, type, trusted: true, button: button === 3 ? 2 : 0, ctrl, shift };
     await wait(() => events.slice(before).some((e) => equal(e, inputEvent)), `trusted X11 ${type} ${target}`);
@@ -218,7 +244,8 @@
       physicalAudioVerified: false });
   } catch (error) {
     await emit('failed', { ok: false, mode, last, error: String(error), events, reads,
-      selectedActions, singleActions, selected: shown(), player: epoch ? await player().then(stateView, () => null) : null });
+      lastHit, selectedActions, singleActions, selected: shown(),
+      player: epoch ? await player().then(stateView, () => null) : null });
   } finally {
     for (const type of observedTypes) document.removeEventListener(type, observe, true);
     restore?.();
