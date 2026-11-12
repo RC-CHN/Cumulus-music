@@ -465,7 +465,11 @@ pub async fn download_command<R: tauri::Runtime>(
     {
         return Err(Error::InvalidInput("download directory changes require main window").into());
     }
-    if matches!(command, DownloadCommand::Preferences { .. }) && window.label() != "main" {
+    if matches!(
+        command,
+        DownloadCommand::Preferences { .. } | DownloadCommand::DefaultQuality { .. }
+    ) && window.label() != "main"
+    {
         return Err(Error::InvalidInput("download quality settings require main window").into());
     }
     if matches!(command, DownloadCommand::ConfirmClear { .. }) && window.label() != "main" {
@@ -489,6 +493,22 @@ pub async fn download_layout<R: tauri::Runtime>(
         return Err(Error::InvalidInput("download layout requires main window").into());
     }
     client.download_layout(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn open_settings_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("quality guide requires main window").into());
+    }
+    let url = client.settings_quality_guide(&epoch)?;
+    tauri::async_runtime::spawn_blocking(move || crate::browser::launch(url))
+        .await
+        .map_err(|_| ClientError::from(Error::State("browser worker stopped")))?
+        .map_err(Into::into)
 }
 
 #[tauri::command]

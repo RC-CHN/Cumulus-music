@@ -192,6 +192,10 @@ pub enum DownloadCommand {
         revision: String,
         options: DownloadOptions,
     },
+    DefaultQuality {
+        revision: String,
+        quality: crate::membership::Quality,
+    },
     Configure {
         root: String,
         path_type: u8,

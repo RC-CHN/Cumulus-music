@@ -148,13 +148,26 @@ impl MusicClient {
         epoch: &str,
         command: DownloadCommand,
     ) -> Result<DownloadResult> {
-        if let DownloadCommand::Preferences { revision, options } = command {
-            self.save_download_quality_preferences(epoch, &revision, &options)?;
-            return Ok(DownloadResult {
-                epoch: epoch.into(),
-                ..Default::default()
-            });
+        match &command {
+            DownloadCommand::Preferences { revision, options } => {
+                self.save_download_quality_preferences(epoch, revision, options)?;
+            }
+            DownloadCommand::DefaultQuality { revision, quality } => {
+                self.save_default_download_quality(epoch, revision, *quality)?;
+            }
+            _ => return self.execute_download_command(epoch, command).await,
         }
+        Ok(DownloadResult {
+            epoch: epoch.into(),
+            ..Default::default()
+        })
+    }
+
+    async fn execute_download_command(
+        &self,
+        epoch: &str,
+        command: DownloadCommand,
+    ) -> Result<DownloadResult> {
         let host = self.downloads.inner.clone();
         let context = host.prepared_context(epoch).await?;
         match command {

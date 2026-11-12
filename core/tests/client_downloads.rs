@@ -1511,6 +1511,57 @@ async fn default_download_quality_is_current_account_preference_not_media_permis
 }
 
 #[tokio::test]
+async fn inline_download_default_writes_only_quality_against_the_observed_revision() {
+    let f = Fixture::new();
+    let read = || f.client.download_quality_preferences("1").unwrap();
+    let initial = read();
+    let mut custom = initial.options;
+    custom.tags = false;
+    custom.lyrics = true;
+    custom.container = cumulus_core::download::service::OutputContainer::Ncm;
+    f.client
+        .download_command(
+            "1",
+            DownloadCommand::Preferences {
+                revision: initial.revision.clone(),
+                options: custom.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let choose = |revision, quality| {
+        f.client
+            .download_command("1", DownloadCommand::DefaultQuality { revision, quality })
+    };
+    assert!(matches!(
+        choose(initial.revision, Quality::ExHigh).await,
+        Err(Error::QueueChanged)
+    ));
+    let observed = read();
+    assert!(matches!(
+        choose(observed.revision.clone(), Quality::Lossless).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(read().options, custom);
+    choose(observed.revision.clone(), Quality::Standard)
+        .await
+        .unwrap();
+    assert_eq!(read().revision, observed.revision);
+    choose(observed.revision, Quality::ExHigh).await.unwrap();
+    custom.quality = Quality::ExHigh;
+    assert_eq!(read().options, custom);
+    assert_eq!(
+        f.client.settings_quality_guide("1").unwrap(),
+        "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
+    );
+    assert!(matches!(
+        f.client.settings_quality_guide("0"),
+        Err(Error::StaleResponse)
+    ));
+    assert!(f.api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn native_downloads_publish_real_time_whitelist_data_and_preserve_preferences() {
     let f = Fixture::new();
     f.configure().await;

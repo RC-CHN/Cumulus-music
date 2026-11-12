@@ -31,6 +31,7 @@ pub use collect::{
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
+pub(in crate::client) use quality::{QualityAccess, QualityChoice, quality_choices};
 pub use song_status::SongDownloadState;
 use std::{
     collections::HashMap,

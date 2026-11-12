@@ -16,7 +16,7 @@ const MEMBERSHIP_READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum Access {
+pub(in crate::client) enum QualityAccess {
     Allowed,
     RequiresVip,
     RequiresSvip,
@@ -24,9 +24,9 @@ enum Access {
 }
 
 #[derive(Serialize)]
-struct Choice {
-    quality: Quality,
-    access: Access,
+pub(in crate::client) struct QualityChoice {
+    pub quality: Quality,
+    pub access: QualityAccess,
 }
 
 #[derive(Serialize)]
@@ -35,14 +35,14 @@ pub struct DownloadQualityPreferences {
     pub epoch: String,
     pub revision: String,
     pub options: DownloadOptions,
-    choices: Vec<Choice>,
+    choices: Vec<QualityChoice>,
 }
 
-fn choices(
+pub(in crate::client) fn quality_choices(
     membership: Option<&MembershipState>,
     music_package_hires: Option<bool>,
     vivid: bool,
-) -> Vec<Choice> {
+) -> Vec<QualityChoice> {
     use Quality::{ExHigh, HiRes, JyEffect, JyMaster, Lossless, Sky, Standard, Vivid};
     [
         Vivid, Sky, JyMaster, JyEffect, HiRes, Lossless, ExHigh, Standard,
@@ -51,27 +51,27 @@ fn choices(
     .filter(|quality| *quality != Vivid || vivid)
     .map(|quality| {
         let access = if matches!(quality, Standard | ExHigh) {
-            Access::Allowed
+            QualityAccess::Allowed
         } else if let Some(member) = membership {
             if member.is_plus_vip {
-                Access::Allowed
+                QualityAccess::Allowed
             } else if matches!(quality, Vivid | Sky | JyMaster) {
-                Access::RequiresSvip
+                QualityAccess::RequiresSvip
             } else if member.is_vinyl_vip {
-                Access::Allowed
+                QualityAccess::Allowed
             } else if member.is_music_package && matches!(quality, Lossless | HiRes) {
                 match music_package_hires {
-                    Some(true) => Access::Allowed,
-                    Some(false) => Access::RequiresVip,
-                    None => Access::Unknown,
+                    Some(true) => QualityAccess::Allowed,
+                    Some(false) => QualityAccess::RequiresVip,
+                    None => QualityAccess::Unknown,
                 }
             } else {
-                Access::RequiresVip
+                QualityAccess::RequiresVip
             }
         } else {
-            Access::Unknown
+            QualityAccess::Unknown
         };
-        Choice { quality, access }
+        QualityChoice { quality, access }
     })
     .collect()
 }
@@ -84,7 +84,7 @@ fn options(tx: &StateTransaction<'_>, owner: &str) -> Result<DownloadOptions> {
         .unwrap_or_default())
 }
 
-fn revision(epoch: &str, options: &DownloadOptions, choices: &[Choice]) -> Result<String> {
+fn revision(epoch: &str, options: &DownloadOptions, choices: &[QualityChoice]) -> Result<String> {
     Ok(hex::encode(Sha256::digest(serde_json::to_vec(&(
         epoch, options, choices,
     ))?)))
@@ -110,7 +110,10 @@ impl MusicClient {
         Ok(token)
     }
 
-    fn download_quality_choices(&self, token: &SessionToken) -> Result<Vec<Choice>> {
+    pub(in crate::client) fn download_quality_choices(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Vec<QualityChoice>> {
         let api = self.session.native_api(token)?;
         // Only the current credential's live observation supplies Vivid.
         // Opening settings does not dispatch a new experiment or trial.
@@ -136,7 +139,7 @@ impl MusicClient {
             .snapshot()
             .ok();
         self.session.with_token(token, |_| Ok(()))?;
-        Ok(choices(
+        Ok(quality_choices(
             membership.as_ref().map(|snapshot| &snapshot.state),
             music_package_hires,
             vivid,
@@ -158,6 +161,21 @@ impl MusicClient {
         })
     }
 
+    /// The recovered settings help action has two fixed public browser targets.
+    pub fn settings_quality_guide(&self, epoch: &str) -> Result<&'static str> {
+        let token = self.session.token()?;
+        if token.generation.to_string() != epoch {
+            return Err(Error::StaleResponse);
+        }
+        let vivid = token.uid.is_some()
+            && self
+                .download_quality_choices(&token)?
+                .iter()
+                .any(|row| row.quality == Quality::Vivid);
+        self.session.check_generation(&token)?;
+        Ok(super::purchased::purchased_quality_guide_url(vivid))
+    }
+
     /// Explicit settings retry only. Reuse the startup/expiry worker's native
     /// reader and its coalescing gate; opening the form is still passive.
     pub async fn refresh_download_quality_preferences(
@@ -165,12 +183,21 @@ impl MusicClient {
         epoch: &str,
     ) -> Result<DownloadQualityPreferences> {
         let token = self.download_quality_token(epoch)?;
+        self.refresh_quality_membership(&token).await?;
+        self.download_quality_preferences(epoch)
+    }
+
+    pub(in crate::client) async fn refresh_quality_membership(
+        &self,
+        token: &SessionToken,
+    ) -> Result<()> {
+        self.session.with_token(token, |_| Ok(()))?;
         let mut accounts = self.session.subscribe()?;
         let commits = self.session.subscribe_membership_commits()?;
         let due = commits
             .borrow()
             .as_ref()
-            .filter(|commit| commit.token == token)
+            .filter(|commit| &commit.token == token)
             .is_none_or(|commit| download_membership_expired(commit, Instant::now()))
             || MembershipManager::new(self.session.clone())?
                 .snapshot()
@@ -181,11 +208,11 @@ impl MusicClient {
                 tokio::time::timeout(MEMBERSHIP_READ_TIMEOUT, manager.refresh_for(token.clone()));
             tokio::select! {
                 biased;
-                _ = accounts.wait_for(|current| current != &token) => return Err(Error::StaleResponse),
+                _ = accounts.wait_for(|current| current != token) => return Err(Error::StaleResponse),
                 result = refresh => result.map_err(|_| Error::Transport("download membership read timed out".into()))??,
             };
         }
-        self.download_quality_preferences(epoch)
+        self.session.with_token(token, |_| Ok(()))
     }
 
     pub(super) fn save_download_quality_preferences(
@@ -193,6 +220,27 @@ impl MusicClient {
         epoch: &str,
         expected: &str,
         desired: &DownloadOptions,
+    ) -> Result<()> {
+        self.update_download_quality_preferences(epoch, expected, |_| desired.clone())
+    }
+
+    pub(super) fn save_default_download_quality(
+        &self,
+        epoch: &str,
+        expected: &str,
+        quality: Quality,
+    ) -> Result<()> {
+        self.update_download_quality_preferences(epoch, expected, |current| DownloadOptions {
+            quality,
+            ..current.clone()
+        })
+    }
+
+    fn update_download_quality_preferences(
+        &self,
+        epoch: &str,
+        expected: &str,
+        update: impl FnOnce(&DownloadOptions) -> DownloadOptions,
     ) -> Result<()> {
         let token = self.download_quality_token(epoch)?;
         let choices = self.download_quality_choices(&token)?;
@@ -203,11 +251,15 @@ impl MusicClient {
                 if revision(epoch, &current, &choices)? != expected {
                     return Err(Error::QueueChanged);
                 }
+                let desired = update(&current);
+                if desired == current {
+                    return Ok(());
+                }
                 // Unavailable legacy selections survive changes to other
                 // download settings; they cannot be selected anew.
                 if desired.quality != current.quality
                     && !choices.iter().any(|choice| {
-                        choice.quality == desired.quality && choice.access == Access::Allowed
+                        choice.quality == desired.quality && choice.access == QualityAccess::Allowed
                     })
                 {
                     return Err(Error::InvalidInput(
@@ -218,7 +270,7 @@ impl MusicClient {
                     owner,
                     PREFERENCES,
                     "options",
-                    &serde_json::to_value(desired)?,
+                    &serde_json::to_value(&desired)?,
                 )
             })
         })
@@ -271,11 +323,11 @@ mod tests {
         let member =
             membership_state(&json!({"musicPackage":{"expireTime":3000}}), 2000.0).unwrap();
         for (configured, expected) in [
-            (Some(true), Access::Allowed),
-            (Some(false), Access::RequiresVip),
-            (None, Access::Unknown),
+            (Some(true), QualityAccess::Allowed),
+            (Some(false), QualityAccess::RequiresVip),
+            (None, QualityAccess::Unknown),
         ] {
-            let choices = choices(Some(&member), configured, true);
+            let choices = quality_choices(Some(&member), configured, true);
             let access = |quality| {
                 choices
                     .iter()
@@ -285,8 +337,8 @@ mod tests {
             };
             assert_eq!(access(Quality::Lossless), expected);
             assert_eq!(access(Quality::HiRes), expected);
-            assert_eq!(access(Quality::JyEffect), Access::RequiresVip);
-            assert_eq!(access(Quality::Vivid), Access::RequiresSvip);
+            assert_eq!(access(Quality::JyEffect), QualityAccess::RequiresVip);
+            assert_eq!(access(Quality::Vivid), QualityAccess::RequiresSvip);
         }
     }
 }
