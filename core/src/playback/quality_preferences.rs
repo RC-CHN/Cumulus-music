@@ -43,7 +43,11 @@ pub struct QualityPreferencesSnapshot {
 }
 impl QualityPreferencesSnapshot {
     pub(crate) fn read(store: &StateStore, owner: &str) -> Result<Self> {
-        match QualityPreferences::read(store, owner) {
+        store.read_snapshot(|tx| Self::read_in(tx, owner))
+    }
+
+    pub(crate) fn read_in(tx: &StateTransaction<'_>, owner: &str) -> Result<Self> {
+        match QualityPreferences::read_in(tx, owner) {
             Ok(preferences) => Ok(Self {
                 preferences,
                 damaged: false,

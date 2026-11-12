@@ -49,9 +49,9 @@ pub use super::player::PlayerSongShareTarget;
 pub use super::player::{
     HistoryRadioMenuAction, IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin,
     LyricsView, MixedPlaylistDropRow, MixedPlaylistStart, OutputCommand, OutputEngineView,
-    OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerPodcastResumeAction, PlayerPodcastResumeView, PlayerResourceKind, PlayerView,
-    PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
+    OutputView, PlaySelection, PlaybackPowerView, PlaybackQualityPreferencesView, PlayerAction,
+    PlayerOrigin, PlayerPodcastResumeAction, PlayerPodcastResumeView, PlayerResourceKind,
+    PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
     PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView,
     QualityDetailsView, QualityMenuPresentation, QualityTrialCommand, QualityTrialOutcome,
     QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,

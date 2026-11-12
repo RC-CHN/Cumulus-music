@@ -32,7 +32,7 @@ impl QualityTrials {
     fn owner(&self, token: &SessionToken) -> Result<String> {
         self.session.with_token(token, |owner| Ok(owner.to_owned()))
     }
-    fn lock(&self, owner: &str) -> Result<OperationLock> {
+    pub(crate) fn lock(&self, owner: &str) -> Result<OperationLock> {
         // Serialize all four starts and observations for one account, including
         // another process. No account/SQLite lock spans a network await.
         OperationLock::acquire(self.store.directory(), "quality-trials", owner)
@@ -41,7 +41,7 @@ impl QualityTrials {
         self.store.transaction(|tx| Self::get_in(tx, owner, right))
     }
     fn get_in(
-        tx: &mut StateTransaction<'_>,
+        tx: &StateTransaction<'_>,
         owner: &str,
         right: QualityRight,
     ) -> Result<Option<QualityTrial>> {
@@ -104,6 +104,25 @@ impl QualityTrials {
                 })
                 .collect()
         })
+    }
+
+    pub(crate) fn default_preference_blocked_in(
+        tx: &StateTransaction<'_>,
+        owner: &str,
+    ) -> Result<bool> {
+        for right in QualityRight::ALL {
+            if Self::get_in(tx, owner, right)?.is_some_and(|record| {
+                matches!(
+                    record.phase,
+                    QualityTrialPhase::Sending
+                        | QualityTrialPhase::Uncertain
+                        | QualityTrialPhase::Acknowledged
+                )
+            }) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
     pub(crate) fn require_active_in(
         tx: &mut StateTransaction<'_>,

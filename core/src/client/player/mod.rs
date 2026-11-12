@@ -115,8 +115,8 @@ pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use power::PlaybackPowerView;
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 pub use quality::{
-    QualityChoiceView, QualityDetailsView, QualityMenuPresentation, QualityTrialCommand,
-    QualityTrialOutcome, QualityTrialView,
+    PlaybackQualityPreferencesView, QualityChoiceView, QualityDetailsView, QualityMenuPresentation,
+    QualityTrialCommand, QualityTrialOutcome, QualityTrialView,
 };
 pub use queue_click::{QueueClickPreferencesCommand, QueueClickPreferencesView};
 pub use reports::LyricReportView;

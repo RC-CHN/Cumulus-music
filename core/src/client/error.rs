@@ -270,6 +270,11 @@ impl From<Error> for ClientError {
                     "当前账号无法选择此下载音质，请重新读取音质后再选",
                     true,
                 ),
+                Error::InvalidInput("playback quality preference is unavailable") => (
+                    "playback_quality_unavailable",
+                    "当前账号无法选择此播放音质，请重新读取音质后再选",
+                    true,
+                ),
                 Error::Media("invalid cloud cover attachment") => (
                     "cloud_cover_invalid",
                     "封面无法识别，请重新选择有效的 JPG 或 PNG 图片",
@@ -472,6 +477,21 @@ impl From<Error> for ClientError {
                 Error::State("playback settings changed") => {
                     ("settings_changed", "播放设置已更新，请重新读取后调整", true)
                 }
+                Error::State("listening quality settings changed") => (
+                    "playback_quality_settings_changed",
+                    "播放音质设置或权限已更新，请重新读取后调整",
+                    true,
+                ),
+                Error::State("listening quality trial blocks settings") => (
+                    "playback_quality_trial_blocked",
+                    "播放音质试用正在使用或等待确认，默认音质未更改",
+                    false,
+                ),
+                Error::State("listening quality preference damaged") => (
+                    "playback_quality_settings_damaged",
+                    "默认播放音质设置损坏，已保留本机原记录",
+                    false,
+                ),
                 Error::State("playback settings damaged") => (
                     "settings_damaged",
                     "播放设置损坏，请在设置中恢复默认值；也可以手动播放",

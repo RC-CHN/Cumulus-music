@@ -584,6 +584,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_vinyl_write_command,
                 player::quality::player_quality_details,
                 player::quality::player_quality_trial,
+                player::quality::playback_quality_preferences,
+                player::quality::save_playback_quality_preference,
                 player::play_selection,
                 player::prepare_play_selection,
                 player::commit_prepared_selection,

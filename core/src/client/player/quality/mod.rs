@@ -1,4 +1,5 @@
 pub(super) mod config;
+mod preferences;
 mod trial;
 mod view;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot};
@@ -10,6 +11,7 @@ use crate::{
         quality::{QualityFormat, QualityReader},
     },
 };
+pub use preferences::PlaybackQualityPreferencesView;
 pub use trial::{QualityTrialCommand, QualityTrialOutcome, QualityTrialView};
 pub use view::{QualityChoiceView, QualityDetailsView, QualityMenuPresentation};
 

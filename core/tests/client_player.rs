@@ -582,6 +582,8 @@ mod prepared_selection;
 
 #[path = "client_player/chorus.rs"]
 mod chorus;
+#[path = "client_player/default_quality_settings.rs"]
+mod default_quality_settings;
 
 #[path = "client_player/playlist_trial.rs"]
 mod playlist_trial;
