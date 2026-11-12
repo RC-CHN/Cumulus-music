@@ -150,6 +150,7 @@
 .settings-quality-choices input {
   margin-block-start: 3px;
 }
+.settings-quality-choices .download-quality-name,
 .settings-quality-choices small {
   display: block;
 }
