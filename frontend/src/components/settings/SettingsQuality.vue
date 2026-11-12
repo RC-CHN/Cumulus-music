@@ -58,6 +58,13 @@ const download = useDefaultQualitySettings({
 });
 const guideBusy = ref(false),
   guideError = ref('');
+async function refreshQuality(kind: 'playback' | 'download') {
+  const visit = owner.value;
+  if (!visit) return;
+  const [selected, sibling] = kind === 'playback' ? [playback, download] : [download, playback];
+  if ((await selected.refresh(true)) && owner.value === visit && signedIn.value)
+    await sibling.refresh();
+}
 watch(
   owner,
   (visit) => {
@@ -126,7 +133,7 @@ async function openGuide() {
       :signed-in="signedIn"
       :available="!!owner"
       @choose="playback.choose"
-      @refresh="playback.refresh(true)"
+      @refresh="refreshQuality('playback')"
       @login="emit('login')"
       @member="emit('member')"
     />
@@ -139,7 +146,7 @@ async function openGuide() {
       :signed-in="signedIn"
       :available="!!downloadOwner"
       @choose="download.choose"
-      @refresh="download.refresh(true)"
+      @refresh="refreshQuality('download')"
       @login="emit('login')"
       @member="emit('member')"
     />

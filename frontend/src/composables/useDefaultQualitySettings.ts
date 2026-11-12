@@ -39,25 +39,27 @@ export function useDefaultQualitySettings(ports: Ports) {
   }
   async function refresh(force = false) {
     const visit = ports.visit();
-    if (!visit || activity.value) return;
+    if (!visit || activity.value) return false;
     const ticket = ++generation;
     activity.value = 'reading';
     feedback.value = '';
     try {
       const result = await read(visit, force);
-      if (!live(visit, ticket)) return;
+      if (!live(visit, ticket)) return false;
       const changed = value.value?.quality !== result.quality;
       value.value = result;
       readbackNeeded.value = false;
       if (force && changed) ports.changed?.();
+      return true;
     } catch (cause) {
-      if (!live(visit, ticket)) return;
+      if (!live(visit, ticket)) return false;
       const issue = failure(cause);
       if (needsAccount(issue.code)) ports.expired();
       else {
         feedback.value = issue.message;
         readbackNeeded.value = true;
       }
+      return false;
     } finally {
       if (live(visit, ticket)) activity.value = undefined;
     }

@@ -215,6 +215,8 @@
       qualityReads.find((read) => read.refresh && read.result?.options.quality === 'jyeffect')?.result, 'membership recovery');
     assertChoices(true);
     assert(choices()[2].checked && !retainedVivid(), 'verified Vinyl read clamps the saved default before returning');
+    await wait(() => playbackRadio('lossless') && !playbackRadio('lossless').matches(':disabled,[aria-disabled=true]'),
+      'both inline groups observe the same recovered membership without a second remote read');
     await capture('membership_recovered', { clamped: 'jyeffect' });
 
     click(choices()[2].radio);
