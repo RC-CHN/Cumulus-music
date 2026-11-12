@@ -35,13 +35,39 @@ def verify_download_quality(output, result, screenshots):
     reports = [value['downloadQualityFixture'] for value in values]
     assert [report['membershipReads'] for report in reports] == [1, 2, 3, 3, 3, 3]
     assert [report['savedQuality'] for report in reports] == ['vivid', 'vivid', 'jyeffect'] + ['lossless'] * 3
+    assert [value['inline'] for value in values] == [True] * 4 + [False] * 2
     assert all(value['retained'] for value in values[:2])
     assert values[2]['clamped'] == 'jyeffect'
     assert [row['name'] for row in values[2]['rows'] if row['checked']] == ['高清臻音']
     assert values[1]['message']
     assert [row['name'] for row in values[2]['rows'] if not row['disabled']] == [
-        '高清臻音', 'Hi-Res', '无损', '极高', '标准',
+        '高清臻音', '高解析度无损', '无损', '极高', '标准',
     ]
+    assert [row['value'] for row in values[2]['rows']] == [
+        'sky', 'jymaster', 'jyeffect', 'hires', 'lossless', 'exhigh', 'standard',
+    ]
+    assert [row['name'] for row in values[3]['rows'] if row['checked']] == ['无损']
+    assert [row['name'] for row in values[5]['rows'] if row['checked']] == ['无损']
+    assert all(not value['qualityWrites'] for value in values[:3])
+    write, = result['qualityWrites']
+    assert all(value['qualityWrites'] == [write] for value in values[3:])
+    assert write['saved']
+    failed, recovered = [read for read in values[-1]['qualityReads'] if read['refresh']]
+    assert failed == {'owner': write['owner'], 'refresh': True, 'failed': True}
+    assert recovered['owner'] == recovered['result']['epoch'] == write['owner']
+    assert write['command'] == {
+        'kind': 'default_quality', 'revision': recovered['result']['revision'], 'quality': 'lossless',
+    }
+    original = recovered['result']['options']
+    assert original['quality'] == 'jyeffect'
+    for read in values[3]['qualityReads']:
+        if not read['refresh'] and read.get('result', {}).get('options', {}).get('quality') == 'lossless':
+            assert read['owner'] == read['result']['epoch'] == write['owner']
+            assert read['result']['revision'] != write['command']['revision']
+            assert read['result']['options'] == dict(original, quality='lossless')
+            break
+    else:
+        raise AssertionError('missing native readback after inline default quality write')
     assert values[4]['selected'] == values[5]['requested'] == 'exhigh'
     assert values[5]['actual'] == 'standard'
     assert all(not report['downloadReads'] and not report['tasks'] for report in reports[:-1])

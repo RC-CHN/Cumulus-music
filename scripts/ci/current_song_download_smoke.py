@@ -40,6 +40,7 @@ def verify_directory_setup(root, output, labels, stages, complete):
     assert all(not stage['chooserCount'] and stage['path'] == '未设置'
                for stage in (naming, organization, quality))
     assert not naming['dialog'] and not organization['dialog'] and quality['dialog']
+    assert quality['inlineQuality'] == 'standard' and quality['otherDownloadOptions']
     assert quality['native'] == organization['native']
     assert naming['calls'] == [{'epoch': epoch, 'change': {
         'field': 'file_type', 'value': 2, 'expectedRevision': None,

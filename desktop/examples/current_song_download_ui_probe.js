@@ -15,6 +15,8 @@
   const picker = () => modal('[data-search-group-download-picker]');
   const download = () => modal('.download-dialog');
   const downloadSettings = () => one('section[aria-labelledby="settings-download"]');
+  const inlineDownloadQuality = () =>
+    one('fieldset[data-settings-download-quality] input[name="settings-download-quality"]:checked')?.value;
   const directoryConfirmation = () => modal('.settings-confirm');
   const settingsDirectoryPath = () =>
     one('[data-download-directory-path]', downloadSettings() ?? null)?.textContent.trim() ?? null;
@@ -99,6 +101,10 @@
       native: await invoke('download_layout', { epoch }), calls: structuredClone(layoutCalls),
       path: settingsDirectoryPath(), chooserCount: directoryChooserCalls.length,
       dialog: !!one('dialog[open]:not(.modal-leave-active)'),
+      ...(label === 'layout_quality' && {
+        inlineQuality: inlineDownloadQuality(),
+        otherDownloadOptions: !!one('[aria-label="保存格式"]', download()),
+      }),
       checked: ['path_type', 'file_type'].map((field) =>
         all(`fieldset[data-download-layout-field="${field}"] input:checked`, downloadSettings()).map((node) => Number(node.value))),
     } } : {};
@@ -268,13 +274,15 @@
       radio('path_type', 1).checked && radio('file_type', 2)?.checked &&
       document.activeElement === radio('path_type', 1), 'organization persists and keeps focus with naming intact');
     await capture('layout_organization');
-    await click(() => byText('音质与下载选项', downloadSettings()), 'open independent quality settings');
-    await wait(() => download() && one('[aria-label="下载音质"]', download()), 'real download preferences dialog');
-    assert(!one('[aria-label="下载目录"],[aria-label="文件命名"],[aria-label="文件夹组织"]', download()),
-      'quality dialog does not duplicate directory and layout controls');
+    await wait(() => inlineDownloadQuality() === 'standard' && !download(),
+      'default download quality is checked inline');
+    await click(() => byText('其他下载选项', downloadSettings()), 'open independent download options');
+    await wait(() => download() && one('[aria-label="保存格式"]', download()), 'real extra download preferences dialog');
+    assert(!one('[aria-label="下载音质"],input[name="default-download-quality"],[aria-label="下载目录"],[aria-label="文件命名"],[aria-label="文件夹组织"]', download()),
+      'extra options do not duplicate inline quality, directory, or layout controls');
     await capture('layout_quality');
-    await click(() => byLabel('关闭下载对话框', download()), 'cancel independent quality settings');
-    await wait(() => !download() && !one('dialog.modal-leave-active'), 'layout still displayed after quality Cancel');
+    await click(() => byLabel('关闭下载对话框', download()), 'cancel independent download options');
+    await wait(() => !download() && !one('dialog.modal-leave-active'), 'layout still displayed after options Cancel');
   }
 
   async function applyDirectorySetup(edit) {
