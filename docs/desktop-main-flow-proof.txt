@@ -1297,3 +1297,7 @@ scripts/ci/playback_power_smoke.py。
   多路回包期间未更换播放实例或队列。两项证据在
   .build/ui-proof/phase333-334-integrated/final-native-5147d54a/accepted-linux.json。
   Windows 同一播客基线修正等待其独立验收。
+- 同一批原生代码（主线 1a2d7ff8 的追加提交只改文档）本机工作区全量 Rust 测试
+  416 个目标，3192 项通过、35 项忽略、0 项失败。测试及 SHA-256 索引见
+  .build/ui-proof/phase333-334-integrated/workspace-rust-summary.json；范围不包括后续
+  音质设置改动。

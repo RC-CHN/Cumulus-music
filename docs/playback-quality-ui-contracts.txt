@@ -114,4 +114,9 @@ Linux 和 Windows CI 分别执行同一专项；没有 Windows 实物屏幕证�
 revision 为 null 时不可直接覆盖：可能是 `damaged` 原记录损坏，或已有使用中、
 未决的试用。保存和试用使用同一原生非阻塞互斥；此设置入口不自行重试、修复或
 更改试用绑定。Rust 夹具为 `client_player::default_quality_settings`，涵盖账号、
-会员读回、损坏保留、暂停及下一曲、未决与已绑定试用。需另行实测桌面控件。
+会员读回、损坏保留、暂停及下一曲、未决与已绑定试用。Linux WebKitGTK 在
+82925945 的设置页把空闲播放器默认档从标准改到极高，保留队列、状态和下载默认档；
+重新选择无写入，原生夹具记录媒体 URL 与试用激活均为零。下载组刷新会员成功后，
+播放组只被动读回同一会员快照，无第二次会员请求。见
+`.build/ui-proof/phase335-inline-quality/accepted-linux-ui.json`。未验证物理音频或
+此版本的 Windows WebView2。
