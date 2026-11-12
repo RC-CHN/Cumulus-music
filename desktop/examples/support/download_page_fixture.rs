@@ -155,6 +155,8 @@ pub fn voice_podcast_report() -> Value {
 static QUALITY_MEMBERSHIP_READS: AtomicUsize = AtomicUsize::new(0);
 static QUALITY_STARTUP_READ: tokio::sync::Notify = tokio::sync::Notify::const_new();
 static QUALITY_DOWNLOAD_READS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static QUALITY_PLAYBACK_REQUESTS: AtomicUsize = AtomicUsize::new(0);
+static QUALITY_TRIAL_WRITES: AtomicUsize = AtomicUsize::new(0);
 static DATA: OnceLock<Arc<Vec<u8>>> = OnceLock::new();
 static SEED_LYRIC_FAILURE: AtomicBool = AtomicBool::new(false);
 static CHUNK: AtomicUsize = AtomicUsize::new(512);
@@ -162,6 +164,19 @@ static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if quality_enabled() {
+        let forbidden = match path {
+            "/api/song/enhance/player/url/v1" => Some(&QUALITY_PLAYBACK_REQUESTS),
+            "/api/vipauth/app/auth/set" => Some(&QUALITY_TRIAL_WRITES),
+            _ => None,
+        };
+        if let Some(counter) = forbidden {
+            counter.fetch_add(1, Ordering::SeqCst);
+            return Some(Err(Error::State(
+                "the settings quality proof forbids playback authorization and trial activation",
+            )));
+        }
+    }
     if queue_catalog_reveal_enabled() && path == "/api/resource/commentInfo/list" {
         let song = match args["resourceIds"].as_str() {
             Some("[\"7\"]") => "7",
@@ -273,6 +288,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
 }
 pub fn quality_report(store: &StateStore) -> Result<Value> {
     let stored = store.get("2", "download_preferences_v1", "options")?;
+    let stored_playback = store.get("2", "playback-quality-v1", "current")?;
     let tasks = store.values("2", "download_tasks_v1")?;
     let tasks: Vec<_> = tasks
         .values()
@@ -292,6 +308,9 @@ pub fn quality_report(store: &StateStore) -> Result<Value> {
     Ok(
         json!({"membershipReads":QUALITY_MEMBERSHIP_READS.load(Ordering::SeqCst),
         "downloadReads":*QUALITY_DOWNLOAD_READS.lock().unwrap(),
+        "playbackRequests":QUALITY_PLAYBACK_REQUESTS.load(Ordering::SeqCst),
+        "trialWrites":QUALITY_TRIAL_WRITES.load(Ordering::SeqCst),
+        "savedPlaybackQuality":stored_playback.map(|row| row["quality"].clone()),
         "savedQuality":stored.map(|row| row["quality"].clone()),"tasks":tasks}),
     )
 }

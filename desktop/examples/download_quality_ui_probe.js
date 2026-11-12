@@ -30,6 +30,8 @@
   const settings = () => one('section[aria-labelledby="settings-title"]');
   const dialog = () => one('dialog.download-dialog[open]');
   const choiceGroup = () => one('fieldset[data-settings-download-quality]', settings());
+  const playbackRadio = (value) =>
+    one(`fieldset[data-settings-playback-quality] input[name="settings-playback-quality"][value="${value}"]`, settings());
   const choiceOrder = ['沉浸环绕声', '超清母带', '高清臻音', '高解析度无损', '无损', '极高', '标准'];
   const valueOrder = ['sky', 'jymaster', 'jyeffect', 'hires', 'lossless', 'exhigh', 'standard'];
   const qualityReads = [], qualityWrites = [];
@@ -131,6 +133,63 @@
       }
       return nativeWrite.call(client, owner, command);
     };
+    return client;
+  }
+  async function idlePlayback() {
+    const player = await invoke('player_snapshot', { epoch });
+    const queue = await invoke('player_queue', { epoch });
+    assert(player.epoch === epoch && queue.epoch === epoch && player.queueRevision === queue.revision,
+      'same account and queue for native playback inspection');
+    return {
+      preference: player.qualityPreferences.quality,
+      transport: { state: player.state, playId: player.playId, entryId: player.entryId,
+        position: player.position, queueRevision: queue.revision, current: queue.current,
+        entries: queue.tracks.map((track) => track.entryId) },
+    };
+  }
+  async function verifyPlaybackDefault(client, savedDownload) {
+    const nativeSave = client.savePlaybackQualityPreference;
+    assert(typeof client.playbackQualityPreferences === 'function' && typeof nativeSave === 'function',
+      'typed native playback preferences bridge');
+    const writes = [];
+    client.savePlaybackQualityPreference = async (owner, revision, quality) => {
+      const attempt = { owner, revision, quality };
+      writes.push(attempt);
+      const result = await nativeSave.call(client, owner, revision, quality);
+      attempt.result = { epoch: result.epoch, revision: result.revision, quality: result.quality, damaged: result.damaged };
+      return result;
+    };
+    try {
+      await wait(() => playbackRadio('standard')?.checked && playbackRadio('exhigh'), 'inline default playback choices');
+      const preference = await client.playbackQualityPreferences(epoch, false);
+      const before = await idlePlayback();
+      assert(preference.epoch === epoch && !preference.damaged && preference.quality === 'standard' &&
+        before.preference === 'standard' && before.transport.state === 'idle' && !before.transport.playId,
+      'isolated idle player starts at standard');
+      click(playbackRadio('exhigh'));
+      await wait(() => writes[0]?.result?.quality === 'exhigh' && playbackRadio('exhigh')?.checked &&
+        !playbackRadio('exhigh').matches(':disabled,[aria-disabled=true]') &&
+        document.activeElement === playbackRadio('exhigh'), 'native playback default saved with focus');
+      click(playbackRadio('exhigh'));
+      const after = await idlePlayback();
+      const readback = await client.playbackQualityPreferences(epoch, false);
+      const download = await client.downloadQualityPreferences(epoch, false);
+      assert(writes.length === 1 && writes[0].owner === epoch && writes[0].revision === preference.revision &&
+        writes[0].quality === 'exhigh' && writes[0].result.epoch === epoch &&
+        readback.epoch === epoch && readback.revision === writes[0].result.revision &&
+        readback.revision !== preference.revision && readback.quality === 'exhigh' && !readback.damaged,
+      'one revision-bound playback default write is durable; reselect did not write again');
+      assert(after.preference === 'exhigh' && JSON.stringify(after.transport) === JSON.stringify(before.transport),
+        'changing the playback default does not start playback or move the idle queue');
+      assert(download.epoch === epoch && download.revision === savedDownload.revision &&
+        Object.entries(savedDownload.options).every(([key, value]) => download.options[key] === value) &&
+        choices()[4]?.checked && qualityWrites.length === 1,
+      'changing the playback default does not touch the separate download setting');
+      return { before, after, priorRevision: preference.revision, write: writes[0],
+        download: { quality: download.options.quality, revision: download.revision } };
+    } finally {
+      client.savePlaybackQualityPreference = nativeSave;
+    }
   }
   try {
     await wait(() => one('.track-row[data-track-id="1"]'), 'synthetic catalogue track');
@@ -139,7 +198,7 @@
     await wait(() => window.__downloadPageAck, 'synthetic startup membership failure and seed');
     assert(window.__downloadPageAck.ok, window.__downloadPageAck.message);
     ({ epoch } = await invoke('account_snapshot'));
-    observeNativeSettings();
+    const client = observeNativeSettings();
 
     await openSettings();
     assertChoices(false);
@@ -178,6 +237,9 @@
     assertChoices(true);
     assert(choices()[4].checked && !retainedVivid(), 'lossless saved on reopen');
     await capture('default_saved');
+    stage = 'playback_default';
+    const playback = await verifyPlaybackDefault(client, saved);
+    await capture('playback_default_saved', { playback });
     await leaveSettings();
 
     const more = await wait(() => one('.track-row[data-track-id="1"] [aria-label^="更多操作"]'), 'return to song');

@@ -24,9 +24,11 @@ def verify_mv_coverage(value):
 
 def verify_download_quality(output, result, screenshots):
     stages = ('startup_unknown', 'manual_failure', 'membership_recovered', 'default_saved',
-              'single_download_choice', 'default_preserved')
-    values = [json.loads((output / f'ux_{index:02d}_{stage}.json').read_text(encoding='utf-8'))
-              for index, stage in enumerate(stages, 1)]
+              'playback_default_saved', 'single_download_choice', 'default_preserved')
+    captures = {stage: json.loads((output / f'ux_{index:02d}_{stage}.json').read_text(encoding='utf-8'))
+                for index, stage in enumerate(stages, 1)}
+    values = [captures[stage] for stage in stages if stage != 'playback_default_saved']
+    playback_capture = captures['playback_default_saved']
     assert result['ok'] and result['downloadQualityUi']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['stageCount'] == len(list(output.glob('ux_*.json'))) == len(stages)
@@ -76,6 +78,24 @@ def verify_download_quality(output, result, screenshots):
         'songId': '1', 'status': 'complete', 'requested': 'exhigh', 'actual': 'standard',
         'authorizations': 1, 'published': True,
     }]
+    playback = playback_capture['playback']
+    assert playback_capture['inline'] and playback_capture['qualityWrites'] == [write]
+    assert playback['before']['preference'] == 'standard' and playback['after']['preference'] == 'exhigh'
+    transport = playback['before']['transport']
+    assert transport['state'] == 'idle' and transport['playId'] is None
+    assert playback['after']['transport'] == transport
+    playback_write = playback['write']
+    assert playback_write['owner'] == playback_write['result']['epoch'] == write['owner']
+    assert playback_write['revision'] == playback['priorRevision'] != playback_write['result']['revision']
+    assert playback_write['quality'] == playback_write['result']['quality'] == 'exhigh'
+    assert not playback_write['result']['damaged']
+    assert playback['download']['quality'] == 'lossless'
+    playback_report = playback_capture['downloadQualityFixture']
+    assert playback_report['membershipReads'] == 3 and playback_report['savedQuality'] == 'lossless'
+    assert playback_report['savedPlaybackQuality'] == reports[-1]['savedPlaybackQuality'] == 'exhigh'
+    assert not playback_report['downloadReads'] and not playback_report['tasks']
+    assert all(value['downloadQualityFixture']['playbackRequests'] == value['downloadQualityFixture']['trialWrites'] == 0
+               for value in captures.values())
     assert result['downloadQualityFixture'] == reports[-1]
 
 
@@ -93,7 +113,7 @@ def main():
     parser.add_argument('--menu', action='store_true', help='Verify resource menus, confirmations and actual file operations')
     parser.add_argument('--clear-snapshot', action='store_true',
                         help='Verify native bulk-cancel confirmation does not include later tasks')
-    parser.add_argument('--quality-settings', action='store_true', help='Verify native default-download preferences, membership recovery and a separate single download')
+    parser.add_argument('--quality-settings', action='store_true', help='Verify native playback and download defaults, membership recovery and a separate single download')
     parser.add_argument('--seed-delay-ms', type=int, default=0, help='Inject a bounded synthetic setup delay; never affects the application')
     args = parser.parse_args()
     if not 0 <= args.seed_delay_ms <= 30000:
