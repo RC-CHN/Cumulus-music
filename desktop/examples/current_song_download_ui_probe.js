@@ -85,8 +85,9 @@
       const heading = confirmStage ? one('h2', directoryConfirmation()) : one('#settings-download', downloadSettings());
       const text = document.createRange();
       text.selectNodeContents(heading);
-      // Sample only the first two characters of the longer confirmation title.
-      if (confirmStage) text.setEnd(heading.firstChild, 2);
+      // Keep the text paint check bounded independently of either title's width.
+      const first = heading.firstChild;
+      if (first?.nodeType === Node.TEXT_NODE && first.length > 2) text.setEnd(first, 2);
       const rect = text.getBoundingClientRect();
       paint = {
         screenX, screenY, ratio: devicePixelRatio,
