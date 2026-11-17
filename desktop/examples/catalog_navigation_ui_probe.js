@@ -66,7 +66,8 @@
       &&Math.abs(one('.catalog-card-scroll').scrollTop-top)<1&&settled(),'artist albums restored');
   }
   async function allSongs() {
-    click(button('查看全部歌曲 →'));await wait(()=>one('.artist-all-title')&&settled(),'all songs');
+    click(button('查看全部歌曲 →'));await wait(()=>one('.artist-all-title')&&one('.track-scroll')
+      &&one('.catalog-track-actions .muted')&&!one('.catalog-loading')&&settled(),'all songs loaded');
   }
   try {
     await wait(()=>one('.track-credit-links button'),'bootstrap');
@@ -77,7 +78,9 @@
       const suffix=`${width}_${color}`;
       click(button('每日推荐'));await frames();await wait(()=>one('.track-credit-links button')&&settled(),'daily');
       click(one('.track-credit-links button'));await wait(()=>one('.artist-header')&&settled(),'artist');
-      await pick('albums');await wait(()=>one('.catalog-card')&&button('加载更多'),'album page');
+      // A cached first page is visible while the required fresh read still
+      // disables continuation. Wait for the actual control to become usable.
+      await pick('albums');await wait(()=>one('.catalog-card')&&button('加载更多')&&!button('加载更多').disabled,'album page ready for continuation');
       click(button('加载更多'));await wait(()=>one('.catalog-card-scroll')?.dataset.catalogTotal==='40','album continuation');
       let grid=one('.catalog-card-scroll');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));
       await wait(()=>all('.catalog-album-card .catalog-album-name').at(-1)?.textContent==='合成专辑 46','album last');
@@ -103,7 +106,11 @@
       await back();await albumsRestored(albumTop);await capture(`history_albums_${suffix}`,true);
       await back();await wait(()=>selectedArtist()==='songs'&&one('.track-row')&&settled(),'artist tab history songs');await capture(`history_songs_${suffix}`,true);
       await allSongs();
-      while(button('加载更多')) { const n=one('.catalog-track-actions .muted').textContent;click(button('加载更多'));await wait(()=>one('.catalog-track-actions .muted').textContent!==n,'songs continuation'); }
+      while(button('加载更多')) {
+        await wait(()=>!button('加载更多')||!button('加载更多').disabled,'songs ready for continuation');
+        if(!button('加载更多'))break;
+        const n=one('.catalog-track-actions .muted').textContent;click(button('加载更多'));await wait(()=>one('.catalog-track-actions .muted').textContent!==n,'songs continuation');
+      }
       assert(one('.catalog-track-actions .muted').textContent.includes('55 首'),'loaded songs prefix');
       const songs=one('.track-scroll');songs.scrollTop=songs.scrollHeight;songs.dispatchEvent(new Event('scroll'));await sleep(100);
       const songTop=songs.scrollTop;await capture(`all55_${suffix}`,true);
