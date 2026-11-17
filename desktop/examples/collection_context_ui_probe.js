@@ -366,6 +366,7 @@
   }
   async function sameAccount() {
     const old = one(".collections-page"),
+      before = observe(),
       account = await invoke("account_snapshot");
     // The native event is only an invalidation hint; bootstrap reads the actual account again.
     await invoke("plugin:event|emit", {
@@ -378,6 +379,19 @@
       "same-account remount",
     );
     await settle();
+    // The native hint remounts the page. Viewport restoration commits scroll
+    // first, then waits for virtual rows/layout before restoring exact focus.
+    // Finished animations and aria-busy=false do not fence that last frame.
+    await wait(
+      () => {
+        const current = observe();
+        return ready() && current.loaded === before.loaded &&
+          current.keyword === before.keyword && current.selected === before.selected &&
+          Math.abs(current.scrollTop - before.scrollTop) < 1 &&
+          current.focus === before.focus && current.focusValid;
+      },
+      "same-account viewport and exact source focus restored",
+    );
   }
   try {
     await wait(() => one(".track-row"), "startup");

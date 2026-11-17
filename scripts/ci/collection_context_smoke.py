@@ -43,7 +43,12 @@ def main():
     for state in states.values():
         assert state['visible'] and state['focused'] and state['focusValid'] and not state['overflow']
         assert state['cards'] <= 36 and all(control['hit'] for control in state['controls'])
-    for before, after in [('saved_context_light', 'saved_return_light'), ('followed_context_dark', 'followed_return_dark')]:
+    for before, after in [
+        ('saved_context_light', 'saved_return_light'),
+        ('saved_return_light', 'saved_same_account_light'),
+        ('followed_context_dark', 'followed_return_dark'),
+        ('followed_return_dark', 'followed_same_account_dark'),
+    ]:
         a, b = states[before], states[after]
         assert a['loaded'] == b['loaded'] and a['keyword'] == b['keyword'] and a['focus'] == b['focus']
         assert abs(a['scrollTop']-b['scrollTop']) < 1
