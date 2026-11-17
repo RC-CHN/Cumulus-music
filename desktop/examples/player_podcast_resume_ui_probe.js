@@ -20,7 +20,7 @@
   const emit = (stage, data = {}) => invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...data },
   });
-  let epoch, baseline, cohort = null, staleRejected = false, nonce = 0, count = 0, last = 'startup';
+  let epoch, baseline, nativeRevision, pauseSettlement, cohort = null, staleRejected = false, nonce = 0, count = 0, last = 'startup';
 
   async function wait(check, description) {
     last = description;
@@ -46,6 +46,7 @@
       invoke('player_snapshot', { epoch }),
       invoke('player_queue', { epoch }),
     ]);
+    nativeRevision = p.revision;
     return {
       state: p.state, voice: p.track?.voiceId, playId: p.playId, entryId: p.entryId,
       position: p.position, seeking: p.nativeSeeking, error: p.error, radio: p.voiceDetail?.radio?.id,
@@ -70,6 +71,9 @@
       notice: one('[role="status"]', dialog())?.textContent.trim() ?? null,
       readback: visible(label('确认设置结果', dialog())),
       staleRejected, cohort,
+      navigationReady: !!label('打开设置') && !label('打开设置').disabled,
+      searchExpanded: one('input[aria-label="搜索音乐"]')?.getAttribute('aria-expanded') ?? null,
+      classicHome: !!one('.podcast-discovery .podcast-top[data-layout="classic"]'),
     };
   }
   async function capture(name) {
@@ -85,7 +89,7 @@
     assert(same(current, baseline), `same paused native state at ${name}: ${JSON.stringify(current)}`);
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
     window.__podcastProgressStage = '';
-    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: dom() });
+    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: dom(), pauseSettlement });
     await wait(() => window.__podcastProgressStage === stage, 'host captured stage');
   }
   async function refresh(expected) {
@@ -124,22 +128,39 @@
       const account = await invoke('account_snapshot');
       return account.status === 'authenticated' && account.epoch !== '0' && account.epoch;
     }, 'restore signed synthetic profile');
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => one('input[aria-label="搜索音乐"]'), 'open search discovery');
-    await click(() => label('播客榜：更多'), 'open classic podcast page');
+    await click(() => one('input[aria-label="搜索音乐"]')?.getAttribute('aria-expanded') === 'true' &&
+      label('播客榜：更多', one('#search-discovery-panel:not(.menu-leave-active):not([inert])')),
+    'open classic podcast page');
+    await wait(() => visible(one('.podcast-discovery .podcast-top[data-layout="classic"]')),
+      'More opens the classic podcast home');
     await click(() => label('播放随心听FM', one('[data-podcast-scene-fm]')), 'play sealed Scene FM program');
     await wait(async () => {
       const p = await playback();
       return p.state === 'playing' && p.voice === '601' && p.position > .2;
     }, 'real decoder advances');
     await click(() => label('暂停', one('.transport-controls')), 'pause the native decoder');
-    let previous;
+    let quiet, quietSince, firstRevision;
     baseline = await wait(async () => {
       const p = await playback();
       if (p.state !== 'paused' || p.voice !== '601' || p.radio !== '80' || p.seeking ||
-          p.error || !Number.isFinite(p.position)) return false;
-      const stable = same(previous, p);
-      previous = p;
-      return stable && p;
+          p.error || !Number.isFinite(p.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || !same(quiet, p)) {
+        quiet = p;
+        quietSince = performance.now();
+        firstRevision = nativeRevision;
+      }
+      pauseSettlement = { first: quiet, observed: p, firstRevision, observedRevision: nativeRevision,
+        quietMs: performance.now() - quietSince };
+      return pauseSettlement.quietMs >= 450 && BigInt(nativeRevision) - BigInt(firstRevision) >= 2n && p;
     }, 'settled paused clock and committed episode/radio');
     assert(!visible(trigger()), 'unresolved cohort has no resume trigger');
     await capture('before_cohort');

@@ -78,6 +78,9 @@ def verify_dom(stages):
 
 def verify_playback(stages):
     baseline = stages['before_cohort']['playback']
+    settlement = stages['before_cohort']['pauseSettlement']
+    assert settlement['quietMs'] >= 450 and int(settlement['observedRevision']) - int(settlement['firstRevision']) >= 2, settlement
+    assert settlement['first'] == settlement['observed'] == baseline, settlement
     assert baseline['state'] == 'paused' and baseline['voice'] == '601', baseline
     assert baseline['playId'] and baseline['entryId'] and baseline['seeking'] is False, baseline
     assert not baseline.get('error'), baseline

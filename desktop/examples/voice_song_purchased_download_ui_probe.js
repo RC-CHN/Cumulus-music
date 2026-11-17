@@ -188,6 +188,11 @@
     });
     watcher.observe(document.body, { childList: true, subtree: true });
 
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => q('input[aria-label="搜索音乐"]'), 'open discovery');
     await click(() => button('播客榜：更多', q('#search-discovery-panel:not(.menu-leave-active)')), 'open classic podcasts');
     await wait(() => q('.podcast-discovery .podcast-top[data-layout="classic"]') &&

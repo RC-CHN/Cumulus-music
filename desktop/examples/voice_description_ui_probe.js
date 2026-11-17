@@ -149,6 +149,11 @@
       epoch = account.epoch;
       return visible(one('input[aria-label="搜索音乐"]'));
     }, 'authenticated synthetic shell is ready');
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => one('input[aria-label="搜索音乐"]'), 'open search discovery');
     await click(() => button('播客榜：更多', one('#search-discovery-panel:not(.menu-leave-active)')),
       'open classic podcast page');

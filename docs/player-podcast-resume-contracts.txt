@@ -42,3 +42,18 @@ Cumulus：
 - 合成账号恢复、两次完整 PC 分组和设置 GET/UPDATE 均走封闭 MusicHttpClient 的真实签名与 EAPI
   解包对照。真实 WebKitGTK 在七个画面检查了未分组、开启弹窗、取消归还焦点、已关闭菜单、回复丢失后
   焦点保留在「确认设置结果」、仅 GET 核对、分组撤销及拒绝旧命令；各阶段同一个暂停实例、位置和两项队列。
+
+2026-11-17 启动与暂停探针时序修复：
+- CI 44080708673 的 Linux playback-podcasts 分片在账号恢复后立即进入搜索发现；此时前端 bootstrap
+  尚未完成，useMusic.navigate 的 initializing 门禁拒绝导航，因此没有播客页面、Scene FM 请求或队列。
+  原生 account_snapshot 的 authenticated 不能替代前端导航就绪。探针现等待绑定同一 initializing 状态的
+  「打开设置」按钮可见、启用且不在 inert 区域，再点击搜索；续播探针另确认展开的发现面板和经典播客首页。
+- 共十一条相同启动入口补充这一有界等待。仅修改测试探针，不调整生产导航门禁、请求顺序或失败重试。
+  续播暂停基线同时等待至少 450 ms 的相同原生投影和两次 revision 前进；Python 独立核对这份回执，
+  后续各阶段仍要求同一 play/entry、精确位置和队列，避免把 pause 确认之前的最后音频时钟作为基线。
+- 本机封闭 Linux X11/Xvfb + WebKitGTK 对照将首个 liked_ids 响应延迟 800 ms。旧探针在释放响应前
+  点击「更多」，复现 CI 的空队列失败；新探针只在释放且导航启用后点击，七阶段、七张截图和十二次合成签名
+  调用通过。普通启动下续播的七阶段、七张截图也通过；其余十组声音、收藏、下载、推荐及场景首页脚本
+  在相同启动延迟下全部通过。
+- 使用非 C locale、libmpv/null、合成账号和进程级 WEBKIT_DISABLE_COMPOSITING_MODE=1。
+  这些结果不验证真实账号、声卡听感或所有 GPU 环境；Windows 结果以对应完整 CI 的 WebView2 分片为准。

@@ -163,6 +163,11 @@
       assert(changed.value.replaceQueue === false && changed.value.revision !== preference.value.revision,
         'native exact double-click add preference');
     }
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => one('input[aria-label="搜索音乐"]'), 'open discovery');
     await click(() => label('播客榜：更多', one('#search-discovery-panel:not(.menu-leave-active)')), 'open classic podcast page');
     await wait(() => one('.podcast-discovery .podcast-top[data-layout="classic"]') &&

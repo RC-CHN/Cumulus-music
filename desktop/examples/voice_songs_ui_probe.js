@@ -182,6 +182,11 @@
     restore = () => { methods.forEach(([name], i) => { core[name] = originals[i]; }); };
     const preferences = await invoke('queue_click_preferences', { epoch });
     assert(preferences.value.replaceQueue === true, 'actual default double-click replaces queue');
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => one('input[aria-label="搜索音乐"]'), 'open discovery');
     await click(() => label('播客榜：更多', one('#search-discovery-panel:not(.menu-leave-active)')),
       'open classic podcast page');

@@ -68,6 +68,11 @@
     return { state, rows };
   }
   async function openHome(layout) {
+    // Native account restoration precedes the frontend bootstrap/navigation gate.
+    await wait(() => {
+      const settings = document.querySelector('button[aria-label="打开设置"]');
+      return settings?.getClientRects().length && !settings.disabled && !settings.closest('[inert]');
+    }, 'frontend bootstrap permits navigation');
     await click(() => one('input[aria-label="搜索音乐"]'), 'search field');
     await click(() => button('播客榜：更多'), 'podcast chart More');
     await wait(() => one('.podcast-discovery .podcast-top')?.dataset.layout === layout,
