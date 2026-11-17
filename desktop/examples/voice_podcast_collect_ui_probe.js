@@ -169,14 +169,21 @@
     await wait(() => enabled(open()) && card()?.textContent.includes('合成来访播客') &&
       shownSubscribed(false), 'other-owned current card with complete membership');
     await click(() => button('暂停'), 'park the first decoder');
-    let previous;
+    let quiet, quietSince;
     parked = await wait(async () => {
       const value = await state();
       if (value.state !== 'paused' || value.playId !== first.playId || value.nativeSeeking ||
-          value.error || !Number.isFinite(value.position)) return false;
-      const settled = previous === value.position;
-      previous = value.position;
-      return settled && value;
+          value.error || !Number.isFinite(value.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some((key) => value[key] !== quiet[key])) {
+        quiet = value;
+        quietSince = performance.now();
+      }
+      // Require fresh native ticks after the decoder's final pause update.
+      return performance.now() - quietSince >= 450 &&
+        BigInt(value.revision) - BigInt(quiet.revision) >= 2n && value;
     }, 'same paused native decoder settles');
     open().scrollIntoView({ block: 'nearest' });
     assert(samePaused(await capture('ready')), 'opening the card preserved native playback');

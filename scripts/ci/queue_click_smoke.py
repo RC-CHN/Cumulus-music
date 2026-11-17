@@ -111,6 +111,13 @@ def main():
                         assert origin is None, detail
                     if expected_state == 'paused':
                         assert actual['position'] == observed['position'], detail
+                        settlement = stage['pauseSettlement']
+                        first, final = settlement['first'], settlement['observed']
+                        assert settlement['quietMs'] >= 450 and int(final['revision']) - int(first['revision']) >= 2, detail
+                        assert all(first[key] == final[key] == player[key] for key in
+                                   ('epoch', 'playId', 'entryId', 'queueRevision', 'state', 'position')), detail
+                        assert not any(snapshot['nativeSeeking'] or snapshot['error']
+                                       for snapshot in (first, final, player)), detail
                 assert actual['track'] == actual['selectedTrack'] == target, detail
                 assert actual['playerRevision'] == actual['queueRevision'] == observed['queueRevision'], detail
                 assert actual['playId'] == observed['playId'] and actual['playerEntryId'] == actual['entryId'] == observed['entryId'], detail

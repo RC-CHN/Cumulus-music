@@ -93,13 +93,20 @@
       return state.state === 'playing' && state.playId && state.position > .25;
     }, 'native clock advances');
     click(await wait(() => ready(one('.playerbar [aria-label="暂停"]')), 'pause control'));
-    let previous;
+    let quiet, quietSince;
     baseline = await wait(async () => {
       const state = await snapshot();
-      if (state.state !== 'paused' || state.nativeSeeking || !Number.isFinite(state.position)) return false;
-      if (previous?.playId === state.playId && previous.position === state.position) return state;
-      previous = state;
-      return false;
+      if (state.state !== 'paused' || state.nativeSeeking || state.error || !Number.isFinite(state.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some((key) => state[key] !== quiet[key])) {
+        quiet = state;
+        quietSince = performance.now();
+      }
+      // The pause reply can precede the decoder's final position update.
+      return performance.now() - quietSince >= 450 &&
+        BigInt(state.revision) - BigInt(quiet.revision) >= 2n && state;
     }, 'paused native identity stable');
     await emit('resize', { width: 760, height: 540 });
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact viewport');

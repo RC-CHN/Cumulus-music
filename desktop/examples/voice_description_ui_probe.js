@@ -164,14 +164,21 @@
     const playing = await capture('playing', 'collapsed');
     assert(playing.state === 'playing' && playing.playId === loaded.playId, 'opening preserves the decoder');
     await click(() => button('暂停'), 'pause without changing program');
-    let previous;
+    let quiet, quietSince;
     baseline = await wait(async () => {
       const value = await state();
       if (value.state !== 'paused' || value.playId !== loaded.playId || value.nativeSeeking ||
-          value.error || !Number.isFinite(value.position)) return false;
-      const settled = previous === value.position;
-      previous = value.position;
-      return settled && value;
+          value.error || !Number.isFinite(value.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some((key) => value[key] !== quiet[key])) {
+        quiet = value;
+        quietSince = performance.now();
+      }
+      // Require fresh native ticks after the decoder's final pause update.
+      return performance.now() - quietSince >= 450 &&
+        BigInt(value.revision) - BigInt(quiet.revision) >= 2n && value;
     }, 'native paused program clock settles');
     await capture('collapsed', 'collapsed');
     await click(toggle, 'expand the description');

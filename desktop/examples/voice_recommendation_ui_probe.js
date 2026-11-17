@@ -167,14 +167,21 @@
       return value.state === 'playing' && value.track?.voiceId === '601' && value.position > .2 && value;
     }, 'first native episode advances while vinyl closed');
     await click(() => button('暂停'), 'park the first decoder');
-    let previous;
+    let quiet, quietSince;
     baseline = await wait(async () => {
       const value = await state();
       if (value.state !== 'paused' || value.playId !== first.playId || value.nativeSeeking ||
-          value.error || !Number.isFinite(value.position)) return false;
-      const settled = previous === value.position;
-      previous = value.position;
-      return settled && value;
+          value.error || !Number.isFinite(value.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some((key) => value[key] !== quiet[key])) {
+        quiet = value;
+        quietSince = performance.now();
+      }
+      // Require fresh native ticks after the decoder's final pause update.
+      return performance.now() - quietSince >= 450 &&
+        BigInt(value.revision) - BigInt(quiet.revision) >= 2n && value;
     }, 'same paused native decoder settles');
     assert(!panel() && !reads.length && !(await sampleNative()).requests.length, 'closed vinyl never requested a recommendation');
     assert(samePaused(await capture('closed')), 'closed snapshot preserved paused decoder');
@@ -242,14 +249,21 @@
       'stale recommendation did not disrupt the new decoder');
     assert(detail() === '合成推荐播单 98', 'earlier recommendation detail is still underneath the current vinyl');
     await click(() => button('暂停'), 'park the second native decoder before nested navigation');
-    previous = undefined;
+    quiet = undefined;
     const nestedBaseline = await wait(async () => {
       const value = await state();
       if (value.state !== 'paused' || value.playId !== second.playId || value.entryId !== second.entryId ||
-          value.nativeSeeking || value.error || !Number.isFinite(value.position)) return false;
-      const settled = previous === value.position;
-      previous = value.position;
-      return settled && value;
+          value.nativeSeeking || value.error || !Number.isFinite(value.position)) {
+        quiet = undefined;
+        return false;
+      }
+      if (!quiet || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some((key) => value[key] !== quiet[key])) {
+        quiet = value;
+        quietSince = performance.now();
+      }
+      // Require fresh native ticks after the decoder's final pause update.
+      return performance.now() - quietSince >= 450 &&
+        BigInt(value.revision) - BigInt(quiet.revision) >= 2n && value;
     }, 'same second paused native decoder settles');
     await click(() => card('121'), 'open a different actual recommendation from radio 98');
     await wait(() => detail() === '合成推荐播单 121' && !panel() && targets[1]?.result === '121',

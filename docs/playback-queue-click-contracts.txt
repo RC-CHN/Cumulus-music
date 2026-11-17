@@ -119,3 +119,26 @@ queue-r3-provenance.json；所有问题旧图保留，无产品改动，仍是�
 暂停/继续、页头整表播放及持久化偏好。core/tests/client_player/queue_daily.rs
 另覆盖精确行、跨代拒绝、在途快照更换、来源和试听。实体声卡、Windows GUI 和
 真实账号仍不属于本机合成验收。
+
+2026-11-17 暂停末帧与 CI 采样
+- 0.2.0 发布标记 363bc0a9 的 CI 44074360032，Windows playback job
+  134014842045 在 daily_same_row_paused 失败：同一 playId、entryId、队列版本和
+  paused 状态下，探针读到0.346521秒，独立原生回执读到0.400974秒。暂停确认先于
+  解码器最后的位置更新；两次间隔40ms的相同读数可能仍属于同一个原生时钟快照。
+- waitPaused 现在核对当前曲目、队列长度/条目、无seek/错误，并要求同一账号、
+  playId、entryId、queueRevision、位置稳定至少450ms且原生revision推进至少两次。
+  位置变化或状态不再符合条件就重新计时，仍受原有240次轮询上限约束。
+  回执记录首尾快照及quietMs，由Python独立核对；暂停位置仍须精确相等，没有扩大
+  容差或重试业务点击。产品播放、暂停、队列和账号逻辑未改。
+- 同类检查同时修正 playback_quality_cards、voice_description、voice_podcast_collect
+  和 voice_recommendation（含第二次嵌套导航暂停）的早期基线。它们保留原有严格
+  播放身份/位置、页面业务、请求序列和失败分支断言。
+- 隔离网络、非C locale、真实WebView/libmpv/null对照：在前端player_snapshot回包
+  上模拟180ms内仍返回少54ms的旧位置，独立原生观察不修改。旧队列探针复现严格
+  位置不等；新探针9态/9图通过，两个暂停回执稳定461/465ms并跨过22次原生更新。
+  持续改变暂停读数的阴性对照240次后失败，不能把持续走动的时钟判成稳定。
+- 无注入日推9态、原有队列偏好两进程8态/8图通过；相同延迟下，音质三分支共9态/
+  9图、简介short/missing共15态/15图（含真实X11剪贴板）、节目收藏8态/8图、节目
+  推荐9态/9图全部通过。截图使用进程级软件绘制，不能代表Windows截图或实机声卡。
+  合成账号、请求及UI操作均在隔离夹具内，真实账号操作为0。
+  证据保留在 .build/release-0.2.1-validation/，不纳入公开源码。

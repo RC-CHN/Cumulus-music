@@ -145,6 +145,7 @@
         playId: settled.playId, queueRevision: settled.queue.revision,
         entryId: settled.queue.current, position: settled.position,
       } }),
+      ...(settled?.pauseSettlement && { pauseSettlement: settled.pauseSettlement }),
       // Deliberately deschedule the native observer while the next action is
       // ready to run. The probe must still save this stage before advancing.
       ...(label === 'catalog_added' && { deferQueueClickObservation: true }),
@@ -180,19 +181,31 @@
       !row('3').querySelector('.track-play')?.disabled, 'settled Daily recommendation rows');
   }
   async function waitPaused(id, length) {
-    let value, previous;
+    let value, first, since;
     await wait(async () => {
-      if (bar()?.dataset.state !== 'paused') return false;
       const player = await invoke('player_snapshot', { epoch });
       const current = await queue();
-      if (player.state !== 'paused' || player.track?.id !== id || selected(current) !== id ||
+      if (bar()?.dataset.state !== 'paused' || player.state !== 'paused' ||
+          player.nativeSeeking || player.error || player.track?.id !== id || selected(current) !== id ||
           player.queueRevision !== current.revision || player.playId !== bar().dataset.playId ||
-          current.tracks.length !== length || !(player.position > .2)) return false;
-      value = { queue: current, playId: player.playId, position: player.position };
-      const observed = JSON.stringify([value.playId, current.revision, current.current, value.position]);
-      if (previous === observed) return true;
-      previous = observed;
-      return false;
+          player.entryId !== current.current || player.queueLen !== length ||
+          current.tracks.length !== length || !(player.position > .2)) {
+        first = undefined;
+        return false;
+      }
+      const { revision, state, playId, entryId, queueRevision, position, nativeSeeking, error } = player;
+      const observed = { epoch: player.epoch, revision, state, playId, entryId, queueRevision, position, nativeSeeking, error };
+      const now = performance.now();
+      // Pause acknowledgement can precede the decoder's final position. Two
+      // reads can share one native tick; require a quiet window and new ticks.
+      if (!first || ['epoch', 'playId', 'entryId', 'queueRevision', 'position'].some(
+        (key) => observed[key] !== first[key])) {
+        first = observed;
+        since = now;
+      }
+      const pauseSettlement = { first, observed, quietMs: now - since };
+      value = { queue: current, playId, position, pauseSettlement };
+      return pauseSettlement.quietMs >= 450 && BigInt(revision) - BigInt(first.revision) >= 2n;
     }, step);
     return value;
   }
