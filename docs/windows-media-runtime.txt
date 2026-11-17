@@ -46,16 +46,30 @@ path helper and LoadLibraryExW/GetProcAddress/FreeLibrary, avoiding the ANSI
 dlfcn shim. Dependency lookup uses the loaded DLL directory and Windows's
 default trusted directories. Linux filter loading is unchanged. All original codec, network, hardware and format configuration
 is retained. Only the shared runtime variant is built; no static development
-archive is needed by the application. The current stock release is 9.0.2-3
-and the custom release is 9.0.2-3.2. The upstream packaging change from -2
-renamed the SDL2 dependency to sdl2; the upstream FFmpeg source archive and
-recipe helper hashes are unchanged. See the reviewed change:
+archive is needed by the application. The current stock release is 9.0.2-4
+and the custom release is 9.0.2-4.2. The upstream packaging change from -2
+to -3 renamed the SDL2 dependency to sdl2; the upstream FFmpeg source archive
+and recipe helper hashes were unchanged. See that reviewed change:
 https://github.com/msys2/MINGW-packages/commit/6164dd1c9700f175e2b34aadf1bd956c866dd6f8
 Run 42682251677 attempt 1 reached the Windows package proof, then a later
 diagnostic runner stopped at the stock-version guard before launching the
 product. It did not exercise the packaged process. The new lock and patch
 were checked against the upstream bytes; the Windows build, actual DSP
 execution, and packaging checks are still required.
+
+On 2026-11-17, run 44051209517 failed at this same strict stock-version guard:
+MSYS2 now supplies 9.0.2-4 after its ggml/whisper rebuild. The official FFmpeg
+recipe changes only pkgrel=3 to pkgrel=4 at:
+https://github.com/msys2/MINGW-packages/commit/4ec9f120379abd556bee85bb564574f0ebaecce6
+The complete old recipe matched the previous lock, the new bytes differ only
+in that revision, and all three helper files still match their locked hashes.
+The source archive and local LADSPA loader patch are unchanged. The new lock
+pins that exact commit and recipe digest; the local package revision is 4.2.
+The dependency inventory remains part of the cache key, so the historical
+9.0.2-3.2 seed cannot satisfy the new recipe. Old or unreviewed stock revisions
+still fail before executing FFmpeg or writing a build plan. Windows runners
+must build and verify the new runtime, current DSP PCM, WebView and packages;
+the source review and synthetic guard tests do not establish those results.
 
 The upstream recipe's ignored `make check || true` is replaced by a strict
 filter-availability check against the newly built shared libraries. This is

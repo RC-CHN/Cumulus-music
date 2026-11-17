@@ -16,7 +16,7 @@ from windows_media_recipe import (
     HERE, PACKAGE, RECIPE_INPUTS, build_package, configuration, download, patch_recipe, prepare, sha256,
 )
 
-RECIPE = '''pkgrel=3
+RECIPE = '''pkgrel=4
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
 makedepends=("${MINGW_PACKAGE_PREFIX}-cc")
 source=(https://example.invalid/${_realname}-${pkgver}.tar.xz{,.asc})
@@ -72,6 +72,19 @@ class WindowsSourceFallback(unittest.TestCase):
 
 
 class WindowsRecipeCachePlan(unittest.TestCase):
+    def test_unreviewed_upstream_revision_fails_before_runtime_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copyfile(HERE / 'windows_media.lock.json', root / 'windows_media.lock.json')
+            for version in ('9.0.2-3', '9.0.2-5'):
+                with self.subTest(version=version), patch('windows_media_recipe.HERE', root), \
+                        patch('windows_media_recipe.BUILD', root / 'out'), \
+                        patch('windows_media_recipe.output', return_value=f'{PACKAGE} {version}\n') as read:
+                    with self.assertRaisesRegex(AssertionError, 'update/review the runtime lock'):
+                        prepare(root)
+                    read.assert_called_once_with([root / 'usr/bin/pacman.exe', '-Q'])
+                    self.assertFalse((root / 'out/plan.json').exists())
+
     def test_prepare_reuses_dependency_key_after_probe_only_edits(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             root = Path(directory)
@@ -221,8 +234,10 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
             verify_cache(self.cache, self.plan, self.lock)
 
     def test_upstream_recipe_drift_is_an_explicit_failure(self):
-        with self.assertRaisesRegex(AssertionError, 'upstream recipe changed'):
-            patch_recipe(RECIPE.replace('pkgrel=3\n', 'pkgrel=4\n'))
+        self.assertIn('pkgrel=4.2\n', patch_recipe(RECIPE))
+        for revision in ('3', '5'):
+            with self.subTest(revision=revision), self.assertRaisesRegex(AssertionError, 'upstream recipe changed'):
+                patch_recipe(RECIPE.replace('pkgrel=4\n', f'pkgrel={revision}\n'))
 
     def test_rehashed_loader_patch_drift_is_rejected(self):
         (self.cache / 'ffmpeg-ladspa-windows.patch').write_bytes(b'unreviewed loader')

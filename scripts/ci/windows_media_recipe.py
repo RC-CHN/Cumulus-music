@@ -37,7 +37,7 @@ def configuration(version):
 def patch_recipe(original):
     """Fail closed when the locked upstream recipe no longer has this shape."""
     replacements = [
-        ('pkgrel=3\n', 'pkgrel=3.2\n'),
+        ('pkgrel=4\n', 'pkgrel=4.2\n'),
         ('    --enable-gpl\n', '    --enable-gpl\n    --enable-ladspa\n'),
         ('depends=("${MINGW_PACKAGE_PREFIX}-aom"',
          'depends=("${MINGW_PACKAGE_PREFIX}-dlfcn"\n         "${MINGW_PACKAGE_PREFIX}-aom"'),

@@ -1,7 +1,7 @@
 {
-  "recipeCommit": "6164dd1c9700f175e2b34aadf1bd956c866dd6f8",
-  "upstreamPackage": "9.0.2-3",
-  "customPackage": "9.0.2-3.2",
+  "recipeCommit": "4ec9f120379abd556bee85bb564574f0ebaecce6",
+  "upstreamPackage": "9.0.2-4",
+  "customPackage": "9.0.2-4.2",
   "source": {
     "name": "ffmpeg-9.0.2.tar.xz",
     "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
@@ -9,7 +9,7 @@
     "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
   },
   "recipeFiles": {
-    "PKGBUILD": "989c1869f605d3519fbbefbc95d7ed09ba9d08fdb7aa074927be8e038a65348f",
+    "PKGBUILD": "49802ece2ac9396748b91ad660df0a9536219439c0b8912085091c6d1e733fad",
     "pathtools.c": "ebf471173f5ee9c4416c10a78760cea8afaf1a4a6e653977321e8547ce7bf3c0",
     "pathtools.h": "1585ef1b61cf53a2ca27049c11d49e0834683dfda798f03547761375df482a90",
     "0005-Win32-Add-path-relocation-to-frei0r-plugins-search.patch": "8c74e9b5800dbb41c33a60114712726ec768ad6de8f147c2eb30656fd4c899cc"
