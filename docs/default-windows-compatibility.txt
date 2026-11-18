@@ -1,6 +1,27 @@
-Desktop default Windows compatibility mapping
+Linux desktop request identity (2026-11-18)
 
-Unset CUMULUS_DEVICE_IDENTITY now selects automatic Windows compatibility mode.
+Linux launches declare Cumulus with its package version, Linux and the build
+architecture in the HTTP user agent. The music EAPI request carries os=linux,
+osver=Linux and the Cumulus version. The request cookie channel is cumulus.
+Client declarations from older scoped cookies are replaced on the outgoing
+request. Account cookies and the on-disk session keep their original scope.
+The desktop configuration header uses the same application version.
+
+Default startup still uses the local Linux collector when available. The
+native override skips collection. Both local and the legacy windows-local
+spelling require local facts on Linux and declare Linux. The desktop Watchman
+host therefore uses the actual browser environment on this platform.
+Windows-specific experiment eligibility still requires the Windows profile.
+This contract covers the desktop host and its music HTTP transport. Research
+fixtures with explicit profiles continue to model their specified clients.
+Upstream acceptance of the Linux declaration and current Watchman SDK business
+initialization require a live read. The archived construction results below
+describe the previous policy.
+
+Historical Windows compatibility defaults
+========================================
+
+In that version, unset CUMULUS_DEVICE_IDENTITY selected automatic Windows compatibility mode.
 This is native launch configuration, selected before account initialization;
 there is no identity selector or raw fingerprint accepted through frontend IPC.
 

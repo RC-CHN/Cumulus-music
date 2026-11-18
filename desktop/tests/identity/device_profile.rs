@@ -1,11 +1,12 @@
 use super::*;
+#[cfg(target_os = "windows")]
 use cumulus_core::protocol::http::OFFICIAL_WINDOWS_USER_AGENT;
 
 #[test]
 fn default_and_exact_launch_overrides_select_construction_modes() {
     assert_eq!(
         IdentityMode::from_override(None).unwrap(),
-        IdentityMode::WindowsAuto
+        IdentityMode::Auto
     );
     for (value, expected) in [
         ("native", IdentityMode::Native),
@@ -63,7 +64,7 @@ fn synthetic_sysroot(root: &Path, mac: &str) {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn linux_default_uses_local_facts_with_windows_declarations_and_preserves_existing_ids() {
+fn linux_profiles_declare_linux_and_preserve_existing_ids() {
     use cumulus_core::{
         account::credentials::Credentials, protocol::http::ApiOrigin, storage::StateStore,
     };
@@ -101,16 +102,10 @@ fn linux_default_uses_local_facts_with_windows_declarations_and_preserves_existi
                 local_from_sysroot(root, &sysroot, base, allow_missing)
             })
             .unwrap();
-        if mode == IdentityMode::Local {
-            assert_eq!(profile.user_agent, ClientProfile::default().user_agent);
-            assert_eq!(profile.os_version, "Linux");
-        } else {
-            assert_eq!(profile.user_agent, OFFICIAL_WINDOWS_USER_AGENT);
-            assert_eq!(
-                profile.os_version,
-                "Microsoft-Windows-10-Professional-build-19045-64bit"
-            );
-        }
+        assert_eq!(profile.user_agent, ClientProfile::default().user_agent);
+        assert!(profile.user_agent.starts_with("Cumulus/"));
+        assert!(profile.user_agent.contains("Linux"));
+        assert_eq!(profile.os_version, "Linux");
         let sign = profile.client_sign.unwrap();
         assert!(sign.starts_with("02:12:34:56:78:9A@SYNTHETIC-DISK@SYNTHETIC-BOARD@"));
         assert!(sign.contains(&persistent_id));
@@ -156,11 +151,8 @@ fn linux_default_falls_back_to_declarations_only_when_hardware_is_unavailable() 
             local_from_sysroot(root, &sysroot, base, allow_missing)
         })
         .unwrap();
-    assert_eq!(profile.user_agent, OFFICIAL_WINDOWS_USER_AGENT);
-    assert_eq!(
-        profile.os_version,
-        "Microsoft-Windows-10-Professional-build-19045-64bit"
-    );
+    assert_eq!(profile.user_agent, ClientProfile::default().user_agent);
+    assert_eq!(profile.os_version, "Linux");
     assert!(profile.client_sign.is_none());
     assert!(!root.exists());
     for mode in [IdentityMode::Local, IdentityMode::WindowsLocal] {
@@ -183,7 +175,7 @@ fn linux_default_does_not_fall_back_for_unrepresentable_hardware_text() {
     synthetic_sysroot(&sysroot, "02:12:34:56:78:9A");
     std::fs::write(sysroot.join("class/dmi/id/sys_vendor"), "\u{1f3b5}").unwrap();
     assert!(matches!(
-        IdentityMode::WindowsAuto.build(&root, |root, base, allow_missing| {
+        IdentityMode::Auto.build(&root, |root, base, allow_missing| {
             local_from_sysroot(root, &sysroot, base, allow_missing)
         }),
         Err(Error::State(
@@ -205,7 +197,7 @@ fn linux_default_propagates_corrupt_storage_without_falling_back() {
     let corrupt = b"synthetic invalid sqlite database";
     std::fs::write(&path, corrupt).unwrap();
     assert!(matches!(
-        IdentityMode::WindowsAuto.build(&root, |root, base, allow_missing| {
+        IdentityMode::Auto.build(&root, |root, base, allow_missing| {
             local_from_sysroot(root, &sysroot, base, allow_missing)
         }),
         Err(Error::Storage(_))
@@ -229,7 +221,7 @@ fn linux_default_does_not_hide_invalid_persisted_identity_or_failed_observation(
         .put("device", "identity", "client_sign", &invalid)
         .unwrap();
     assert!(matches!(
-        IdentityMode::WindowsAuto.build(&root, |root, base, allow_missing| {
+        IdentityMode::Auto.build(&root, |root, base, allow_missing| {
             local_from_sysroot(root, &sysroot, base, allow_missing)
         }),
         Err(Error::State(
@@ -256,7 +248,7 @@ fn linux_default_does_not_hide_invalid_persisted_identity_or_failed_observation(
         )
         .unwrap();
     assert!(matches!(
-        IdentityMode::WindowsAuto.build(&root, |root, base, allow_missing| {
+        IdentityMode::Auto.build(&root, |root, base, allow_missing| {
             local_from_sysroot(root, &sysroot, base, allow_missing)
         }),
         Err(Error::Storage(_))

@@ -12,14 +12,14 @@ pub fn profile(root: &Path) -> Result<ClientProfile> {
 enum IdentityMode {
     Native,
     Local,
-    WindowsAuto,
+    Auto,
     WindowsLocal,
 }
 
 impl IdentityMode {
     fn from_override(value: Option<&OsStr>) -> Result<Self> {
         match value {
-            None => Ok(Self::WindowsAuto),
+            None => Ok(Self::Auto),
             Some(value) if value == "native" => Ok(Self::Native),
             Some(value) if value == "local" => Ok(Self::Local),
             Some(value) if value == "windows-local" => Ok(Self::WindowsLocal),
@@ -37,17 +37,13 @@ impl IdentityMode {
         match self {
             Self::Native => Ok(ClientProfile::default()),
             Self::Local => collect_local(root, ClientProfile::default(), false),
-            Self::WindowsAuto | Self::WindowsLocal => {
-                let base = ClientProfile::windows_compatibility(
-                    cumulus_core::identity::WINDOWS_COMPATIBILITY_DESCRIPTION,
-                )?;
-                // A Windows declaration is available on Windows, but its real
-                // hardware collector is not implemented. Never run Linux sysfs
-                // collection there or invent hardware/signature components.
+            Self::Auto | Self::WindowsLocal => {
                 if cfg!(target_os = "windows") {
-                    Ok(base)
+                    ClientProfile::windows_compatibility(
+                        cumulus_core::identity::WINDOWS_COMPATIBILITY_DESCRIPTION,
+                    )
                 } else {
-                    collect_local(root, base, self == Self::WindowsAuto)
+                    collect_local(root, ClientProfile::default(), self == Self::Auto)
                 }
             }
         }
@@ -76,7 +72,7 @@ fn local_from_sysroot(
             static NOTICE: std::sync::Once = std::sync::Once::new();
             NOTICE.call_once(|| {
                 eprintln!(
-                    "Cumulus: local hardware identity unavailable; Windows compatibility declarations active without clientSign"
+                    "Cumulus: local hardware identity unavailable; continuing without clientSign"
                 );
             });
             return Ok(base);

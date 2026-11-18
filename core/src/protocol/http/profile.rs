@@ -20,15 +20,16 @@ impl Default for ClientProfile {
             "windows" => "Windows",
             other => other,
         };
-        let platform = if cfg!(target_os = "linux") {
-            format!("X11; Linux {}", std::env::consts::ARCH)
+        let arch = std::env::consts::ARCH;
+        let user_agent = if cfg!(target_os = "linux") {
+            format!("Cumulus/{} (Linux; {arch})", env!("CARGO_PKG_VERSION"))
         } else {
-            format!("{os}; {}", std::env::consts::ARCH)
+            format!(
+                "Mozilla/5.0 ({os}; {arch}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.169 Safari/537.36 NeteaseMusicDesktop/{APP_VERSION}"
+            )
         };
         Self {
-            user_agent: format!(
-                "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.169 Safari/537.36 NeteaseMusicDesktop/{APP_VERSION}"
-            ),
+            user_agent,
             os_version: os.into(),
             client_sign: None,
         }
@@ -36,6 +37,14 @@ impl Default for ClientProfile {
 }
 
 impl ClientProfile {
+    pub fn app_version(&self) -> &'static str {
+        if self.os_version == "Linux" {
+            env!("CARGO_PKG_VERSION")
+        } else {
+            APP_VERSION
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         for value in std::iter::once(self.user_agent.as_str())
             .chain(std::iter::once(self.os_version.as_str()))

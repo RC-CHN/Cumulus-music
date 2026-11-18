@@ -367,3 +367,11 @@ Cumulus 普通分页和本人红心页按 trackIds 或本人歌单的本机混�
 曲目与权限通过 ID 对应，本机行由本机索引解析。分页版次继续以完整 ID 顺序核对。
 详情请求发出前即遇到未知 SDK 时，符合条件的本人普通歌单可显示上次完整快照，
 具体账号、删除及播放边界见 playlist-offline-contracts.txt。
+
+Linux 原生平台复验（2026-11-18）
+在禁止联网的临时 WebKitGTK 中，从同一安装包提取加载器并加载已归档的
+2.7.5_e2891084。实测 navigator.platform 与 navigator.userAgent 均报告 Linux。
+加载器已注册，脚本执行到初始化入口；以空业务配置调用时，返回
+“[NEWatchman] required product number”。此结果只覆盖空配置分支。
+生产桌面的请求身份见 default-windows-compatibility.txt，生产 Rust 核心对该
+SDK 版本仍返回不支持，尚无真实 Linux 身份首次读取歌单的成功回包。

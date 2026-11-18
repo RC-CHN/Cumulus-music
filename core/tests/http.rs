@@ -121,6 +121,71 @@ fn body(plan: &RequestPlan) -> Value {
     eapi::unwrap(&fields["params"]).unwrap().1
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_playlist_read_declares_cumulus_even_with_legacy_platform_cookies() {
+    use cumulus_core::{
+        account::credentials::RequestCredentials,
+        protocol::http::{RequestInput, build_request},
+    };
+    let origin = ApiOrigin::Pc;
+    let path = "/api/v6/playlist/detail";
+    let profile = ClientProfile::default();
+    let credentials = RequestCredentials {
+        target: origin.request_url(WireRoute::Eapi, path).unwrap(),
+        device_id: "synthetic-device".into(),
+        revision: "synthetic-revision".into(),
+        cookies: [
+            ("os", "pc"),
+            ("osver", "Windows"),
+            ("appver", "old"),
+            ("channel", "netease"),
+            ("MUSIC_U", "synthetic-session"),
+        ]
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .to_vec(),
+    };
+    let plan = build_request(RequestInput {
+        origin,
+        path,
+        payload: json!({"id":"7"}),
+        credentials: &credentials,
+        profile: &profile,
+        extra_headers: &BTreeMap::new(),
+        options: RequestOptions::default(),
+    })
+    .unwrap();
+    assert_eq!(
+        plan.headers["User-Agent"],
+        format!(
+            "Cumulus/{} (Linux; {})",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::ARCH
+        )
+    );
+    let header: Value = serde_json::from_str(body(&plan)["header"].as_str().unwrap()).unwrap();
+    assert_eq!(header["os"], "linux");
+    assert_eq!(header["osver"], "Linux");
+    assert_eq!(header["appver"], env!("CARGO_PKG_VERSION"));
+    let cookies: Vec<_> = plan.headers["Cookie"].split("; ").collect();
+    for (name, value) in [
+        ("os", "linux"),
+        ("osver", "Linux"),
+        ("appver", env!("CARGO_PKG_VERSION")),
+        ("channel", "cumulus"),
+        ("MUSIC_U", "synthetic-session"),
+    ] {
+        assert_eq!(
+            cookies
+                .iter()
+                .filter_map(|cookie| cookie.split_once('='))
+                .filter(|(key, _)| *key == name)
+                .collect::<Vec<_>>(),
+            [(name, value)]
+        );
+    }
+}
+
 #[tokio::test]
 async fn podcast_progress_posts_once_and_checks_privacy_and_credentials_after_the_gate() {
     use std::sync::atomic::AtomicBool;

@@ -1,9 +1,7 @@
 //! M/402 frontend header and native MetaInfo deliberately use different wire
 //! shapes. Scoped authentication is never widened to obtain a request header.
 use super::{
-    ApiOrigin, RoutingPolicy, WireRoute,
-    profile::{APP_VERSION, ClientProfile},
-    select_route_with_policy,
+    ApiOrigin, RoutingPolicy, WireRoute, profile::ClientProfile, select_route_with_policy,
 };
 use crate::{
     Error, Result,
@@ -104,9 +102,27 @@ pub fn build_request(input: RequestInput<'_>) -> Result<RequestPlan> {
         ("Referer".into(), "https://music.163.com/".into()),
         ("User-Agent".into(), input.profile.user_agent.clone()),
     ]);
+    let linux = input.profile.os_version == "Linux";
+    let (os, channel) = if linux {
+        ("linux", "cumulus")
+    } else {
+        ("pc", "netease")
+    };
+    let app_version = input.profile.app_version();
     let mut cookie_parts: Vec<_> = cookies
         .iter()
-        .map(|(name, value)| format!("{name}={value}"))
+        .map(|(name, value)| {
+            // Scoped sessions can predate the native Linux profile. Only
+            // replace client declarations on the wire, never the stored jar.
+            let value = match name.as_str() {
+                "os" if linux => os,
+                "osver" if linux => &input.profile.os_version,
+                "appver" if linux => app_version,
+                "channel" if linux => channel,
+                _ => value,
+            };
+            format!("{name}={value}")
+        })
         .collect();
     if route == WireRoute::Weapi {
         let mut payload = input.payload;
@@ -151,7 +167,7 @@ pub fn build_request(input: RequestInput<'_>) -> Result<RequestPlan> {
     } else {
         json!(format!("{millis}_{}", hex::encode(random_bytes::<2>()?)))
     };
-    let mut full_header = json!({"os":"pc","appver":APP_VERSION,"osver":input.profile.os_version,"deviceId":input.credentials.device_id,"channel":"netease","requestId":request_id,"__csrf":cookie("__csrf")});
+    let mut full_header = json!({"os":os,"appver":app_version,"osver":input.profile.os_version,"deviceId":input.credentials.device_id,"channel":channel,"requestId":request_id,"__csrf":cookie("__csrf")});
     if let Some(sign) = &input.profile.client_sign {
         full_header["clientSign"] = sign.as_str().into()
     }

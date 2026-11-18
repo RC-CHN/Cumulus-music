@@ -5,7 +5,7 @@ use cumulus_core::{
     identity::WindowsBrowserIdentity,
     protocol::{
         context::RequestContext,
-        http::{APP_VERSION, ClientProfile},
+        http::ClientProfile,
         mconfig::{ConfigBackend, NativeConfigBackend, PcConfig},
     },
     storage::StateStore,
@@ -55,7 +55,7 @@ impl NativeWatchman {
         let config = PcConfig::new(store, config_backend)?;
         let context = Arc::new(RequestContext::from_pc(
             config.clone(),
-            APP_VERSION,
+            profile.app_version(),
             Arc::new(runtime.clone()),
         )?);
         Ok(Arc::new(Self {
