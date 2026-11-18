@@ -159,6 +159,7 @@ export function useMusic(
   const initializing = ref(true);
   const accountReady = ref(false);
   const error = ref('');
+  const verificationUpdateRequired = ref(false);
   const notice = ref('');
   const likeNotice = ref('');
   const libraryError = ref('');
@@ -194,6 +195,7 @@ export function useMusic(
   function handle(e: unknown) {
     const issue = failure(e);
     error.value = issue.message;
+    verificationUpdateRequired.value = issue.code === 'verification_sdk_unsupported';
     if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
       request++;
       loading.value = false;
@@ -276,6 +278,7 @@ export function useMusic(
   ) {
     const current = ++request;
     error.value = '';
+    verificationUpdateRequired.value = false;
     loading.value = true;
     const target = page.value;
     const keepingCache =
@@ -432,6 +435,7 @@ export function useMusic(
       current === request && page.value === target && account.value.epoch === epoch && owns();
     loading.value = true;
     error.value = '';
+    verificationUpdateRequired.value = false;
     try {
       let next: TrackPage | undefined;
       do {
@@ -500,6 +504,7 @@ export function useMusic(
     resourcesLoading.value = false;
     initializing.value = true;
     error.value = '';
+    verificationUpdateRequired.value = false;
     try {
       const next = restoring ? await core.restoreAccount() : await core.accountSnapshot();
       if (current !== accountRequest) return;
@@ -749,6 +754,7 @@ export function useMusic(
     error,
     notice,
     likeNotice,
+    verificationUpdateRequired,
     libraryError,
     playlistError,
     resourcesLoading,

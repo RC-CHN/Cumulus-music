@@ -319,3 +319,18 @@ offline_playlist_download_smoke.py 的额外五态检查真实 Linux WebView 中
 「查看评论」在菜单打开前按实际点中的在线歌曲读取计数，正数附在文案后；
 与歌单自己的评论页签、全表预取和评论写入分开。官方来源、回执、排序及返回
 后的状态边界见 playlist-song-menu-comment-count.txt。
+
+2026-11-18，登录后歌单详情读取失败
+在 Linux 桌面使用已保存会话做只读检查，账号身份和歌单列表均能读取。
+个人和公开歌单进入详情时，核心在发出详情请求前拒绝了不支持的 Watchman
+版本 2.7.5_e2891084。该错误在桌面显示为“当前版本不支持网易服务使用的验证组件，
+请检查 Cumulus 更新”，保留登录态并隐藏本次失败的重试入口。
+
+静态对照使用官方 x64 安装包 NeteaseCloudMusic_Music_official_3.1.43.205627_64.exe
+（https://d8.music.126.net/dmusic2/NeteaseCloudMusic_Music_official_3.1.43.205627_64.exe，
+SHA-256 f8ce38219e97bab97f36cb1dcfdaf794bff404646e4928d5b4404a9bc248cbe1）。
+与 3.1.42.205594 的 orpheus.ntpk 对照，两版 hybrid/app 的模块 169 内容相同，
+模块 15 中 v6 详情、v4 详情与动态信息的请求路径相同。hybrid/170 的 SDK 加载函数
+内容相同；app 中对应包装函数仅变更所引用的加载模块编号（1412 到 1414）。
+在线配置选取的 SDK 独立于上述加载函数更新。以上对照未运行官方 Windows 程序，
+未验证新版 SDK 在 Cumulus 的执行结果或 Windows 歌单读取。

@@ -142,6 +142,11 @@ impl From<Error> for ClientError {
                     "双击播放设置已变化，请重新读取",
                     false,
                 ),
+                Error::Response("unreviewed Watchman SDK version") => (
+                    "verification_sdk_unsupported",
+                    "当前版本不支持网易服务使用的验证组件，请检查 Cumulus 更新",
+                    false,
+                ),
                 Error::LoginDeferred => ("login_check", "请求未通过登录校验，请稍后重试", true),
                 Error::State("CAPTCHA timed out") => {
                     ("captcha_timeout", "验证码已超时，请重新打开验证", true)

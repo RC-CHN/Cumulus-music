@@ -8132,7 +8132,9 @@ onUnmounted(() => {
                               : '定制您今日的专属好音乐'
                             : `找到 ${result.total} 首歌曲`
                           : error
-                            ? '加载失败，可以重试'
+                            ? music.verificationUpdateRequired.value
+                              ? '加载失败'
+                              : '加载失败，可以重试'
                             : page.kind === 'playlist'
                               ? '正在读取歌单…'
                               : '正在寻找音乐…'
@@ -8211,7 +8213,11 @@ onUnmounted(() => {
                 </div>
                 <div v-if="error" class="error-state" role="alert">
                   <span>{{ error }}</span
-                  ><button v-if="!cachedPlaylist" class="text-button" @click="music.load()">
+                  ><button
+                    v-if="!cachedPlaylist && !music.verificationUpdateRequired.value"
+                    class="text-button"
+                    @click="music.load()"
+                  >
                     重试
                   </button>
                 </div>

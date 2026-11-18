@@ -11,7 +11,10 @@ fn current_official_packet_bytes_inverse_and_wrong_version_rejection() {
     let f = fixture();
     assert_eq!(f["source_sha256"], BUILD.source_sha256());
     assert_eq!(SdkBuild::parse(BUILD.version()).unwrap(), BUILD);
-    assert!(SdkBuild::parse("2.7.5_future").is_err());
+    let unknown = SdkBuild::parse("2.7.5_future").unwrap_err();
+    let public = cumulus_core::client::ClientError::from(unknown);
+    assert_eq!(public.code, "verification_sdk_unsupported");
+    assert!(!public.retryable);
     for v in f["packets"].as_array().unwrap() {
         let bytes = hex::decode(v["payload"].as_str().unwrap()).unwrap();
         let seed = hex::decode(v["seed"].as_str().unwrap())

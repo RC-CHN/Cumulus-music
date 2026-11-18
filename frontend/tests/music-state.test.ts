@@ -511,6 +511,30 @@ test('an old account resource read cannot unlock or load over a newer account no
   assert.equal(music.liked.value.has('old-private-like'), false);
 });
 
+test('an unsupported verification SDK keeps the account and clears its update hint on navigation', async () => {
+  const music = useMusic(
+    backend({
+      playlistPage: async (id) => {
+        if (id === 'unsupported')
+          throw { code: 'verification_sdk_unsupported', message: '请检查更新', retryable: false };
+        throw { code: 'connection', message: '连接中断', retryable: true };
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: 'unsupported' });
+  await turn();
+  assert.equal(music.error.value, '请检查更新');
+  assert.equal(music.verificationUpdateRequired.value, true);
+  assert.equal(music.signedIn.value, true);
+
+  music.navigate({ kind: 'playlist', id: 'network-error' });
+  assert.equal(music.verificationUpdateRequired.value, false);
+  await turn();
+  assert.equal(music.error.value, '连接中断');
+  assert.equal(music.verificationUpdateRequired.value, false);
+});
+
 test('a slow playlist read cannot overwrite a later page', async () => {
   const old = deferred<AccountData<TrackPage>>();
   const music = useMusic(
