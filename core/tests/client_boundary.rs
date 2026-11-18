@@ -225,6 +225,30 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
         .unwrap();
     assert_eq!(first.epoch, epoch);
     assert_eq!(first.value.total, 4);
+    assert_eq!(first.value.playlist.as_ref().unwrap().track_count, 4);
+    let native_page = client
+        .playlist_song_menu_page_at(
+            "7",
+            PageRequest {
+                offset: 0,
+                limit: 3,
+                revision: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(native_page.value.playlist.as_ref().unwrap().track_count, 4);
+    {
+        let requests = backend.requests.lock().unwrap();
+        let details = requests
+            .iter()
+            .filter(|(path, _)| path == "/api/v6/playlist/detail")
+            .map(|(_, p)| p)
+            .collect::<Vec<_>>();
+        let expected = json!({"id":"7","n":500,"s":0,"newStyle":true,"trialMode":43});
+        assert_eq!(details, vec![&expected, &expected]);
+    }
     assert!(first.value.more);
     assert_eq!(
         first

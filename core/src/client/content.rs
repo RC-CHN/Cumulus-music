@@ -1,9 +1,12 @@
 use super::{MusicClient, dto::*, mapping};
 use crate::{
     Error, Result,
-    account::resources::{AccountResources, MutationPhase, MutationRecord, ResourceKind},
+    account::{
+        SessionToken,
+        resources::{AccountResources, MutationPhase, MutationRecord, ResourceKind},
+    },
     catalog::{CatalogApi, SearchOptions},
-    playlist::{PlaylistApi, playlist_entry_id},
+    playlist::{LIKED_PLAYLIST_TRIAL, PlaylistApi, playlist_entry_id},
     protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
@@ -330,6 +333,22 @@ impl MusicClient {
         })
     }
 
+    async fn read_playlist_page_detail(
+        &self,
+        token: &SessionToken,
+        api: Arc<dyn Api>,
+        id: &str,
+    ) -> Result<(Value, Option<i32>)> {
+        let playlists = PlaylistApi::new(api);
+        if self.intelligence_liked_hint(token)?.as_deref() == Some(id) {
+            let detail = playlists
+                .pc_page_detail_v6(id, LIKED_PLAYLIST_TRIAL)
+                .await?;
+            return Ok((detail, Some(LIKED_PLAYLIST_TRIAL)));
+        }
+        Ok((playlists.detail(&json!(id)).await?, None))
+    }
+
     pub async fn playlist_page(
         &self,
         id: &str,
@@ -337,13 +356,16 @@ impl MusicClient {
     ) -> Result<AccountData<TrackPage>> {
         mapping::page(page.offset, page.limit)?;
         let id = identifier(&json!(id))?;
-        let (token, value) = self
+        let token = &self.session.token()?;
+        let value = self
             .session
-            .run(|api, uid| async move {
+            .run_for(token, |api, uid| async move {
                 // Read authoritative trackIds, never assume the preview `tracks`
                 // contains the complete playlist. Page song detail separately.
-                let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
-                playlist_track_page(api, &uid, &id, &detail, &page, None, None).await
+                let (detail, trial) = self
+                    .read_playlist_page_detail(token, api.clone(), &id)
+                    .await?;
+                playlist_track_page(api, &uid, &id, &detail, &page, trial, None).await
             })
             .await?;
         Ok(AccountData {

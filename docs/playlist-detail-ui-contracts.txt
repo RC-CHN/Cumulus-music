@@ -334,3 +334,13 @@ SHA-256 f8ce38219e97bab97f36cb1dcfdaf794bff404646e4928d5b4404a9bc248cbe1）。
 内容相同；app 中对应包装函数仅变更所引用的加载模块编号（1412 到 1414）。
 在线配置选取的 SDK 独立于上述加载函数更新。以上对照未运行官方 Windows 程序，
 未验证新版 SDK 在 Cumulus 的执行结果或 Windows 歌单读取。
+
+当日再次核对官方下载页 /st/download 的 Windows 按钮。发行接口
+https://music.163.com/api/pc/package/download/latest?productName=music
+对 Windows x64 返回 appVer 3.1.43、buildVer 205627 及上述 64 位安装包地址。
+对包内 hybrid/app 模块 445 的详情函数做离线执行，用合成歌单替代 HTTP 回包。
+本人红心分支请求 V6，参数为 n=500、s=0、newStyle=true、trialMode=43；
+trackIds 有两项而回包 trackCount 为 99 时，该函数输出的数量为 2。
+非本人普通歌单先取基础详情，再读取动态信息；动态信息读取失败时保留基础详情。
+这三个用例只验证官方业务函数的调用与输出。Cumulus 这次对齐的是账号歌单列表
+已经确认的本人红心分支，桌面入口也使用同一实现；仍需验证新版 SDK 与真实歌单。

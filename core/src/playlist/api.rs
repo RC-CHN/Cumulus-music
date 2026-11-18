@@ -29,6 +29,7 @@ pub struct PlaylistTracks {
 }
 
 pub(crate) const MGC_TRIAL: i32 = 121;
+pub(crate) const LIKED_PLAYLIST_TRIAL: i32 = 43;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ZonePlaylistMembership {
@@ -41,7 +42,7 @@ pub(crate) enum ZonePlaylistMembership {
 impl ZonePlaylistMembership {
     pub(crate) fn trial_mode(self) -> i32 {
         match self {
-            Self::Liked => 43,
+            Self::Liked => LIKED_PLAYLIST_TRIAL,
             _ => MGC_TRIAL,
         }
     }
@@ -166,25 +167,33 @@ impl PlaylistApi {
         guard: &impl Fn() -> Result<()>,
     ) -> Result<Value> {
         guard()?;
-        let reply = self
+        let detail = self.pc_page_detail_v6(id, membership.trial_mode()).await?;
+        let playlist = validate_zone_mgc_playlist(&detail, id, uid, membership)?;
+        Ok(Value::Object(playlist))
+    }
+
+    pub(crate) async fn pc_page_detail_v6(&self, id: &str, trial_mode: i32) -> Result<Value> {
+        let mut reply = self
             .api
             .call(
                 "/api/v6/playlist/detail",
                 json!({
-                    "id":id,"n":500,"s":0,"newStyle":true,"trialMode":membership.trial_mode()
+                    "id":id,"n":500,"s":0,"newStyle":true,"trialMode":trial_mode
                 }),
                 false,
                 &[200],
             )
             .await?;
-        let mut playlist = validate_zone_mgc_playlist(&reply["playlist"], id, uid, membership)?;
-        let track_count = playlist
-            .get("trackIds")
-            .and_then(Value::as_array)
-            .ok_or(Error::Response("missing MGC playlist trackIds"))?
+        let mut playlist = reply
+            .get_mut("playlist")
+            .ok_or(Error::Response("missing playlist"))?
+            .take();
+        let track_count = playlist["trackIds"]
+            .as_array()
+            .ok_or(Error::Response("missing playlist trackIds"))?
             .len();
-        playlist.insert("trackCount".into(), json!(track_count));
-        Ok(Value::Object(playlist))
+        playlist["trackCount"] = json!(track_count);
+        Ok(playlist)
     }
 
     pub async fn tracks(&self, pid: &Value) -> Result<PlaylistTracks> {

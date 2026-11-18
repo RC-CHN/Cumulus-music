@@ -8,7 +8,7 @@ use crate::{
     account::SessionToken,
     client::playlist_offline::{invalidates_cache, may_fallback},
     client::{dto::*, local::view},
-    playlist::{PlaylistApi, PlaylistLocalRow, PlaylistLocalStore},
+    playlist::{PlaylistLocalRow, PlaylistLocalStore},
     protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
@@ -126,11 +126,13 @@ impl MusicClient {
         local_revision: Option<&str>,
         duration_limit: Option<usize>,
     ) -> Result<OnlinePlaylistPage> {
-        let (api, uid, detail) = match self
+        let (api, uid, detail, trial) = match self
             .session
             .run_for(token, |api, uid| async {
-                let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
-                Ok((api, uid, detail))
+                let (detail, trial) = self
+                    .read_playlist_page_detail(token, api.clone(), id)
+                    .await?;
+                Ok((api, uid, detail, trial))
             })
             .await
         {
@@ -159,7 +161,7 @@ impl MusicClient {
         }
         // TrackList -> M/2997 -> M/120 includes trialMode=-1 even when the
         // ordinary route has no specific trial. The normal page remains unchanged.
-        let trial_mode = duration_limit.map(|_| -1);
+        let trial_mode = trial.or(duration_limit.map(|_| -1));
         if !playlist.owned || playlist.favorite {
             let _ = self.invalidate_offline_playlist(token, id);
             if local_revision.is_some() {
