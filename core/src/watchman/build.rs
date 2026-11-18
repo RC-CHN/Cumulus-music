@@ -13,7 +13,7 @@ impl SdkBuild {
         match version {
             "2.7.5_af2952a4" => Ok(Self::Af2952a4),
             "2.7.5_602a5ad7" => Ok(Self::B602a5ad7),
-            _ => Err(Error::Response("unreviewed Watchman SDK version")),
+            _ => Err(Error::VerificationSdkUnsupported),
         }
     }
     pub fn version(self) -> &'static str {

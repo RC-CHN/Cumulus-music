@@ -220,6 +220,9 @@ impl Host {
 }
 
 pub(super) fn may_fallback(error: &Error) -> bool {
+    if error.verification_sdk_unsupported() {
+        return true;
+    }
     match error.root() {
         Error::Transport(_) => true,
         Error::RequestNotSent(cause) => matches!(cause.root(), Error::Transport(_)),

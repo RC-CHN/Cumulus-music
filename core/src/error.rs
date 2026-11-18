@@ -13,6 +13,8 @@ pub enum Error {
     InvalidInput(&'static str),
     #[error("invalid response: {0}")]
     Response(&'static str),
+    #[error("unsupported verification SDK version")]
+    VerificationSdkUnsupported,
     #[error("request failed login validation while the session is retained")]
     LoginDeferred,
     #[error("response belongs to a previous operation or account generation")]
@@ -106,6 +108,14 @@ impl Error {
             Self::HttpStatus {
                 body: Some(body), ..
             } => code_matches(&body["code"], expected),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn verification_sdk_unsupported(&self) -> bool {
+        match self.root() {
+            Self::VerificationSdkUnsupported => true,
+            Self::RequestNotSent(cause) => cause.verification_sdk_unsupported(),
             _ => false,
         }
     }

@@ -62,6 +62,9 @@ impl Api for Network {
                 3 if path == "/api/v3/song/detail" => {
                     Err(Error::Transport("synthetic hydration interrupted".into()))
                 }
+                6 => Err(Error::RequestNotSent(Box::new(
+                    Error::VerificationSdkUnsupported,
+                ))),
                 4 => Ok(json!({"code":301, "msg":"synthetic expired"})),
                 5 => Err(Error::HttpStatus {
                     status: 503,
@@ -107,6 +110,47 @@ fn read_record(profile: &Path) -> Option<Value> {
         .store()
         .get("9", "playlist-offline-snapshot-v1", "73")
         .unwrap()
+}
+
+#[tokio::test]
+async fn unsupported_sdk_reads_only_a_complete_owned_snapshot() {
+    let temp = tempfile::tempdir().unwrap();
+    let network = Arc::new(Network::new());
+    let (client, _, _) = open(temp.path(), network.clone(), Some(9));
+    network.set(6);
+    let read = || client.playlist_song_menu_page_at("73", PageRequest::default(), None);
+    let error = read()
+        .await
+        .err()
+        .expect("empty cache must retain the SDK error");
+    let public = cumulus_core::client::ClientError::from(error);
+    assert_eq!(public.code, "verification_sdk_unsupported");
+    assert!(!public.retryable);
+
+    network.set(0);
+    let live = read().await.unwrap().value;
+    assert_eq!(live.tracks.len(), 3);
+    assert!(live.playlist_offline.is_none());
+    network.set(6);
+    let before = network.calls().len();
+    let cached = read().await.unwrap().value;
+    assert!(cached.playlist_offline.is_some());
+    assert_eq!(cached.revision, live.revision);
+    assert_eq!(
+        cached
+            .tracks
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["11", "77", "42"]
+    );
+    assert!(
+        cached
+            .tracks
+            .iter()
+            .all(|row| row.missing && row.playlist_song_comment_menu.is_none())
+    );
+    assert_eq!(&network.calls()[before..], &["/api/v6/playlist/detail"]);
 }
 
 #[tokio::test]

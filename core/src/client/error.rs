@@ -142,7 +142,7 @@ impl From<Error> for ClientError {
                     "双击播放设置已变化，请重新读取",
                     false,
                 ),
-                Error::Response("unreviewed Watchman SDK version") => (
+                error if error.verification_sdk_unsupported() => (
                     "verification_sdk_unsupported",
                     "当前版本不支持网易服务使用的验证组件，请检查 Cumulus 更新",
                     false,
