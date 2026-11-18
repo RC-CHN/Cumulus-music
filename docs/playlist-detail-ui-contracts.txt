@@ -1,6 +1,15 @@
 歌单详情 UI/UX 来源与交互对照
 2026-10-29，fix/playlist-detail-presentation；完整逐页审计仍进行中。
 
+当前阻塞：Linux 首次打开无缓存歌单（2026-11-18）
+桌面只读检查中，账号和歌单目录读取成功。打开歌单时，上游配置选中
+Watchman 2.7.5_e2891084。Rust 核心解析配置中的版本字段 v 时返回
+VerificationSdkUnsupported，流程在发送歌单详情请求之前结束，歌曲列表因此无法加载。
+对应位置为 core/src/watchman/remote/config.rs 的 SdkBuild::parse 调用。
+
+另一次 Linux WebKitGTK 离线测试中，官方 SDK 脚本加载成功。测试传入空业务配置，
+初始化停在产品编号检查，报错为“[NEWatchman] required product number”。
+
 范围
 本轮调整歌单展示与交互，不把 API、DSP 或既有核心测试计作 UI 完成度。
 frontend/src/components/playlist/PlaylistHero.vue 承担展示与类型化事件；
