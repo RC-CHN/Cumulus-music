@@ -34,9 +34,12 @@ pub(super) async fn playlist_track_page(
     detail: &Value,
     page: &PageRequest,
     trial_mode: Option<i32>,
-    loaded: Option<&BTreeMap<usize, TrackView>>,
+    source: PlaylistRowSource<'_>,
 ) -> Result<TrackPage> {
     let playlist = mapping::playlist(detail, uid)?;
+    if playlist.id != id {
+        return Err(Error::Response("playlist identity mismatch"));
+    }
     let ids = detail["trackIds"]
         .as_array()
         .ok_or(Error::Response("missing trackIds"))?;
@@ -54,7 +57,7 @@ pub(super) async fn playlist_track_page(
         .take(page.limit)
         .map(PlaylistPageSlot::Service)
         .collect();
-    let tracks = playlist_rows(api, slots, page.offset, trial_mode, loaded).await?;
+    let tracks = playlist_rows(api, slots, page.offset, trial_mode, source).await?;
     Ok(TrackPage {
         daily: None,
         style_tags: None,
@@ -69,13 +72,78 @@ pub(super) async fn playlist_track_page(
     })
 }
 
+pub(super) enum PlaylistRowSource<'a> {
+    Detail(&'a Value),
+    Loaded(Option<&'a BTreeMap<usize, TrackView>>),
+}
+
+fn playlist_preview_rows(
+    reply: &Value,
+    slots: &[PlaylistPageSlot<'_>],
+    offset: usize,
+) -> Result<BTreeMap<usize, TrackView>> {
+    let mut loaded = BTreeMap::new();
+    let Some(songs) = reply["playlist"]["tracks"]
+        .as_array()
+        .filter(|rows| !rows.is_empty())
+    else {
+        return Ok(loaded);
+    };
+    // The preview can be shorter or differently ordered than trackIds.
+    // Only project metadata needed for service rows on the requested page.
+    let mut positions: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (index, slot) in slots.iter().enumerate() {
+        if let PlaylistPageSlot::Service(entry) = slot
+            && entry["v"].as_i64() != Some(-1)
+        {
+            positions
+                .entry(identifier(&entry["id"])?)
+                .or_default()
+                .push(offset + index);
+        }
+    }
+    let privileges: BTreeMap<_, _> = reply["privileges"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| {
+            let id = identifier(&row["id"]).ok()?;
+            positions.contains_key(&id).then_some((id, row))
+        })
+        .collect();
+    for song in songs {
+        if let Ok(id) = identifier(&song["id"])
+            && let Some(indices) = positions.get(&id)
+            && song["name"].as_str().is_some_and(|name| !name.is_empty())
+        {
+            let mut track = mapping::track(song)?;
+            if let Some(privilege) = privileges.get(&id) {
+                track.playlist_song_comment_eligible =
+                    mapping::song_comment_eligible(song, privilege);
+            }
+            for index in indices {
+                loaded.insert(*index, track.clone());
+            }
+        }
+    }
+    Ok(loaded)
+}
+
 async fn playlist_rows(
     api: Arc<dyn Api>,
     slots: Vec<PlaylistPageSlot<'_>>,
     offset: usize,
     trial_mode: Option<i32>,
-    loaded: Option<&BTreeMap<usize, TrackView>>,
+    source: PlaylistRowSource<'_>,
 ) -> Result<Vec<TrackView>> {
+    let previews;
+    let loaded = match source {
+        PlaylistRowSource::Detail(reply) => {
+            previews = playlist_preview_rows(reply, &slots, offset)?;
+            Some(&previews)
+        }
+        PlaylistRowSource::Loaded(rows) => rows,
+    };
     let loaded_row = |index| loaded.and_then(|rows| rows.get(&(offset + index)));
     let wanted: Vec<_> = slots
         .iter()
@@ -339,14 +407,10 @@ impl MusicClient {
         api: Arc<dyn Api>,
         id: &str,
     ) -> Result<(Value, Option<i32>)> {
-        let playlists = PlaylistApi::new(api);
-        if self.intelligence_liked_hint(token)?.as_deref() == Some(id) {
-            let detail = playlists
-                .pc_page_detail_v6(id, LIKED_PLAYLIST_TRIAL)
-                .await?;
-            return Ok((detail, Some(LIKED_PLAYLIST_TRIAL)));
-        }
-        Ok((playlists.detail(&json!(id)).await?, None))
+        let trial = (self.intelligence_liked_hint(token)?.as_deref() == Some(id))
+            .then_some(LIKED_PLAYLIST_TRIAL);
+        let reply = PlaylistApi::new(api).page_detail_reply(id, trial).await?;
+        Ok((reply, trial))
     }
 
     pub async fn playlist_page(
@@ -362,10 +426,19 @@ impl MusicClient {
             .run_for(token, |api, uid| async move {
                 // Read authoritative trackIds, never assume the preview `tracks`
                 // contains the complete playlist. Page song detail separately.
-                let (detail, trial) = self
+                let (reply, trial) = self
                     .read_playlist_page_detail(token, api.clone(), &id)
                     .await?;
-                playlist_track_page(api, &uid, &id, &detail, &page, trial, None).await
+                playlist_track_page(
+                    api,
+                    &uid,
+                    &id,
+                    &reply["playlist"],
+                    &page,
+                    trial,
+                    PlaylistRowSource::Detail(&reply),
+                )
+                .await
             })
             .await?;
         Ok(AccountData {

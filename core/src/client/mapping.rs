@@ -50,8 +50,12 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
 }
 
 pub(super) fn catalog_song_comment_eligible(value: &Value) -> bool {
+    song_comment_eligible(value, &value["privilege"])
+}
+
+pub(super) fn song_comment_eligible(value: &Value, privilege: &Value) -> bool {
     value["t"].as_f64() != Some(1.0)
-        && !crate::protocol::wire::serialization::js_truthy(&value["privilege"]["cs"])
+        && !crate::protocol::wire::serialization::js_truthy(&privilege["cs"])
 }
 
 pub(super) fn track(value: &Value) -> Result<TrackView> {

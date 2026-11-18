@@ -1,5 +1,5 @@
 //! The desktop batch route borrows the current detail, without reopening it.
-use super::{MusicClient, ZonePlaylistSnapshot, playlist_track_page};
+use super::{MusicClient, PlaylistRowSource, ZonePlaylistSnapshot, playlist_track_page};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -105,7 +105,7 @@ impl MusicClient {
                 tokio::select! {
                     biased;
                     _ = changes.changed() => Err(Error::StaleResponse),
-                    result = playlist_track_page(api, &uid, id, &snapshot.detail, page, Some(-1), Some(loaded)) => result,
+                    result = playlist_track_page(api, &uid, id, &snapshot.detail, page, Some(-1), PlaylistRowSource::Loaded(Some(loaded))) => result,
                 }
             })
             .await?;

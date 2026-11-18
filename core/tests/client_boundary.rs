@@ -146,7 +146,10 @@ impl Api for Backend {
                         }
                         _ => {}
                     }
-                    json!({"code":200,"playlist":value})
+                    value["tracks"] = json!([
+                        song(&json!(4)), song(&json!(999)), song(&json!(1)), {"id":3}
+                    ]);
+                    json!({"code":200,"playlist":value,"privileges":[{"id":1,"cs":true}]})
                 }
                 "/api/playlist/category/list" => json!({"code":200,
                     "playlists":[{"id":1,"name":"分类歌单","coverImgUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT"}],
@@ -239,6 +242,10 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
         .await
         .unwrap();
     assert_eq!(native_page.value.playlist.as_ref().unwrap().track_count, 4);
+    assert_eq!(
+        serde_json::to_value(&native_page.value.tracks[0]).unwrap()["playlistSongCommentMenu"],
+        json!({"kind":"hidden"})
+    );
     {
         let requests = backend.requests.lock().unwrap();
         let details = requests
@@ -296,15 +303,16 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
     assert_eq!(last.value.tracks[0].id, "4");
     {
         let requests = backend.requests.lock().unwrap();
-        let page_request = requests
+        let batches: Vec<Vec<Value>> = requests
             .iter()
-            .find(|(path, _)| path == "/api/v3/song/detail")
-            .unwrap();
-        let rows: Vec<Value> = serde_json::from_str(page_request.1["c"].as_str().unwrap()).unwrap();
-        assert_eq!(
-            rows.iter().map(|row| &row["id"]).collect::<Vec<_>>(),
-            [&json!("1"), &json!("3")]
-        );
+            .filter(|(path, _)| path == "/api/v3/song/detail")
+            .map(|(_, payload)| serde_json::from_str(payload["c"].as_str().unwrap()).unwrap())
+            .collect();
+        assert_eq!(batches.len(), 2);
+        for batch in batches {
+            assert_eq!(batch.len(), 1);
+            assert_eq!(batch[0]["id"], "3");
+        }
     }
     let search = client
         .search_songs("test", PageRequest::default())

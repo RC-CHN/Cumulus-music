@@ -3,7 +3,7 @@ use super::{Binding, MusicClient, SessionToken, ZoneAuthority};
 use crate::{
     Error, Result,
     client::{
-        content::{playlist_track_page, playlist_track_revision},
+        content::{PlaylistRowSource, playlist_track_page, playlist_track_revision},
         dto::{AccountData, PageRequest, TrackPage, TrackView},
         mapping,
     },
@@ -360,7 +360,7 @@ impl MusicClient {
                     };
                     authorization.check_revision()?;
                     let value = playlist_track_page(
-                        api, &uid, id_ref, &snapshot.detail, &page, Some(snapshot.trial_mode), None,
+                        api, &uid, id_ref, &snapshot.detail, &page, Some(snapshot.trial_mode), PlaylistRowSource::Loaded(None),
                     ).await?;
                     Ok((value, snapshot))
                 } => result,

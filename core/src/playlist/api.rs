@@ -76,20 +76,8 @@ impl PlaylistApi {
     }
 
     pub async fn detail(&self, pid: &Value) -> Result<Value> {
-        let result = self
-            .api
-            .call(
-                "/api/v6/playlist/detail",
-                json!({"id":identifier(pid)?,"n":100000,"s":0}),
-                false,
-                &[200],
-            )
-            .await?;
-        result
-            .get("playlist")
-            .filter(|value| value.is_object())
-            .cloned()
-            .ok_or(Error::Response("missing playlist"))
+        let mut reply = self.page_detail_reply(&identifier(pid)?, None).await?;
+        Ok(reply["playlist"].take())
     }
 
     /// M/2997 -> M/444.b uses V6 only for proven created membership or
@@ -173,27 +161,31 @@ impl PlaylistApi {
     }
 
     pub(crate) async fn pc_page_detail_v6(&self, id: &str, trial_mode: i32) -> Result<Value> {
+        let mut reply = self.page_detail_reply(id, Some(trial_mode)).await?;
+        Ok(reply["playlist"].take())
+    }
+
+    pub(crate) async fn page_detail_reply(&self, id: &str, trial: Option<i32>) -> Result<Value> {
+        let payload = match trial {
+            Some(mode) => json!({"id":id,"n":500,"s":0,"newStyle":true,"trialMode":mode}),
+            None => json!({"id":id,"n":100000,"s":0}),
+        };
         let mut reply = self
             .api
-            .call(
-                "/api/v6/playlist/detail",
-                json!({
-                    "id":id,"n":500,"s":0,"newStyle":true,"trialMode":trial_mode
-                }),
-                false,
-                &[200],
-            )
+            .call("/api/v6/playlist/detail", payload, false, &[200])
             .await?;
-        let mut playlist = reply
+        let playlist = reply
             .get_mut("playlist")
-            .ok_or(Error::Response("missing playlist"))?
-            .take();
-        let track_count = playlist["trackIds"]
-            .as_array()
-            .ok_or(Error::Response("missing playlist trackIds"))?
-            .len();
-        playlist["trackCount"] = json!(track_count);
-        Ok(playlist)
+            .filter(|p| p.is_object())
+            .ok_or(Error::Response("missing playlist"))?;
+        if trial.is_some() {
+            let count = playlist["trackIds"]
+                .as_array()
+                .ok_or(Error::Response("missing playlist trackIds"))?
+                .len();
+            playlist["trackCount"] = json!(count);
+        }
+        Ok(reply)
     }
 
     pub async fn tracks(&self, pid: &Value) -> Result<PlaylistTracks> {

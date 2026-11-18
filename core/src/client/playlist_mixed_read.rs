@@ -1,7 +1,7 @@
 //! Assemble the owned playlist using the service order and the device overlay.
 use super::{
-    MusicClient, mapping, missing_playlist_row, playlist_rows, playlist_track_page,
-    playlist_track_revision,
+    MusicClient, PlaylistRowSource, mapping, missing_playlist_row, playlist_rows,
+    playlist_track_page, playlist_track_revision,
 };
 use crate::{
     Error, Result,
@@ -126,13 +126,13 @@ impl MusicClient {
         local_revision: Option<&str>,
         duration_limit: Option<usize>,
     ) -> Result<OnlinePlaylistPage> {
-        let (api, uid, detail, trial) = match self
+        let (api, uid, reply, trial) = match self
             .session
             .run_for(token, |api, uid| async {
-                let (detail, trial) = self
+                let (reply, trial) = self
                     .read_playlist_page_detail(token, api.clone(), id)
                     .await?;
-                Ok((api, uid, detail, trial))
+                Ok((api, uid, reply, trial))
             })
             .await
         {
@@ -148,7 +148,8 @@ impl MusicClient {
                 return Err(error);
             }
         };
-        let mut playlist = mapping::playlist(&detail, &uid)?;
+        let detail = &reply["playlist"];
+        let mut playlist = mapping::playlist(detail, &uid)?;
         if playlist.id != id {
             return Err(Error::Response("playlist identity mismatch"));
         }
@@ -171,7 +172,16 @@ impl MusicClient {
                 .session
                 .run_for(token, |current, _| async {
                     self.session.require_api(token, &api)?;
-                    playlist_track_page(current, &uid, id, &detail, page, trial_mode, None).await
+                    playlist_track_page(
+                        current,
+                        &uid,
+                        id,
+                        detail,
+                        page,
+                        trial_mode,
+                        PlaylistRowSource::Detail(&reply),
+                    )
+                    .await
                 })
                 .await?;
             return Ok(OnlinePlaylistPage {
@@ -181,14 +191,14 @@ impl MusicClient {
             });
         }
         let result = {
-            let revision = playlist_track_revision(id, &detail)?;
+            let revision = playlist_track_revision(id, detail)?;
             if (page.offset > 0 && (page.revision.is_none() || local_revision.is_none()))
                 || page.revision.as_ref().is_some_and(|r| r != &revision)
             {
                 return Err(Error::QueueChanged);
             }
             let store = PlaylistLocalStore::new(self.session.clone())?;
-            let membership = store.project(token, id, &detail)?;
+            let membership = store.project(token, id, detail)?;
             if duration_limit.is_some_and(|max| membership.rows.len() > max) {
                 return Err(Error::InvalidInput("playlist too large to sort"));
             }
@@ -242,7 +252,14 @@ impl MusicClient {
                 .session
                 .run_for(token, |current, _| async {
                     self.session.require_api(token, &api)?;
-                    playlist_rows(current, slots, page.offset, trial_mode, None).await
+                    playlist_rows(
+                        current,
+                        slots,
+                        page.offset,
+                        trial_mode,
+                        PlaylistRowSource::Detail(&reply),
+                    )
+                    .await
                 })
                 .await?;
             // A concurrent local edit during song-detail lookup invalidates this page.
