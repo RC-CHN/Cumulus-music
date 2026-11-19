@@ -62,10 +62,12 @@
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await sleep(300); // Let transition/GTK compositor settle before host captures the frame.
     const native = await playback();
-    assert(native.state === 'paused' && native.playId === baseline.playId &&
-      native.entryId === baseline.entryId && native.queueRevision === baseline.queueRevision &&
-      native.position === baseline.position && native.volume === expectedVolume,
-      'diagnosis leaves paused decoder/queue/clock unchanged');
+    const changed = ['state', 'playId', 'entryId', 'queueRevision', 'position']
+      .filter((key) => native[key] !== baseline[key])
+      .map((key) => `${key} ${JSON.stringify(baseline[key])}->${JSON.stringify(native[key])}`);
+    if (native.volume !== expectedVolume) changed.push(`volume ${expectedVolume}->${native.volume}`);
+    assert(!changed.length,
+      'diagnosis leaves paused decoder/queue/clock unchanged: ' + changed.join(', '));
     const box = alert()?.getBoundingClientRect();
     assert(!!box === visible && (!box || (box.left >= 0 && box.right <= innerWidth &&
       box.top >= 0 && box.bottom <= innerHeight)), 'expected diagnostic visibility and no clipped alert');
@@ -101,11 +103,23 @@
     }, 'real null decoder started');
     await click(() => bar()?.querySelector('[aria-label="暂停"]'), 'pause');
     await invoke('player_action', { epoch, action: { kind: 'volume', value: 60 } });
+    let settled = null;
     baseline = await wait(async () => {
       const value = await playback();
-      return value.state === 'paused' && value.volume === 60 &&
-        trigger()?.title?.includes('60%') && value;
-    }, 'paused and initial 60 percent');
+      const ready = value.state === 'paused' && value.volume === 60 &&
+        trigger()?.title?.includes('60%');
+      if (!ready) { settled = null; return false; }
+      // Pause is asynchronous: mpv can still deliver one final time-pos tick after
+      // the UI already reports paused, which moved the old reference by ~40ms and
+      // failed the strict clock comparison below. Require the clock to hold still
+      // across a real window before it becomes the reference for the diagnosis.
+      if (settled && settled.position === value.position &&
+        settled.playId === value.playId && settled.entryId === value.entryId &&
+        settled.queueRevision === value.queueRevision) return value;
+      settled = value;
+      await sleep(240);
+      return false;
+    }, 'paused and initial 60 percent on a settled clock');
 
     await adjust(60, 79);
     await capture('below_threshold', false, 79);
@@ -154,6 +168,9 @@
       realMusicRequests: 0, realAccountWrites: 0 });
   } catch (cause) {
     await emit('failed', { ok: false, last, count, error: String(cause), stack: cause?.stack,
+      baseline: baseline && { playId: baseline.playId, entryId: baseline.entryId,
+        queueRevision: baseline.queueRevision, position: baseline.position, volume: baseline.volume,
+        state: baseline.state },
       native: epoch && await playback().catch(() => null), displayedVolume: slider()?.value ?? null,
       focus: document.activeElement?.outerHTML.slice(0, 400), alert: alert()?.textContent.trim(),
       outputPercent: one('[data-system-master-percent]')?.textContent.trim() ?? null });
