@@ -12,3 +12,5 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop/resources/native/
+# Local assistant session state: contains real account transcripts and tool output.
+.rcoder/
