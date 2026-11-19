@@ -54,16 +54,20 @@ jobs:
           CARGO_BUILD_JOBS: '3'
         run: cargo build -p cumulus-desktop --features custom-protocol --locked --example watchman_fingerprint_probe
       - name: Measure the native Windows engine
-        run: python scripts/ci/watchman_reference.py --binary .build/target/debug/examples/watchman_fingerprint_probe.exe --root .build/watchman-reference/native
+        run: python scripts/ci/watchman_reference.py --binary .build/target/debug/examples/watchman_fingerprint_probe.exe --root .build/ci-watchman-native
       - name: Measure with the engine mask enabled
         env:
           CUMULUS_PROOF_ENGINE_MASK: '1'
-        run: python scripts/ci/watchman_reference.py --binary .build/target/debug/examples/watchman_fingerprint_probe.exe --root .build/watchman-reference/engine-mask
+        run: python scripts/ci/watchman_reference.py --binary .build/target/debug/examples/watchman_fingerprint_probe.exe --root .build/ci-watchman-masked
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: watchman-windows-reference-attempt-${{ github.run_attempt }}
-          path: .build/watchman-reference/
+          path: |
+            .build/ci-watchman-native/
+            .build/ci-watchman-native.log
+            .build/ci-watchman-masked/
+            .build/ci-watchman-masked.log
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
