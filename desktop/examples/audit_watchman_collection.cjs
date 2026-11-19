@@ -29,7 +29,13 @@ for(const [version,directory,rawHash,readableHash,old] of [
  }
 }
 check(complete.ok&&complete.actualPageReload&&complete.stalePendingCancelled&&complete.staleFrameRejected&&complete.deviceCacheRebuiltAfterReload&&complete.nativeCollectionConnected);
-check(complete.networkRequests===0&&complete.deviceReports===0&&complete.behaviorReports===0&&complete.deviceReads===114);
-if(proof.sourceCalls)check(proof.sourceCalls.filter(s=>s.startsWith('d:')).length===114);
-const result={ok:true,officialEncodedFields:fields,eventFields:events,builds:2,actualDeviceReads:114,actualPageReload:true,cacheReusedAndRebuilt:true,missingLoaderPreserved:true,fontFailuresPreserved:true,audioEmptyResultPreserved:true,networkRequests:0};
+// One device round per measured build plus one round after the page reload. Derive the
+// count from the probe's own report instead of pinning a number that drifts whenever a
+// build is added to the matrix.
+const perBuild=complete.deviceFieldsPerBuild,rounds=proof.reports.length+1;
+check(perBuild===38&&rounds===complete.sdkBuilds+1);
+const expectedReads=perBuild*rounds;
+check(complete.deviceReads===expectedReads);
+if(proof.sourceCalls)check(proof.sourceCalls.filter(s=>s.startsWith('d:')).length===expectedReads);
+const result={ok:true,officialEncodedFields:fields,eventFields:events,builds:complete.sdkBuilds,auditedBuilds:2,actualDeviceReads:expectedReads,actualPageReload:true,cacheReusedAndRebuilt:true,missingLoaderPreserved:true,fontFailuresPreserved:true,audioEmptyResultPreserved:true,networkRequests:0,unauditedBuildsReason:'no archived readable.js for the remaining build'};
 fs.writeFileSync(path.join(root,'independent-audit.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx'});console.log(JSON.stringify(result));

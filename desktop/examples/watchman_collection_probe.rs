@@ -24,6 +24,17 @@ use std::{
     time::Duration,
 };
 use tauri::{Manager, webview::PageLoadEvent};
+
+/// Every SDK build the client can select from remote configuration.
+const MEASURED_BUILDS: [SdkBuild; 3] =
+    [SdkBuild::Af2952a4, SdkBuild::B602a5ad7, SdkBuild::E2891084];
+
+/// Device descriptors one collection round reads (collectors.json `device`).
+const DEVICE_FIELDS: usize = 38;
+
+/// One round per build, plus one round after the page reload.
+const DEVICE_READS: usize = DEVICE_FIELDS * (MEASURED_BUILDS.len() + 1);
+
 struct Offline;
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -94,7 +105,7 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
     });
     let collector = NativeCollection::new(source.clone());
     let mut reports = vec![];
-    for build in [SdkBuild::Af2952a4, SdkBuild::B602a5ad7] {
+    for build in MEASURED_BUILDS {
         let config = Config::from_conf_for(
             build,
             "fixture",
@@ -111,7 +122,7 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
         let measured = collector
             .collect(CollectionMode::Device, &config, 0)
             .await?;
-        if measured.device.len() != 38 {
+        if measured.device.len() != DEVICE_FIELDS {
             return Err(Error::State("actual device collection incomplete"));
         }
         for key in ["Jb", "Qa", "dc"] {
@@ -143,7 +154,7 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
                 .iter()
                 .filter(|s| s.starts_with("d:"))
                 .count()
-                != before + 38
+                != before + DEVICE_FIELDS
         {
             return Err(Error::State("actual device cache not reused"));
         }
@@ -204,7 +215,7 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
         return Err(Error::State("stale page frame accepted"));
     }
     let config = Config::from_conf_for(
-        SdkBuild::B602a5ad7,
+        SdkBuild::E2891084,
         "fixture",
         "",
         &encode_text(r#"{"ejcd":true,"ews":true}"#)?,
@@ -212,7 +223,8 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
     let reloaded = collector
         .collect(CollectionMode::Device, &config, 0)
         .await?;
-    if reloaded.device.len() != 38
+    // Reloading under a different build must rebuild the cache, not reuse another build's.
+    if reloaded.device.len() != DEVICE_FIELDS
         || source
             .calls
             .lock()
@@ -220,7 +232,7 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
             .iter()
             .filter(|s| s.starts_with("d:"))
             .count()
-            != 114
+            != DEVICE_READS
     {
         return Err(Error::State("reload reused stale device cache"));
     }
@@ -230,9 +242,9 @@ async fn run(window: tauri::WebviewWindow, root: PathBuf) -> Result<()> {
             &json!({"reports":reports,"afterReload":encoded(&reloaded.device)?,"sourceCalls":source.calls.lock().unwrap().clone()}),
         )?,
     )?;
-    window.eval("(()=>{document.body.innerHTML='';const n=document.createElement('div');n.style.cssText='padding:32px;color:#222;background:white;font:20px sans-serif';n.textContent='真实原生采集验证通过：双版本设备缓存、环境字段、事件排空与页面重载。';document.body.append(n);})();").map_err(|_|Error::State("probe result display failed"))?;
+    window.eval("(()=>{document.body.innerHTML='';const n=document.createElement('div');n.style.cssText='padding:32px;color:#222;background:white;font:20px sans-serif';n.textContent='真实原生采集验证通过：三版本设备缓存、环境字段、事件排空与页面重载。';document.body.append(n);})();").map_err(|_|Error::State("probe result display failed"))?;
     tokio::time::sleep(Duration::from_millis(500)).await;
-    let summary = json!({"ok":true,"realWebview":true,"nativeCollectionConnected":true,"sdkBuilds":2,"deviceReads":114,"deviceFieldsPerBuild":38,"allEnvironmentGettersPerBuild":21,"actualPageReload":true,"stalePendingCancelled":true,"staleFrameRejected":true,"deviceCacheRebuiltAfterReload":true,"programmaticClickIsUntrusted":true,"networkRequests":0,"deviceReports":0,"behaviorReports":0,"musicRequestContextConnected":false});
+    let summary = json!({"ok":true,"realWebview":true,"nativeCollectionConnected":true,"sdkBuilds":MEASURED_BUILDS.len(),"deviceReads":DEVICE_READS,"deviceFieldsPerBuild":DEVICE_FIELDS,"allEnvironmentGettersPerBuild":21,"actualPageReload":true,"stalePendingCancelled":true,"staleFrameRejected":true,"deviceCacheRebuiltAfterReload":true,"programmaticClickIsUntrusted":true,"networkRequests":0,"deviceReports":0,"behaviorReports":0,"musicRequestContextConnected":false});
     fs::write(
         root.join("complete.json"),
         serde_json::to_vec_pretty(&summary)?,

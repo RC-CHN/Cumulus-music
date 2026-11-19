@@ -410,7 +410,9 @@ async fn config_build_upgrade_is_persisted_and_304_does_not_revert_to_legacy() {
 }
 #[tokio::test]
 async fn runtime_actual_packets_device_correction_behavior_retry_and_token_consistency() {
-    for build in [SdkBuild::Af2952a4, SdkBuild::B602a5ad7] {
+    // Every build the client can select from remote configuration must round-trip its own
+    // packets; a build that only parses but cannot encode would fail here.
+    for build in [SdkBuild::Af2952a4, SdkBuild::B602a5ad7, SdkBuild::E2891084] {
         let mut config = config_response();
         config["result"]["v"] = json!(build.version());
         let backend = Backend::new(

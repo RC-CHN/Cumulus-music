@@ -49,8 +49,16 @@ for(const [build,directory,rawHash,readableHash,old] of [
   check(get('windows_declared','ob')===vm.runInContext('device.ob.f()',context));
  }
 }
-check(proof.rows.length===(proof.device?16:8)&&measured>=4&&complete.ok&&complete.realWebview&&complete.networkRequests===0&&complete.deviceReports===0&&complete.behaviorReports===0);
-if(proof.device)check(deviceFields===128&&complete.globalIdentityUnchanged&&complete.nativeHardwareFactsPreserved);
-const report={ok:true,measuredFingerprintFields:measured,explicitFailedFields:failed,unsupportedFields:unsupported,deviceFields,officialBrowserCheckVerified:!!proof.device,languageFieldsVerifiedForBothBuilds:true,networkRequests:0};
+// Four fingerprint keys times two projection modes per build. Count the builds from the
+// proof itself so adding one to the probe does not silently invalidate this audit.
+const proofBuilds=[...new Set(proof.rows.map(r=>r.build))];
+check(proofBuilds.length===3);
+check(proof.rows.length===proofBuilds.length*(proof.device?8:4)&&measured>=4&&complete.ok&&complete.realWebview&&complete.networkRequests===0&&complete.deviceReports===0&&complete.behaviorReports===0);
+// Only builds with an archived readable.js can be re-derived here; the newest build is
+// covered by the Rust-side table tests instead. Compare each count against its own scope:
+// deviceFields covers the audited builds, complete.deviceFields covers all of them.
+const auditedBuilds=2,devicePerBuildPerMode=32;
+if(proof.device)check(deviceFields===auditedBuilds*2*devicePerBuildPerMode&&complete.deviceFields===proofBuilds.length*2*devicePerBuildPerMode&&complete.globalIdentityUnchanged&&complete.nativeHardwareFactsPreserved);
+const report={ok:true,measuredFingerprintFields:measured,explicitFailedFields:failed,unsupportedFields:unsupported,deviceFields,builds:proofBuilds.length,officialBrowserCheckVerified:!!proof.device,languageFieldsVerifiedForEveryBuild:true,networkRequests:0};
 fs.writeFileSync(path.join(root,'independent-audit.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});
 console.log(JSON.stringify(report));

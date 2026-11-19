@@ -74,7 +74,7 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run format:check
       - run: npm --prefix frontend test
-      - run: node --test desktop/tests/watchman_environment.cjs desktop/tests/watchman_compatibility.cjs
+      - run: node --test desktop/tests/watchman_environment.cjs desktop/tests/watchman_compatibility.cjs desktop/tests/watchman_measurement.cjs
       - run: npm --prefix frontend run build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

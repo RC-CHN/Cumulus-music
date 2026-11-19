@@ -19,6 +19,14 @@ use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 struct Offline;
+
+/// Every SDK build the client can select from remote configuration.
+const MEASURED_BUILDS: [SdkBuild; 3] =
+    [SdkBuild::Af2952a4, SdkBuild::B602a5ad7, SdkBuild::E2891084];
+
+/// Device getters each build's script emits; the three builds agree on the key set.
+const DEVICE_FIELDS: usize = 32;
+
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
@@ -45,7 +53,7 @@ fn main() {
         declaration_value,
         context_script(&declaration).unwrap()
     );
-    for build in [SdkBuild::Af2952a4, SdkBuild::B602a5ad7] {
+    for build in MEASURED_BUILDS {
         for mode in ["actual", "windows_declared"] {
             let context = if mode == "actual" {
                 "undefined"
@@ -54,7 +62,7 @@ fn main() {
             };
             script.push_str(&format!(
                 "device.push(...({})({context}).map(row=>({{...row,build:{},mode:{}}})));\n",
-                device_script(build),
+                device_script(build).unwrap(),
                 serde_json::to_string(build.version()).unwrap(),
                 serde_json::to_string(mode).unwrap()
             ));
@@ -97,7 +105,9 @@ fn main() {
                 let run=||->Result<(),Box<dyn std::error::Error>> {
                     let input:Value=serde_json::from_str(event.payload())?;
                     let rows=input["rows"].as_array().ok_or("missing measured rows")?;
-                    if rows.len()!=16 || input["globalIdentityUnchanged"]!=true || input["declaration"]!=declaration_value {return Err("incomplete or invalid measurements".into());}
+                    // Four fingerprint keys x two modes x every measured build.
+                    let expected_rows=MEASURED_BUILDS.len()*2*4;
+                    if rows.len()!=expected_rows || input["globalIdentityUnchanged"]!=true || input["declaration"]!=declaration_value {return Err(format!("incomplete or invalid measurements: {} rows, expected {}",rows.len(),expected_rows).into());}
                     let fields=descriptors()?;
                     let mut seen=std::collections::BTreeSet::new();
                     let mut output=vec![];
@@ -116,7 +126,9 @@ fn main() {
                         let items:Vec<_>=output.iter().filter(|v|v["key"]==key).collect();
                         if items.iter().any(|v|v["reading"]["kind"]!="fingerprint"||v["value"]!=items[0]["value"]) {return Err("actual plugin/canvas comparison failed".into());}
                     }
-                    let device=input["device"].as_array().filter(|d|d.len()==128).ok_or("missing device measurements")?;
+                    // Device getters x two modes x every measured build.
+                    let expected_device=MEASURED_BUILDS.len()*2*DEVICE_FIELDS;
+                    let device=input["device"].as_array().filter(|d|d.len()==expected_device).ok_or_else(||format!("missing device measurements: expected {expected_device} rows"))?;
                     let mut device_output=vec![];
                     let mut seen=std::collections::BTreeSet::new();
                     for row in device {
@@ -132,7 +144,7 @@ fn main() {
                         device_output.push(row);
                     }
                     let mut flags=vec![];
-                    for build in [SdkBuild::Af2952a4, SdkBuild::B602a5ad7] {
+                    for build in MEASURED_BUILDS {
                         let value=|mode:&str,key:&str|->Result<&Value,Box<dyn std::error::Error>>{device.iter().find(|v|v["build"]==build.version()&&v["mode"]==mode&&v["key"]==key&&v["failed"]==false).map(|v|&v["value"]).ok_or("device field missing or failed".into())};
                         for key in ["Ta","bb","Vb","mb","Nb"] {if value("actual",key)?!=value("windows_declared",key)? {return Err("host fact changed by projection".into());}}
                         for (key,name) in [("$b","userAgent"),("Ia","appVersion"),("Ib","platform"),("zb","language"),("Ab","languages")] {if value("windows_declared",key)?!=&declaration_value[name] {return Err("declared field differs".into());}}
