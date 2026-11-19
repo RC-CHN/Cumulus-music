@@ -454,7 +454,10 @@
     },
     {
       "feature": "actual_device_and_graphics_measurements_with_windows_projection",
-      "source_manifest": "docs/watchman-measurements-source.json",
+      "source_manifest": [
+        "docs/watchman-measurements-source.json",
+        "docs/watchman-environment-source.json"
+      ],
       "core": [
         "core/src/identity/compatibility.rs"
       ],
@@ -465,24 +468,34 @@
       ],
       "tests": [
         "core/tests/windows_compatibility.rs",
-        "desktop/tests/watchman_compatibility.cjs"
+        "desktop/tests/watchman_compatibility.cjs",
+        "desktop/tests/watchman_measurement.rs",
+        "desktop/tests/watchman_measurement.cjs"
       ],
       "executable": "desktop/examples/watchman_fingerprint_probe.rs",
       "independent_audit": "desktop/examples/audit_watchman_fingerprint_probe.cjs",
       "evidence": ".build/ui-proof/watchman-windows-compatibility-20261027-b",
-      "device_fields": 128,
-      "measured_fingerprints": 12,
-      "explicit_font_failures": 4,
+      "device_fields": 192,
+      "measured_fingerprints": 18,
+      "explicit_font_failures": 6,
       "real_webview_verified": true,
       "real_windows_environment": false,
       "online_verified": false,
-      "browser_engine_mismatch_preserved": true
+      "browser_engine_mismatch_preserved": true,
+      "builds": [
+        "2.7.5_af2952a4",
+        "2.7.5_602a5ad7",
+        "2.7.5_e2891084"
+      ],
+      "audited_builds": 2,
+      "audit_scope_note": "Rebuilt from archived readable.js for af2952a4 and 602a5ad7 only; e2891084 has no readable archive and is covered by the Rust table and digest tests instead."
     },
     {
       "feature": "native_collection_and_actual_page_lifecycle",
       "source_symbols": [
         "af2952a4:Dc/aa/dd/Bb/Cc",
-        "602a5ad7:Ec/ca/dd/Cb/Dc"
+        "602a5ad7:Ec/ca/dd/Cb/Dc",
+        "e2891084:ic/fd/cd/Db/Bc"
       ],
       "core": [
         "core/src/watchman/collection/mod.rs",
@@ -500,17 +513,24 @@
       "tests": [
         "core/tests/watchman_collection.rs",
         "desktop/tests/watchman_collection.rs",
-        "desktop/tests/watchman_environment.cjs"
+        "desktop/tests/watchman_environment.cjs",
+        "desktop/tests/watchman_measurement.cjs"
       ],
       "fixture": "core/tests/fixtures/watchman-collection-official.json",
       "executable": "desktop/examples/watchman_collection_probe.rs",
       "independent_audit": "desktop/examples/audit_watchman_collection.cjs",
       "evidence": ".build/ui-proof/watchman-collection-20261027-b",
       "native_collection_connected": true,
-      "device_reads": 114,
+      "device_reads": 152,
       "real_page_reload": true,
       "font_and_loader_failures_preserved": true,
-      "online_verified": false
+      "online_verified": false,
+      "builds": [
+        "2.7.5_af2952a4",
+        "2.7.5_602a5ad7",
+        "2.7.5_e2891084"
+      ],
+      "sdk_builds": 3
     },
     {
       "feature": "pc_configuration_context_and_formal_native_runtime",
@@ -645,7 +665,7 @@
   "remaining": [
     "Independent rename/description, subscribe/unsubscribe and settings official EAPI paths remain outside the proven complete playlist workflow; no automatic fallback after rejection",
     "LoginGuardian/CAPTCHA/device verification/credential refresh flows and UI still require completion",
-    "Windows/macOS reference measurements and remaining font/loader dependencies; current WebKit mismatch retained",
+    "Windows/macOS reference measurements remain unverified. The font helper's missing fontList global and the absent loader global are shared ceilings across all three archived builds, not pending integration work; the current WebKit engine mismatch is retained rather than papered over.",
     "all broader desktop/business/visual/delivery requirements remain governed by the full active goal"
   ],
   "runtime_contract": "docs/core-watchman-runtime-contracts.txt",

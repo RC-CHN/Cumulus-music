@@ -1,14 +1,22 @@
 Watchman 真实设备测量、原生指纹与 Windows 声明适配
 2026-10-27。完整目标仍进行中；本文件补充事件桥和运行时契约。
-本批没有发送/v3/d或/v3/b，也没有证明任何受保护接口的风控已经通过。
+本批（2026-10-27）没有发送/v3/d或/v3/b，也没有证明任何受保护接口的风控已经通过。
+2026-11-18 晚的真实账号探针改变了这一状态：配置、/v3/d、/v3/b 与受保护的
+/api/v6/playlist/detail 均返回 200，证据见 core-watchman-contracts.txt 与
+playlist-detail-ui-contracts.txt。下文其余结论仍按各自批次标注。
 
 来源及职责
-只使用固定的官方2.7.5_af2952a4与2.7.5_602a5ad7，完整SHA/函数/输出文件映射见
-docs/watchman-measurements-source.json。原始路径与哈希校验在生成器中固定，源变化即拒绝生成。
+只使用固定的官方2.7.5_af2952a4、2.7.5_602a5ad7与2.7.5_e2891084，完整SHA/函数/输出文件映射见
+docs/watchman-measurements-source.json与watchman-environment-source.json。
+原始路径与哈希校验在生成器中固定，源变化即拒绝生成。
 references/recovered-client/scripts/recover_watchman_measurements.cjs只提取已审阅的纯测量函数；
 没有执行SDK初始化、远程脚本、上报、Cookie或持久化代码。原始业务不由Python进程实现。
+2.7.5_e2891084只有压缩包、没有readable版本，该管线的输出无法用于它，因此另建
+references/recovered-client/scripts/recover_watchman_measurements_min.cjs：直接对min.js求解，
+括号配平切出模块表达式、按作用域解析函数声明、解码字符串池，再按表条目自身的角色分区。
+同一生成器在602a5ad7上重跑产出与既有脚本等价的六个文件，作为方法可信的依据。
 core/src/watchman/fingerprint.rs恢复原指纹哈希；fields.rs/value.rs负责官方字段转换与编码。
-desktop/src/watchman/measurement.rs选择两版本固定函数；compatibility.rs/js提供可选采集上下文。
+desktop/src/watchman/measurement.rs按build选择固定函数（三版本互不复用）；compatibility.rs/js提供可选采集上下文。
 core/src/identity/compatibility.rs只定义显式Windows声明和本机locale正规化，独立于Tauri。
 同目录events.js仍负责真实事件采样；本批没有改写isTrusted或制造点击/键盘行为。
 
@@ -32,14 +40,18 @@ Sb/ac/Na旧语言属性；Gb oscpu；fb文档模式；mb线程数；Nb屏幕尺�
 设备类别与浏览器类型使用原始helper和IIFE。每个getter独立捕获异常，明确failed字段。
 宿主只读取实际对象或明确的navigator兼容投影；窗口、document、screen、Date、eval仍为真实对象。
 字段表中ua/va/yc等访问保留原始属性名，不擅自“纠正”为其他标准API。
-这份基础适配没有实现官方Ec设备缓存、异步/延迟队列和完整配置选择，也没有收集21项环境字段。
+这份基础适配（compatibility投影）没有实现官方Ec设备缓存、异步/延迟队列和完整配置选择，
+也不采集环境字段；21项环境字段由environment脚本单独承担，两者不重叠。
 
 插件/Canvas/WebGL/字体
 Jb：保留官方gd函数对象被直接当真值的行为，因此走ed/ActiveX检查后拼实际plugins。
 Qa：原500×200画布、Arial文字/emoji、填充与混合图形，返回完整测量串供Rust计算指纹。
 dc：原上下文/着色器/参数采集，保留代码自身细节，不用物理GPU名称替换WebGL输出。
-jb：保留原字体helper对fontList的依赖；归档两版中该全局没有定义，当前真实浏览器均明确失败。
-不把字体失败记为“未实现成功”，也不随机生成字体哈希。ib字体数量、La音频测量尚待接入。
+jb：保留原字体helper对fontList的依赖；归档三版中该全局都没有定义，真实浏览器均明确失败。
+不把字体失败记为“未实现成功”，也不随机生成字体哈希。
+ib与La由environment脚本承担，不是device表的条目：ib取字体门控条目并调用fontCount()，
+La是OfflineAudioContext音频回调（三角波10kHz→压缩器→取4500..5000样本→自算哈希），
+两者都在desktop/src/watchman/collection/mod.rs的环境映射里接线，已覆盖三版本。
 WebGL和字体是否启用必须遵守官方配置ews/ejcd与默认值；探针为检验测量函数显式执行所有四项，
 并非声称服务端当前要求四项都上传。不能通过本批对照推断正式采集配置已经正确接线。
 

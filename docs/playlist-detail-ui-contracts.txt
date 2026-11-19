@@ -1,11 +1,15 @@
 歌单详情 UI/UX 来源与交互对照
 2026-10-29，fix/playlist-detail-presentation；完整逐页审计仍进行中。
 
-当前阻塞：Linux 首次打开无缓存歌单（2026-11-18）
-桌面只读检查中，账号和歌单目录读取成功。打开歌单时，上游配置选中
-Watchman 2.7.5_e2891084。Rust 核心解析配置中的版本字段 v 时返回
-VerificationSdkUnsupported，流程在发送歌单详情请求之前结束，歌曲列表因此无法加载。
-对应位置为 core/src/watchman/remote/config.rs 的 SdkBuild::parse 调用。
+当前状态：Linux 歌单详情已端到端跑通（2026-11-18 晚更新）
+上游配置选中 Watchman 2.7.5_e2891084 时，核心能解析该版本，但桌面测量适配器缺少
+这个 build 的浏览器测量脚本，拿不到 X-antiCheatToken，详情请求在本地被拦下。
+该缺口已补：六个测量脚本按 pin 住的 watchman.min.js 恢复并接线，
+desktop/examples/watchman_live_probe 以真实账号实际发出 /api/v6/playlist/detail，
+返回 200，X-antiCheatToken 与请求体 checkToken 一致。
+恢复方法与等价性证据见 core-watchman-contracts.txt 的「测量脚本恢复」。
+此前的 VerificationSdkUnsupported 属更早一层：SdkBuild::parse 不认识该版本，
+修复后版本可解析，暴露出的才是脚本缺口。
 
 另一次 Linux WebKitGTK 离线测试中，官方 SDK 脚本加载成功。测试传入空业务配置，
 初始化停在产品编号检查，报错为“[NEWatchman] required product number”。
@@ -329,11 +333,14 @@ offline_playlist_download_smoke.py 的额外五态检查真实 Linux WebView 中
 与歌单自己的评论页签、全表预取和评论写入分开。官方来源、回执、排序及返回
 后的状态边界见 playlist-song-menu-comment-count.txt。
 
-2026-11-18，登录后歌单详情读取失败
+2026-11-18，登录后歌单详情读取失败（同日晚已修复）
 在 Linux 桌面使用已保存会话做只读检查，账号身份和歌单列表均能读取。
 个人和公开歌单进入详情时，核心在发出详情请求前拒绝了不支持的 Watchman
 版本 2.7.5_e2891084。该错误在桌面显示为“当前版本不支持网易服务使用的验证组件，
 请检查 Cumulus 更新”，保留登录态并隐藏本次失败的重试入口。
+当时按“版本不支持”归类；后续实测表明版本解析已通过，真正缺的是该 build 的
+浏览器测量脚本，拿不到 X-antiCheatToken 时详情请求在本地被拦下。
+补齐脚本后重跑，详情往返已通过（见文末“实测：歌单详情往返通过”）。
 
 静态对照使用官方 x64 安装包 NeteaseCloudMusic_Music_official_3.1.43.205627_64.exe
 （https://d8.music.126.net/dmusic2/NeteaseCloudMusic_Music_official_3.1.43.205627_64.exe，
@@ -382,5 +389,68 @@ Linux 原生平台复验（2026-11-18）
 2.7.5_e2891084。实测 navigator.platform 与 navigator.userAgent 均报告 Linux。
 加载器已注册，脚本执行到初始化入口；以空业务配置调用时，返回
 “[NEWatchman] required product number”。此结果只覆盖空配置分支。
-生产桌面的请求身份见 default-windows-compatibility.txt，生产 Rust 核心对该
-SDK 版本仍返回不支持，尚无真实 Linux 身份首次读取歌单的成功回包。
+生产桌面的请求身份见 default-windows-compatibility.txt。此前本节记录的“核心对该
+SDK 版本仍返回不支持”已不成立：版本解析、测量脚本与详情往返三处都已实测通过，
+见下节。
+
+实测：歌单详情往返通过（2026-11-18 晚）
+使用 profile 副本（主库 sha256 全程保持 a37c94a21dc76b18709d65c5018004c3f8fbccff3b2a360c74bcfad62f5ec1df），
+在真实 Wayland/X11 WebView 会话中运行 desktop/examples/watchman_live_probe。
+配置链路确认 result.v 为 2.7.5_e2891084、luv 为 2.7.5_602a5ad7。
+探针本次发出 3 次音乐读取，0 次业务写入，0 次设备/行为以外的越权请求：
+  /api/w/nuser/account/get 200
+  /api/user/playlist       200，77 个歌单
+  /api/v6/playlist/detail  200
+详情请求带 X-antiCheatToken，其值与请求体 checkToken 完全一致（170 字符，前缀 9ca17ae2e6ffcda170e2e6ee），
+MConfig-Info 同在。回包歌单为 157492709「RC若宸喜欢的音乐」，trackCount 3046，本次返回 1000 首曲目。
+complete.json 记录 ok=true、musicReads=3、protectedReadCode=200、businessWrites=0、
+credentialDeviceIdUnchanged=true。
+
+边界：
+这证明了本机 Linux/WebKit 身份下该受保护读取返回 200，不证明服务端长期接受该指纹，
+也不证明 Windows 实机的字段值；探针只读，未创建、改名或删除任何歌单。
+歌单详情读取成功不等于歌单内全部曲目详情、播放权限或写入路径已验证。
+
+2026-11-19 复验：本机 IPv6 出网不稳定导致超时，A/B 对照已证明链路本身正常
+为核实把三个 build 都接进探针矩阵后真实链路未受影响，同日用全新 profile 副本重跑。
+直连时连续失败：account/get 与 /api/user/playlist 均 200（后者 177 KB），
+/api/v6/playlist/detail 的请求已生成并带上与 checkToken 匹配的 X-antiCheatToken，
+但回包在 reqwest 的 20 秒上限内没有返回，记录为 transport request failed，耗时稳定在 21.7 秒。
+主库 sha256 全程保持 a37c94a21dc76b18709d65c5018004c3f8fbccff3b2a360c74bcfad62f5ec1df。
+
+根因是本机出网地址族，不是代码、带宽、风控或指纹：
+interfacepc.music.163.com 的 DNS 同时返回 AAAA 240e:938:a07:6:0:4:0:3 与 A 111.124.200.67，
+顺序固定 AAAA 在前（连续 6 次一致）。本机 eno2 有全局 IPv6 地址与默认路由，
+但这条路径不稳定：curl 不带 -4 时 3/3 在 25 秒全超时，卡在
+Trying [240e:938:a07:6:0:4:0:3]:443；加 -4 后 3/3 立即 200，连接 0.03 秒。
+它并非全黑——一次成功的纯核心运行里 ss 抓到过 ESTAB [240e:938:a07:6:0:4:0:3]:443，
+所以表现为时通时不通，而不是完全不可达。这也解释了为何失败与成功交替出现。
+reqwest 未设 no_proxy，会读环境变量；本机 HTTP(S)_PROXY/ALL_PROXY 全为空，
+所以探针同样按 AAAA 优先出网，命中同一条坏路径。
+
+A/B 对照（同一凭证副本、同一二进制、同一时段，各用全新证明目录）：
+ 直连            → transport request failed，21.6 秒，详情回包缺失
+ 经强制 IPv4 代理 → protectedReadCode 200，详情回包 5219091 / 5321469 字节
+该代理是仅监听 127.0.0.1 的临时 CONNECT 转发器，上游用 AF_INET 解析，
+只改变地址族选择，不改请求内容、不换出口 IP、不加解密。
+
+已排除的解释：
+代码回归——当天未改动 core/src 与 desktop/src，二进制仍是 11-18 23:18 当晚成功过的那个，
+且 find 确认生产源码全部早于它。
+带宽或 MTU——Cloudflare 5 MB 达 2.7 MB/s，p1.music.126.net 149 KB 为 2.29 MB/s，
+到该 host 丢包率 0%（30 包），该路径 MTU 1400 但同路径小请求一直 200。
+anti-cheat token 或风控——纯核心只读探针（不带 token，直接调 PlaylistApi::detail）同样时通时不通：
+直连连续 5/5 成功后，同一条命令几分钟内出现一次 20.08 秒超时。
+这推翻先前"token 绑定的大响应被拒"的猜测，也说明按 token 差异归因是错的。
+
+未解释的残余：同一时段直连时，GUI 探针 6/6 失败，而纯核心探针 5/6 成功。
+两者请求体、超时、host 都相同，差别在 GUI 探针多走一次 ac.dun.163.com 配置与上报。
+本轮没有把这一速率差异分离出来，只能说"直连会失败"而"经 IPv4 必成功"，
+不足以断言 GUI 路径存在独立的额外缺陷。
+
+结论：11-18 晚那次 200 与本次经 IPv4 的 200 都成立，链路与指纹无需修改。
+失败可归因于本机 IPv6 出网不稳定叠加 DNS 优先返回 AAAA：
+一旦解析先给 AAAA，请求就有较大概率落在不可用的 IPv6 路径上并在 20 秒内放弃。
+这不是产品缺陷，也不应据此刻意调整超时或单次条数去掩盖。
+若要在本机稳定复现，应在系统层修正 IPv6 可达性，或让解析优先 A 记录
+（例如 gai.conf precedence 或 hosts 固定 IPv4），而不是改客户端协议行为。
