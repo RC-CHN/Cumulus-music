@@ -105,6 +105,60 @@
       ],
       "audio": "original dd and helpers; actual Float32Array input reaches original hash type error then empty result",
       "networkRequests": 0
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "path": "desktop/src/watchman/measurements/e2891084/environment.js",
+      "sha256": "bcb4f97e20dfe0422352ebf857166a7350b25ec1267b98b27334d621fb6f651e",
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "environmentBase": [
+        "nb",
+        "hb",
+        "Eb",
+        "gb",
+        "Xb",
+        "wb"
+      ],
+      "environmentDynamic": [
+        "sb",
+        "kb",
+        "vb",
+        "Ob",
+        "qb",
+        "Wb",
+        "yb",
+        "Tb",
+        "rb",
+        "ub",
+        "lb",
+        "Hb",
+        "Sa",
+        "Qb",
+        "cc"
+      ],
+      "helpers": [
+        "n",
+        "ja",
+        "hd",
+        "Oa",
+        "db",
+        "fc",
+        "cd",
+        "Ua",
+        "U",
+        "k",
+        "E",
+        "J",
+        "rb",
+        "Xa",
+        "Sc",
+        "N",
+        "Dc",
+        "kc"
+      ],
+      "audio": "original cd and helpers; OfflineAudioContext rendering path",
+      "networkRequests": 0
     }
   ]
 }

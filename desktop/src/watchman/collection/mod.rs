@@ -131,8 +131,8 @@ impl<R: tauri::Runtime> MeasurementSource for BrowserMeasurements<R> {
           const fingerprints={{{fingerprints}}};let cors=false;try{{cors='withCredentials' in new XMLHttpRequest();}}catch(_){{}}
           window.__cumulusWatchmanMeasurement={{build:{},owner:{},context,basic,environment,fingerprints}};
           return {{cors}};}})()"#,
-                device_script(build),
-                environment_factory(build),
+                device_script(build)?,
+                environment_factory(build)?,
                 json!(build.version()),
                 self.owner
             );

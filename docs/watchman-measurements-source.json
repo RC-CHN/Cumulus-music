@@ -195,6 +195,107 @@
         "jc"
       ],
       "semantics": "32 original device getters, actual browser objects or explicit scoped navigator projection; native encoding"
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "Jb",
+      "path": "desktop/src/watchman/measurements/e2891084/plugins.js",
+      "sha256": "140156ab915deb2a4150cf622e949751ba7bf0fd22c46c084ec133252a25b519",
+      "official_source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "helpers": [
+        "fd",
+        "dd",
+        "jc",
+        "E"
+      ],
+      "hashing": "native Rust; JS returns preimage only"
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "Qa",
+      "path": "desktop/src/watchman/measurements/e2891084/canvas.js",
+      "sha256": "488af2beb6d9ca5bf44c850d4df04beb1ccbdba573fe176b65063c63e76b40bd",
+      "official_source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "helpers": [
+        "kc",
+        "E"
+      ],
+      "hashing": "native Rust; JS returns preimage only"
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "dc",
+      "path": "desktop/src/watchman/measurements/e2891084/webgl.js",
+      "sha256": "3baa1d89775de90440be6e61de484003aae0f54d3f92db65a287f6b4e0d09289",
+      "official_source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "helpers": [
+        "kc",
+        "bd",
+        "E",
+        "ad"
+      ],
+      "hashing": "native Rust; JS returns preimage only"
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "jb",
+      "path": "desktop/src/watchman/measurements/e2891084/fonts.js",
+      "sha256": "210b760dfb051b526bf583e0e99051e01a986d4337de9c4377427826beafc429",
+      "official_source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "helpers": [
+        "fc",
+        "E"
+      ],
+      "hashing": "native Rust; JS returns preimage only"
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "keys": [
+        "zb",
+        "Ta",
+        "bb",
+        "Vb",
+        "Pb",
+        "Cb",
+        "tb",
+        "Ea",
+        "Fb",
+        "Va",
+        "Ib",
+        "eb",
+        "Da",
+        "pb",
+        "ob",
+        "Yb",
+        "Mb",
+        "Ua",
+        "xb",
+        "Fa",
+        "Ga",
+        "Ha",
+        "Ia",
+        "Ab",
+        "Sb",
+        "ac",
+        "Na",
+        "Gb",
+        "fb",
+        "mb",
+        "Nb"
+      ],
+      "path": "desktop/src/watchman/measurements/e2891084/device.js",
+      "sha256": "3fc1eb68f08c8c859b229b36d6ea8173b31b4f934558c45d978fcfc205cf3a6c",
+      "official_source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-e2891084-20261118/watchman.min.js",
+      "source_sha256": "2744116741e56fd25d543905e2dfd25cab645aa78aa2f71688ccc3d25111551a",
+      "helpers": [
+        "E",
+        "ic"
+      ],
+      "semantics": "31 original device getters; the four fingerprints, font count and audio callback carry their own scripts"
     }
   ]
 }

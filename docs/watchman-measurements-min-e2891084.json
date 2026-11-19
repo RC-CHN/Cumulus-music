@@ -1,0 +1,174 @@
+{
+  "schema": 1,
+  "generator": "references/recovered-client/scripts/recover_watchman_measurements_min.cjs",
+  "measurements": [
+    {
+      "build": "2.7.5_e2891084",
+      "key": "Jb",
+      "path": "desktop/src/watchman/measurements/e2891084/plugins.js",
+      "sha256": "140156ab915deb2a4150cf622e949751ba7bf0fd22c46c084ec133252a25b519",
+      "helpers": [
+        "fd",
+        "dd",
+        "jc",
+        "E"
+      ],
+      "pools": [
+        "a",
+        "b",
+        "c"
+      ],
+      "bindings": []
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "Qa",
+      "path": "desktop/src/watchman/measurements/e2891084/canvas.js",
+      "sha256": "488af2beb6d9ca5bf44c850d4df04beb1ccbdba573fe176b65063c63e76b40bd",
+      "helpers": [
+        "kc",
+        "E"
+      ],
+      "pools": [
+        "a",
+        "b",
+        "c",
+        "x"
+      ],
+      "bindings": []
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "dc",
+      "path": "desktop/src/watchman/measurements/e2891084/webgl.js",
+      "sha256": "3baa1d89775de90440be6e61de484003aae0f54d3f92db65a287f6b4e0d09289",
+      "helpers": [
+        "kc",
+        "bd",
+        "E",
+        "ad"
+      ],
+      "pools": [
+        "a",
+        "b",
+        "c",
+        "x"
+      ],
+      "bindings": []
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "jb",
+      "path": "desktop/src/watchman/measurements/e2891084/fonts.js",
+      "sha256": "210b760dfb051b526bf583e0e99051e01a986d4337de9c4377427826beafc429",
+      "helpers": [
+        "fc",
+        "E"
+      ],
+      "pools": [
+        "b",
+        "c",
+        "x"
+      ],
+      "bindings": []
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "device",
+      "path": "desktop/src/watchman/measurements/e2891084/device.js",
+      "sha256": "3fc1eb68f08c8c859b229b36d6ea8173b31b4f934558c45d978fcfc205cf3a6c",
+      "helpers": [
+        "E",
+        "ic"
+      ],
+      "pools": [
+        "a",
+        "b",
+        "c",
+        "x"
+      ],
+      "bindings": [],
+      "external": []
+    },
+    {
+      "build": "2.7.5_e2891084",
+      "key": "environment",
+      "path": "desktop/src/watchman/measurements/e2891084/environment.js",
+      "sha256": "bcb4f97e20dfe0422352ebf857166a7350b25ec1267b98b27334d621fb6f651e",
+      "helpers": [
+        "n",
+        "ja",
+        "hd",
+        "Oa",
+        "db",
+        "fc",
+        "cd",
+        "Ua",
+        "U",
+        "k",
+        "E",
+        "J",
+        "rb",
+        "Xa",
+        "za",
+        "Sc",
+        "N",
+        "Dc",
+        "kc",
+        "Q",
+        "sa",
+        "F",
+        "da",
+        "O",
+        "Ib"
+      ],
+      "pools": [
+        "a",
+        "b",
+        "c",
+        "x"
+      ],
+      "bindings": [
+        "ka",
+        "qb"
+      ],
+      "external": [
+        "_blur",
+        "_click",
+        "_down",
+        "_focus",
+        "_keydown",
+        "_motion",
+        "_move",
+        "_orientation",
+        "_scroll",
+        "_up",
+        "batteryInterval",
+        "batteryMax",
+        "blurInterval",
+        "blurMax",
+        "clickInterval",
+        "clickMax",
+        "cursor",
+        "downInterval",
+        "downMax",
+        "focusInterval",
+        "focusMax",
+        "fontList",
+        "keydownInterval",
+        "keydownMax",
+        "motionInterval",
+        "motionMax",
+        "moveInterval",
+        "moveMax",
+        "orientationInterval",
+        "orientationMax",
+        "scrollInterval",
+        "scrollMax",
+        "upInterval",
+        "upMax",
+        "value"
+      ]
+    }
+  ]
+}

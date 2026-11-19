@@ -97,10 +97,19 @@ pub fn public_fields_for(
             ("Xa", json!("0c0209f8"), false),
             ("$a", json!("1569d65e"), false),
         ],
+        // 602a5ad7 and e2891084 carry three per-build tags, but not under the
+        // same keys: the e2891084 build leaves Wa and $a undefined and fills
+        // Xa/Ya/Za instead. Values are the official carrier constants after the
+        // SDK's own Jc() normalisation (array join, comma strip, or call).
         SdkBuild::B602a5ad7 => [
             ("Wa", json!("e13487eb"), false),
             ("Ya", json!("20343de2"), false),
             ("$a", json!("94342c3d"), false),
+        ],
+        SdkBuild::E2891084 => [
+            ("Xa", json!("cdfd4f60"), false),
+            ("Ya", json!("7d465736"), false),
+            ("Za", json!("40b59b10"), false),
         ],
     });
     fields.into_iter().map(|f| encode_fields(&[f])).collect()

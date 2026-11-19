@@ -69,6 +69,9 @@ fn transform(build: SdkBuild, b: u8, i: usize) -> u8 {
         SdkBuild::B602a5ad7 => {
             (b ^ (91_i32 - i as i32) as u8).wrapping_add((-70_i32 + i as i32) as u8)
         }
+        // Five reduce steps: xor with -25+, add -8+, add -92, add 99+, add -33+.
+        // The three index-dependent and one constant add collapse to 3*i - 34.
+        SdkBuild::E2891084 => (b ^ (i as i32 - 25) as u8).wrapping_add((3 * i as i32 - 34) as u8),
     }
 }
 fn inverse_transform(build: SdkBuild, b: u8, i: usize) -> u8 {
@@ -79,6 +82,7 @@ fn inverse_transform(build: SdkBuild, b: u8, i: usize) -> u8 {
         SdkBuild::B602a5ad7 => {
             b.wrapping_sub((-70_i32 + i as i32) as u8) ^ (91_i32 - i as i32) as u8
         }
+        SdkBuild::E2891084 => b.wrapping_sub((3 * i as i32 - 34) as u8) ^ (i as i32 - 25) as u8,
     }
 }
 /// ib(): explicit serialized fields and seed; never fabricates environment data.
@@ -177,4 +181,67 @@ pub fn decode_packet_for(build: SdkBuild, encoded: &str) -> Result<Vec<u8>> {
         return Err(Error::Protocol("Watchman CRC32 mismatch"));
     }
     Ok(payload.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The e2891084 transform is a five-step reduce in the official bundle. This
+    /// pins the collapsed closed form against per-byte vectors taken from the
+    /// official function so a later "simplification" cannot drift.
+    #[test]
+    fn e2891084_transform_matches_official_per_byte_vectors() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/watchman-e2891084-official.json"
+        ))
+        .unwrap();
+        let scalars = fixture["transform"].as_array().unwrap();
+        assert!(!scalars.is_empty());
+        for v in scalars {
+            let index = v["index"].as_u64().unwrap() as usize;
+            let input = (v["input"].as_i64().unwrap() & 0xff) as u8;
+            // The official helper returns signed bytes; compare the low 8 bits.
+            let expected = (v["output"].as_i64().unwrap() & 0xff) as u8;
+            assert_eq!(
+                transform(SdkBuild::E2891084, input, index),
+                expected,
+                "transform mismatch at index {index} for input {input:#04x}"
+            );
+            assert_eq!(
+                inverse_transform(SdkBuild::E2891084, expected, index),
+                input,
+                "inverse mismatch at index {index} for output {expected:#04x}"
+            );
+        }
+        for v in fixture["transformBlocks"].as_array().unwrap() {
+            let input = hex::decode(v["input"].as_str().unwrap()).unwrap();
+            let expected = hex::decode(v["output"].as_str().unwrap()).unwrap();
+            let actual: Vec<u8> = input
+                .iter()
+                .enumerate()
+                .map(|(i, b)| transform(SdkBuild::E2891084, *b, i))
+                .collect();
+            assert_eq!(actual, expected, "full-block transform mismatch");
+            let restored: Vec<u8> = expected
+                .iter()
+                .enumerate()
+                .map(|(i, b)| inverse_transform(SdkBuild::E2891084, *b, i))
+                .collect();
+            assert_eq!(restored, input, "full-block inverse mismatch");
+        }
+    }
+
+    /// Guard against the index expression being written with wrapping arithmetic
+    /// that silently disagrees past 64: only indices 0..64 reach the codec, so
+    /// every index in range must be exact.
+    #[test]
+    fn e2891084_transform_inverse_round_trips_every_byte_at_every_index() {
+        for index in 0..64 {
+            for value in 0..=255_u8 {
+                let moved = transform(SdkBuild::E2891084, value, index);
+                assert_eq!(inverse_transform(SdkBuild::E2891084, moved, index), value);
+            }
+        }
+    }
 }
