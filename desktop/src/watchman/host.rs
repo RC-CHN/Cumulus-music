@@ -2,7 +2,10 @@
 use super::collection::{BrowserMeasurements, MeasurementBridge};
 use cumulus_core::{
     Error, Result,
-    identity::WindowsBrowserIdentity,
+    identity::{
+        HardwareProfile, IdentityService, WindowsBrowserIdentity, seed_from_persistent_id,
+        seed_from_state_root,
+    },
     protocol::{
         context::RequestContext,
         http::ClientProfile,
@@ -103,6 +106,44 @@ impl Drop for NativeWatchman {
     }
 }
 
+/// The Windows client is what runs here on Linux, so the derived hardware picture
+/// is on by default. `CUMULUS_WINDOWS_IDENTITY=off` restores declaration-only
+/// behaviour, and a native Windows build keeps its real identity untouched.
+/// A missing profile degrades to declarations instead of failing startup.
+fn derive_identity(
+    identity: WindowsBrowserIdentity,
+    store: &Arc<StateStore>,
+    root: &std::path::Path,
+) -> WindowsBrowserIdentity {
+    if cfg!(target_os = "windows")
+        || matches!(
+            std::env::var("CUMULUS_WINDOWS_IDENTITY").as_deref(),
+            Ok("off") | Ok("0")
+        )
+    {
+        return identity;
+    }
+    let language = identity.language().to_owned();
+    let derive = || -> Result<HardwareProfile> {
+        let seed = match IdentityService::new(store.clone()).stored_persistent_id()? {
+            Some(id) => seed_from_persistent_id(&id)?,
+            // Before the first identity write there is no installation ID yet;
+            // the state directory keeps the choice stable until there is.
+            None => seed_from_state_root(root),
+        };
+        HardwareProfile::derive(seed, &language)
+    };
+    match derive() {
+        Ok(profile) => identity.with_hardware(profile),
+        Err(error) => {
+            eprintln!(
+                "Cumulus: derived Windows hardware profile unavailable ({error}); continuing with declarations only"
+            );
+            identity
+        }
+    }
+}
+
 pub(crate) fn page_ready<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
     if let Some(host) = webview.try_state::<Arc<NativeWatchman>>() {
         let host = host.inner().clone();
@@ -119,27 +160,22 @@ pub fn install<R: tauri::Runtime>(
     let window = app
         .get_webview_window("main")
         .ok_or(Error::State("main window unavailable"))?;
+    let store = Arc::new(StateStore::open(root)?);
     let identity =
         if profile.user_agent == cumulus_core::protocol::http::OFFICIAL_WINDOWS_USER_AGENT {
             let locales = ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
                 .into_iter()
                 .find_map(|k| std::env::var(k).ok().filter(|s| !s.is_empty()))
                 .unwrap_or_default();
-            Some(WindowsBrowserIdentity::from_locales(
+            let identity = WindowsBrowserIdentity::from_locales(
                 &locales.split(':').map(str::to_owned).collect::<Vec<_>>(),
                 "zh-CN",
-            )?)
+            )?;
+            Some(derive_identity(identity, &store, root))
         } else {
             None
         };
-    let host = NativeWatchman::new(
-        window.clone(),
-        Arc::new(StateStore::open(root)?),
-        profile,
-        identity,
-        None,
-        None,
-    )?;
+    let host = NativeWatchman::new(window.clone(), store, profile, identity, None, None)?;
     let context = host.context();
     app.manage(host.clone());
     if window.state::<MeasurementBridge>().epoch().is_ok() {

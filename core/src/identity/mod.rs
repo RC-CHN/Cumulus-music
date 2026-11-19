@@ -4,6 +4,7 @@ mod codec;
 mod compatibility;
 mod composition;
 mod container;
+mod derived;
 mod facts;
 mod service;
 pub use codec::{STORAGE_KEY, decode_record, encode_record, storage_transform};
@@ -14,5 +15,6 @@ pub use container::{
     DeviceRecordSummary, ID_RECORD_KEY, MARKER, MARKER_RECORD_KEY, MAX_CONTAINER_BYTES,
     encode_container, inspect_container, parse_container, read_container,
 };
+pub use derived::{HardwareProfile, seed_from_persistent_id, seed_from_state_root};
 pub use facts::{HardwareFacts, IdentitySource, IdentitySummary, collect_linux_identity};
 pub use service::{DeviceIdentity, IdentityService};

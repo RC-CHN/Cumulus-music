@@ -2,6 +2,7 @@
 //! Hardware, credentials and renderer measurements never come from this profile.
 use crate::{
     Error, Result,
+    identity::HardwareProfile,
     protocol::http::{ClientProfile, OFFICIAL_WINDOWS_USER_AGENT},
 };
 use serde::Serialize;
@@ -18,6 +19,11 @@ pub struct WindowsBrowserIdentity {
     platform: &'static str,
     language: String,
     languages: Vec<String>,
+    /// Derived hardware picture. Present only when the optional compatibility
+    /// layer is enabled; absent means the declaration layer alone, which is the
+    /// default and matches every earlier build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hardware: Option<HardwareProfile>,
 }
 impl WindowsBrowserIdentity {
     /// POSIX host locale names are converted to a small, validated language-tag
@@ -49,7 +55,20 @@ impl WindowsBrowserIdentity {
             platform: "Win32",
             language: languages[0].clone(),
             languages,
+            hardware: None,
         })
+    }
+    /// Attaches a derived hardware picture. Callers opt in explicitly; nothing
+    /// is derived implicitly, so an unchanged call site keeps the old output.
+    pub fn with_hardware(mut self, hardware: HardwareProfile) -> Self {
+        self.hardware = Some(hardware);
+        self
+    }
+    pub fn hardware(&self) -> Option<&HardwareProfile> {
+        self.hardware.as_ref()
+    }
+    pub fn language(&self) -> &str {
+        &self.language
     }
     pub fn native_profile(&self) -> Result<ClientProfile> {
         ClientProfile::windows_compatibility(WINDOWS_COMPATIBILITY_DESCRIPTION)

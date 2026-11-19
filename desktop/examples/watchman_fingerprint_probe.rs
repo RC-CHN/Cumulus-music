@@ -3,7 +3,7 @@
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
-    identity::WindowsBrowserIdentity,
+    identity::{HardwareProfile, WindowsBrowserIdentity, seed_from_persistent_id},
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -36,6 +36,20 @@ impl Api for Offline {
     }
 }
 
+/// A JSON round-trip through JavaScript collapses `1.0` to `1`, and serde_json
+/// keeps those as different variants. Compare numbers by value so a whole-number
+/// device pixel ratio does not look like a changed declaration.
+fn canonical(value: &Value) -> Value {
+    match value {
+        Value::Number(number) => Value::from(number.as_f64().unwrap_or_default()),
+        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
+        Value::Object(map) => {
+            Value::Object(map.iter().map(|(k, v)| (k.clone(), canonical(v))).collect())
+        }
+        other => other.clone(),
+    }
+}
+
 fn main() {
     let root =
         PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new private proof directory"));
@@ -46,7 +60,23 @@ fn main() {
         .filter(|s| !s.is_empty())
         .take(1)
         .collect();
-    let declaration = WindowsBrowserIdentity::from_locales(&locales, "zh-CN").unwrap();
+    // Opt-in global identity. Absent by default, so a plain run still measures
+    // the untouched engine. The seed is synthetic and fixed so two runs of the
+    // same mode are directly comparable.
+    let hardware = std::env::var_os("CUMULUS_PROOF_HARDWARE_PROFILE").map(|_| {
+        let seed = seed_from_persistent_id(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        HardwareProfile::derive(seed, "zh-CN").unwrap()
+    });
+    let declaration = {
+        let identity = WindowsBrowserIdentity::from_locales(&locales, "zh-CN").unwrap();
+        match hardware.clone() {
+            Some(profile) => identity.with_hardware(profile),
+            None => identity,
+        }
+    };
     let declaration_value = serde_json::to_value(&declaration).unwrap();
     // Research-only switch, off unless explicitly requested. It rewrites the global
     // Function.prototype.toString so `eval.toString()` reports Chromium's native form
@@ -59,7 +89,9 @@ fn main() {
         ""
     };
     let mut script = format!(
-        "{mask}(async()=>{{try{{const rows=[],device=[];const declaration={};const projected={};const originalUserAgent=navigator.userAgent,originalPlatform=navigator.platform;",
+        // The originals are captured before the projection runs, otherwise an
+        // enabled identity layer would overwrite what "unchanged" compares against.
+        "{mask}(async()=>{{try{{const rows=[],device=[];const declaration={};const originalUserAgent=navigator.userAgent,originalPlatform=navigator.platform;const projected={};",
         declaration_value,
         context_script(&declaration).unwrap()
     );
@@ -117,7 +149,11 @@ fn main() {
                     let rows=input["rows"].as_array().ok_or("missing measured rows")?;
                     // Four fingerprint keys x two modes x every measured build.
                     let expected_rows=MEASURED_BUILDS.len()*2*4;
-                    if rows.len()!=expected_rows || input["globalIdentityUnchanged"]!=true || input["declaration"]!=declaration_value {return Err(format!("incomplete or invalid measurements: {} rows, expected {}",rows.len(),expected_rows).into());}
+                    // Enabling the identity layer is supposed to change the page, so
+                    // "unchanged" must be false there and true on the plain run. The
+                    // probe asserts the mode it was asked for instead of one fixed value.
+                    let expect_unchanged=hardware.is_none();
+                    if rows.len()!=expected_rows || input["globalIdentityUnchanged"].as_bool()!=Some(expect_unchanged) || canonical(&input["declaration"])!=canonical(&declaration_value) {return Err(format!("incomplete or invalid measurements: {} rows, expected {}, identityUnchanged {:?}, expected {}",rows.len(),expected_rows,input["globalIdentityUnchanged"],expect_unchanged).into());}
                     let fields=descriptors()?;
                     let mut seen=std::collections::BTreeSet::new();
                     let mut output=vec![];
@@ -164,7 +200,7 @@ fn main() {
                     let language_hex=hex_bytes(&encode_field(language,&input["languages"],false)?);
                     fs::write(root.join("measurements.json"),serde_json::to_vec_pretty(&json!({"rows":output,"device":device_output,"languages":input["languages"],"languageHex":language_hex,"host":input["host"],"declaration":declaration_value}))?)?;
                     let outcomes:Vec<_>=output.iter().map(|v|json!({"build":v["build"],"key":v["key"],"kind":v["reading"]["kind"]})).collect();
-                    fs::write(root.join("complete.json"),serde_json::to_vec_pretty(&json!({"ok":true,"realWebview":true,"outcomes":outcomes,"deviceFields":device.len(),"compatibilityChecks":flags,"globalIdentityUnchanged":true,"nativeHardwareFactsPreserved":true,"networkRequests":0,"deviceReports":0,"behaviorReports":0,"productionCollectionConnected":false,"realWindowsEnvironment":cfg!(windows),"engineMask":engine_mask,"evalTextLength":input["host"]["evalTextLength"],"hostPlatform":input["host"]["platform"]}))?)?;
+                    fs::write(root.join("complete.json"),serde_json::to_vec_pretty(&json!({"ok":true,"realWebview":true,"outcomes":outcomes,"deviceFields":device.len(),"compatibilityChecks":flags,"globalIdentityUnchanged":input["globalIdentityUnchanged"],"nativeHardwareFactsPreserved":true,"networkRequests":0,"deviceReports":0,"behaviorReports":0,"productionCollectionConnected":false,"realWindowsEnvironment":cfg!(windows),"engineMask":engine_mask,"hardwareProfile":declaration_value.get("hardware"),"evalTextLength":input["host"]["evalTextLength"],"hostPlatform":input["host"]["platform"]}))?)?;
                     let handle=handle.clone();
                     tauri::async_runtime::spawn(async move {tokio::time::sleep(std::time::Duration::from_secs(3)).await;handle.exit(0);});
                     Ok(())

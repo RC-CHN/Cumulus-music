@@ -137,3 +137,45 @@ local仍为实际平台请求配置。windows-local不是完整浏览器伪装�
 独立对照通过；正式二进制也已实际恢复账号并显示每日推荐。Windows声明仍暴露真实WebKit
 差异，不将服务返回码等同于完整平台伪装。原403写路径、登录挑战及其他平台继续验证。
 调用顺序、日志、私有证据目录与可复跑命令见core-pc-request-context-contracts.txt。
+
+2026-11-19 后续：真实Windows参照、ob归零与可选派生层
+三平台实测补齐了此前只有推测的部分。Windows runner（windows-2022，WebView2 131）与真实桌面
+（RTX 5090/9950X3D，WebView2 157，中国标准时间）均由fingerprint_probe原生运行取得：
+两处eval.toString().length均为33、platform为Win32，三版官方检查ob均为false、pb均为true。
+Linux WebKit为37，置换Windows声明后ob由false变true，即此前记录的差异成立，且pb在真实
+Windows同样为true，不能作为平台判据。探针新增CUMULUS_PROOF_ENGINE_MASK，仅改写全局
+Function.prototype.toString使eval报告Chromium原生形态；实测该开关使Linux声明模式ob由true
+变false，同时使未投影的actual模式变true，证明遮盖与platform声明必须同时生效、作用域为整个页面。
+
+四个指纹对照（actual/e2891084）：Jb三平台相同；Qa与dc三平台各不相同，包括同为Windows的
+CI runner与真机。结论是这两项随GPU而非随平台变化，不能作为平台判据，也不应伪造：伪造会
+造出并不存在的硬件身份。jb在官方三份bundle中引用自由变量fontList而全库从未赋值，ReferenceError
+被内部catch转为失败，故三平台一致failed是官方上限而非本实现的缺陷，也不应"修复"——注入列表
+反而会产出真实客户端发不出的值。字体测量维持现状。
+
+派生层（新增，Linux默认开启）
+这是对页面身份的主动替换，不是对官方客户端行为的复刻。
+生产路径desktop/watchman/host.rs在非Windows构建、且profile为官方Windows UA时默认附加：
+种子优先取已持久化安装ID的前16位十六进制，首次写入前改用状态目录摘要，二者都使同机重启
+恒定而不同安装互异。CUMULUS_WINDOWS_IDENTITY=off（或0）恢复仅声明行为；原生Windows构建
+不做替换。派生失败（如声明语言无可映射时区）不阻断启动，打印提示后退回仅声明。
+core/identity/derived.rs由确定性种子（来自已持久化ID的前16位十六进制）派生一次per-install
+画像：屏幕四元组、devicePixelRatio、hardwareConcurrency、时区。纯函数，不读时钟、不用随机源，
+同种子恒等，异种子覆盖多种桌面形态，因此不同安装互不相同而不是全体共享一个固定真机值。
+取值受实测样本界定：核数4..=32，屏幕由1366x768至3840x2160（含1.25/1.5缩放，2560x1440@1.25
+换算得2048x1152即真机CSS尺寸），时区按声明语言映射，zh-*恒为-480，无法映射的语言直接报错
+而不是静默退回UTC。越界输入返回InvalidInput，不截断。
+core/identity/compatibility.rs的WindowsBrowserIdentity新增with_hardware，未调用时序列化结果
+与既有版本逐字节相同，from_locales及其测试不变；调用方只有上述生产路径与探针。
+desktop/watchman/compatibility.js仅在声明携带hardware时注入：Function.prototype.toString对
+eval返回Chromium原生文本，Navigator/Screen/Date按画像作答；不携带时保持原只读Proxy，
+不改任何全局对象。
+
+实测（Linux，两组均由fingerprint_probe原生运行）
+ 基线：eval长度37、platform为Linux x86_64，三版declared ob=true
+ 启用：eval长度33、platform为Win32，三版declared ob=false，pb两模式均为true
+localIdentityUnchanged随之由true变false，探针按模式断言该值，并把实测值写入complete.json。
+
+不作伪：canvas/WebGL输出保持真实值，理由见上。未验证：服务端是否对本套字段做交叉校验，
+以及真实Windows会话下该层与官方客户端是否还有未发现差异。
+

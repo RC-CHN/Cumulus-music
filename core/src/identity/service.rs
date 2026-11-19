@@ -52,6 +52,14 @@ impl IdentityService {
     pub fn new(store: Arc<StateStore>) -> Self {
         Self { store }
     }
+    /// Reads the persisted installation identifier without creating one or
+    /// touching observations. Returns `None` before the first resolve.
+    pub fn stored_persistent_id(&self) -> Result<Option<String>> {
+        self.store
+            .get(OWNER, KIND, KEY)?
+            .map(|value| stored_id(&value).map(str::to_owned))
+            .transpose()
+    }
     /// BEGIN IMMEDIATE atomically creates or adopts the persisted ID and updates
     /// observations; independent connections cannot choose competing first IDs.
     pub fn resolve(&self, facts: &HardwareFacts) -> Result<DeviceIdentity> {
