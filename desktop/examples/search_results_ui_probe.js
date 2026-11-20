@@ -3,6 +3,41 @@
   const one=s=>document.querySelector(s), all=s=>[...document.querySelectorAll(s)], sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const assert=(v,m)=>{if(!v)throw Error(m);};
   const wait=async(f,m)=>{for(let i=0;i<200;i++){if(f())return;await sleep(70);}throw Error(m);};
+  const videoSnapshot=args=>window.__TAURI_INTERNALS__.invoke('video_snapshot',args);
+  // The synthetic MV runs six seconds. A single sample that demands an advanced
+  // clock and a painted canvas at once is a race: under software decoding the
+  // canvas paints after the clock has already passed that window, so the sample
+  // never lands and the failure surfaces as a resolution mismatch that never
+  // happened (the failing run reported 480P in the page body). Each fact is
+  // still asserted exactly and separately: the detail rights resolved to 480p,
+  // the engine clock advanced past the first frames, and the canvas received
+  // decoded frames.
+  async function nativeMvPlayback(epoch,label){
+    let native,sawPlaying=false;
+    for(let i=0;i<170;i++){
+      const view=await videoSnapshot({epoch});
+      if(view.id==='601'){
+        native=view;
+        if(view.state==='playing') sawPlaying=true;
+        if(view.position>.15) break;
+      }
+      await sleep(70);
+    }
+    assert(native&&native.id==='601',label+': native video 601 opened');
+    assert(native.actualResolution===480,label+': independent video detail rights resolved to 480p');
+    // Either the engine was observed playing, or it played all the way to the end
+    // because the six second clip finished before this sample. Both prove the
+    // engine advanced real playback; a stuck or never-started video satisfies
+    // neither.
+    assert(sawPlaying||(native.state==='ended'&&native.position>=(native.duration??Infinity)),
+      label+': native engine advanced through playback, got '+native.state+' at '+native.position);
+    assert(native.position>.15&&(native.duration??0)>0,
+      label+': engine clock advanced past the first frames');
+    const frames=()=>Number(one('.video-canvas')?.dataset.renderedFrames);
+    let rendered=frames();
+    for(let i=0;i<170&&!(rendered>1);i++){await sleep(70);rendered=frames();}
+    assert(rendered>1,label+': decoded frames reached the canvas');
+  }
   const button=(label,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===label||n.textContent.trim()===label);
   const click=n=>{assert(n&&!n.disabled,'missing/disabled control '+n?.textContent);n.focus({preventScroll:true});n.click();};
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
@@ -1153,13 +1188,7 @@
         'alternative badge is keyboard accessible and physically reachable');
       await capture('search_mv_fallback_badge');
       click(badge(1));
-      let native;
-      for(let i=0;i<170;i++){
-        const view=await invoke('video_snapshot',{epoch});
-        if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
-        await sleep(70);
-      }
-      assert(native?.actualResolution===480,'explicit click follows independent video detail and rights to native frames');
+      await nativeMvPlayback(epoch,'explicit click');
       const canvas=one('.video-canvas');
       const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
       assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded video pixels reach the canvas');
@@ -1294,13 +1323,7 @@
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
       async function nativeVideo(label){
-        let native;
-        for(let i=0;i<170;i++){
-          const view=await invoke('video_snapshot',{epoch});
-          if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
-          await sleep(70);
-        }
-        assert(native&&native.actualResolution===480,label+' reached advancing native video playback');
+        await nativeMvPlayback(epoch,label+' reached advancing native video playback');
         const canvas=one('.video-canvas');
         const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
         assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded frame reaches the canvas');
