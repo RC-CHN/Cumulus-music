@@ -382,15 +382,24 @@
     // The native hint remounts the page. Viewport restoration commits scroll
     // first, then waits for virtual rows/layout before restoring exact focus.
     // Finished animations and aria-busy=false do not fence that last frame.
-    await wait(
-      () => {
-        const current = observe();
-        return ready() && current.loaded === before.loaded &&
-          current.keyword === before.keyword && current.selected === before.selected &&
-          Math.abs(current.scrollTop - before.scrollTop) < 1 &&
-          current.focus === before.focus && current.focusValid;
+    // A bare label here hid which of those facts drifted, so the guarded fields
+    // are reported instead. The conditions themselves are unchanged.
+    const drift = () => {
+      const current = observe();
+      const changed = [];
+      if (!ready()) changed.push("aria-busy still true");
+      if (current.loaded !== before.loaded) changed.push(`loaded ${before.loaded}->${current.loaded}`);
+      if (current.keyword !== before.keyword) changed.push(`keyword ${JSON.stringify(before.keyword)}->${JSON.stringify(current.keyword)}`);
+      if (current.selected !== before.selected) changed.push(`selected ${JSON.stringify(before.selected)}->${JSON.stringify(current.selected)}`);
+      if (Math.abs(current.scrollTop - before.scrollTop) >= 1) changed.push(`scrollTop ${before.scrollTop}->${current.scrollTop}`);
+      if (current.focus !== before.focus) changed.push(`focus ${JSON.stringify(before.focus)}->${JSON.stringify(current.focus)}`);
+      if (!current.focusValid) changed.push(`focus invalid (${current.focusLabel})`);
+      return changed.length ? changed : null;
+    };
+    await wait(() => !drift(), "same-account viewport and exact source focus restored").catch(
+      (cause) => {
+        throw Error(`${cause.message}: ${JSON.stringify(drift())}`);
       },
-      "same-account viewport and exact source focus restored",
     );
   }
   try {
